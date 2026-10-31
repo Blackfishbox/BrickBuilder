@@ -16,7 +16,7 @@ React UI
       ├─ useBuilder (Dokument, Auswahl, Werkzeuge, Verlauf, Autosave)
       ├─ BuilderCanvas (Three.js, Raycasting, Kamera, Touch-Eingaben)
       │   └─ InstancedMesh-Gruppen nach Steintyp und Farbe
-      └─ Parts drawer / palette (lokaler Phase-1-Katalog)
+      └─ Parts drawer / palette (Baukasten und paketweise LDraw-Bibliothek)
 
 Domain
   ├─ versioniertes BuilderDocument
@@ -25,7 +25,7 @@ Domain
   └─ History (Undo/Redo)
 
 Persistenz & Offline
-  ├─ Dexie / IndexedDB: Projekte, aktives Projekt, Wiederherstellung
+  ├─ Dexie / IndexedDB: Projekte, aktives Projekt, Wiederherstellung, Teilepakete
   ├─ Debounced Autosave nach lokalen Änderungen
   └─ Service Worker: Vite-App-Shell, statische Assets, Navigation-Fallback
 
@@ -33,7 +33,7 @@ Worker
   └─ Modellanalyse und räumliche Kennzahlen aus dem Editor-Hauptthread auslagern
 
 Erweiterungspunkte (spätere Phasen)
-  ├─ parts/ldraw: LDraw-Pakete, Parser, Lizenz-/Quellenangaben
+  ├─ parts/: installierte LDraw-Originaldateien für spätere Geometrie-/Formatadapter
   ├─ catalog/bricklink: getrennte BrickLink-IDs, Farben, Preise und Verfügbarkeit
   └─ formats/{internal,ldr,mpd,io}: unabhängige Importer/Exporter und Roundtrips
 ```
@@ -100,8 +100,32 @@ Remote-Schriftarten, Katalog-APIs oder Bild-CDNs benötigt. Projekte und
 Wiederherstellungspunkte liegen lokal in IndexedDB. Autosave läuft nach einer
 kurzen Verzögerung und ein explizites Speichern ist zusätzlich verfügbar.
 Installierte PWA und bereits geladene Version funktionieren ohne Netzwerk;
-neue Teilepakete können erst dann geladen werden, wenn eine Katalogfunktion
-implementiert ist.
+neue Teilepakete benötigen eine Netzwerkverbindung. Sie werden nicht vorab vom
+Service Worker geladen, sondern nur auf ausdrücklichen Paketdownload in
+IndexedDB gespeichert.
+
+### Lokale LDraw-Bibliothek
+
+`features/parts/` enthält einen gebündelten Paketkatalog und einen atomaren
+Installer. Zwei kleine, einzeln ladbare Snapshots (Steine und Platten) enthalten
+je sechs Teile, sämtliche rekursiven Unterteile/Primitive und Lizenztexte.
+SHA-256, Bytezahl, Paketversion, Lizenzheader und Abhängigkeiten werden vor dem
+Schreiben geprüft. IndexedDB-Schema v2 ergänzt die Tabellen, ohne bestehende
+Projekte umzuschreiben. Fehler lassen vorhandene Pakete unverändert.
+Suche nach Name, LDraw-Nummer und Kategorie liest ausschließlich lokale Daten.
+Indexdaten, Originaldateien und Rechtstexte sind nach Browserneustart verfügbar.
+Browserdatenlöschung oder Speicherverdrängung kann lokale Daten dennoch löschen.
+
+Interne Katalog-ID (`ldraw-bricks:3001`), LDraw-ID (`3001`), interner
+Editor-Steintyp (`brick-2x4`) und optionales späteres `brickLinkId` sind
+getrennte Felder. Es gibt keine implizite Gleichsetzung mit BrickLink.
+Nur die drei bereits unterstützten Formen sind aus der Bibliothek im Editor
+auswählbar; alle übrigen Einträge sind als „Nur Katalog“ gekennzeichnet.
+Das Laden/Rendern originaler LDraw-Geometrie ist ein eigener Ausbau, kein
+stillschweigender Ersatz durch unpassende prozedurale Formen.
+
+Quellenprüfung, Urheber und Lizenzpflichten stehen in
+[`parts-licensing.md`](parts-licensing.md).
 
 ## IO-Kompatibilität und Risiken
 
@@ -120,7 +144,7 @@ die Smartphone-Abnahme bleibt ein eigener Gerätetest.
 
 ## Stand Phase 1
 
-Die Basisversion ist implementiert. Funktionen, Prüfergebnisse und bekannte
-Grenzen stehen in `README.md`. LDraw-/BrickLink-Daten und alle Modellformate
-bleiben bewusst außerhalb dieser Phase; es wird dafür keine Kompatibilität
-behauptet.
+Die Basisversion und die lokale LDraw-Paketbibliothek sind implementiert.
+Funktionen, Prüfergebnisse und bekannte Grenzen stehen in `README.md`.
+BrickLink-Daten und alle externen Modellformate bleiben außerhalb dieses
+Ausbaus; es wird dafür keine Kompatibilität behauptet.

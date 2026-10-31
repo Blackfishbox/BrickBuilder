@@ -33,6 +33,7 @@ import {
   MousePointer2,
 } from 'lucide-react';
 import '@/components/mobile/editor.css';
+import PartsLibrary from '@/features/parts/PartsLibrary';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -50,6 +51,7 @@ function App() {
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [partsTab, setPartsTab] = useState<'basis' | 'ldraw'>('basis');
   const [projectMenu, setProjectMenu] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState('');
@@ -65,6 +67,17 @@ function App() {
       window.removeEventListener('offline', offlineHandler);
     };
   }, []);
+
+  useEffect(() => {
+    if (!partsOpen && !colorsOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setPartsOpen(false);
+      setColorsOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [partsOpen, colorsOpen]);
 
   useEffect(() => {
     if (projectMenu) void editor.refreshProjects().catch(() => undefined);
@@ -400,32 +413,48 @@ function App() {
               <div><p className="popover-eyebrow">DEINE STEINE</p><h2 id="parts-title">Steinauswahl</h2></div>
               <button type="button" className="icon-button" onClick={() => setPartsOpen(false)} aria-label="Steinauswahl schließen" data-testid="button-close-parts"><X size={18} /></button>
             </div>
-            <label className="search-field">
-              <Search size={17} />
-              <input type="search" placeholder="Stein suchen" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Steine suchen" data-testid="input-search-parts" />
-              {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search" data-testid="button-clear-search"><X size={15} /></button>}
-            </label>
-            <div className="drawer-list">
-              {filteredBricks.length ? filteredBricks.map((brick) => (
-                <button
-                  type="button"
-                  key={brick.type}
-                  className={`drawer-piece ${editor.selectedType === brick.type ? 'chosen' : ''}`}
-                  onClick={() => { editor.setSelectedType(brick.type); setMode('build'); setPartsOpen(false); }}
-                  data-testid={`button-part-${brick.type}`}
-                >
-                  <span className={`brick-glyph ${brick.type}`} style={{ '--brick-color': selectedColor.value } as CSSProperties} aria-hidden="true">
-                    {Array.from({ length: brick.studs }, (_, index) => <i key={index} />)}
-                  </span>
-                  <span className="drawer-piece-copy"><strong>{brick.label}</strong><small>{brick.dimensions} Noppen · {brick.studs} Verbindungspunkte</small></span>
-                  {editor.selectedType === brick.type ? <Check size={17} className="chosen-check" /> : <Plus size={17} className="add-glyph" />}
-                </button>
-              )) : (
-                <div className="drawer-empty" data-testid="status-no-parts">
-                  <Search size={21} /><strong>Keine passenden Steine</strong><span>Versuche eine Größe wie 2 × 4.</span>
-                </div>
-              )}
+            <div className="drawer-tabs" role="tablist" aria-label="Steinquelle">
+              <button type="button" role="tab" id="tab-basis" aria-controls="panel-basis" aria-selected={partsTab === 'basis'} onClick={() => setPartsTab('basis')} data-testid="tab-parts-basis">Baukasten</button>
+              <button type="button" role="tab" id="tab-ldraw" aria-controls="panel-ldraw" aria-selected={partsTab === 'ldraw'} onClick={() => setPartsTab('ldraw')} data-testid="tab-parts-ldraw">LDraw-Bibliothek</button>
             </div>
+            {partsTab === 'basis' ? (
+              <div role="tabpanel" id="panel-basis" aria-labelledby="tab-basis">
+              <label className="search-field">
+                <Search size={17} />
+                <input type="search" placeholder="Stein suchen" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Steine suchen" data-testid="input-search-parts" />
+                {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search" data-testid="button-clear-search"><X size={15} /></button>}
+              </label>
+              <div className="drawer-list">
+                {filteredBricks.length ? filteredBricks.map((brick) => (
+                  <button
+                    type="button"
+                    key={brick.type}
+                    className={`drawer-piece ${editor.selectedType === brick.type ? 'chosen' : ''}`}
+                    onClick={() => { editor.setSelectedType(brick.type); setMode('build'); setPartsOpen(false); }}
+                    data-testid={`button-part-${brick.type}`}
+                  >
+                    <span className={`brick-glyph ${brick.type}`} style={{ '--brick-color': selectedColor.value } as CSSProperties} aria-hidden="true">
+                      {Array.from({ length: brick.studs }, (_, index) => <i key={index} />)}
+                    </span>
+                    <span className="drawer-piece-copy"><strong>{brick.label}</strong><small>{brick.dimensions} Noppen · {brick.studs} Verbindungspunkte</small></span>
+                    {editor.selectedType === brick.type ? <Check size={17} className="chosen-check" /> : <Plus size={17} className="add-glyph" />}
+                  </button>
+                )) : (
+                  <div className="drawer-empty" data-testid="status-no-parts">
+                    <Search size={21} /><strong>Keine passenden Steine</strong><span>Versuche eine Größe wie 2 × 4.</span>
+                  </div>
+                )}
+              </div>
+                </div>
+            ) : (
+              <div role="tabpanel" id="panel-ldraw" aria-labelledby="tab-ldraw">
+                <PartsLibrary
+                  online={online}
+                  selectedType={editor.selectedType}
+                  onSelect={(type) => { editor.setSelectedType(type); setMode('build'); setPartsOpen(false); }}
+                />
+              </div>
+            )}
             <p className="drawer-footnote"><span className="local-lock" /> Die Auswahl wird lokal gespeichert</p>
           </section>
         </div>

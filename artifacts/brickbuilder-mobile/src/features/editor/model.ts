@@ -31,6 +31,8 @@ export interface BrickDefinition {
   label: string;
   studsX: number;
   studsZ: number;
+  ldrawId: string;
+  brickLinkId?: string;
 }
 
 export interface PaletteColor {
@@ -42,9 +44,9 @@ export const BRICK_HEIGHT = 1.2;
 export const GRID_STEP = 0.5;
 
 export const BRICK_DEFINITIONS: Record<BrickType, BrickDefinition> = {
-  "brick-2x4": { label: "Klassischer Stein", studsX: 2, studsZ: 4 },
-  "brick-2x2": { label: "Quadratischer Stein", studsX: 2, studsZ: 2 },
-  "brick-1x2": { label: "Schmaler Stein", studsX: 1, studsZ: 2 },
+  "brick-2x4": { label: "Klassischer Stein", studsX: 2, studsZ: 4, ldrawId: "3001" },
+  "brick-2x2": { label: "Quadratischer Stein", studsX: 2, studsZ: 2, ldrawId: "3003" },
+  "brick-1x2": { label: "Schmaler Stein", studsX: 1, studsZ: 2, ldrawId: "3004" },
 };
 
 export const BRICK_PALETTE: PaletteColor[] = [

@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 
 import type { BuilderDocument } from "@/features/editor/model";
+import type { InstalledPackage, LibraryPart, StoredLibraryFile } from "@/features/parts/types";
 
 interface AppMetadata {
   key: string;
@@ -10,12 +11,22 @@ interface AppMetadata {
 class BuilderDatabase extends Dexie {
   projects!: Table<BuilderDocument, string>;
   metadata!: Table<AppMetadata, string>;
+  partPackages!: Table<InstalledPackage, string>;
+  libraryParts!: Table<LibraryPart, string>;
+  libraryFiles!: Table<StoredLibraryFile, string>;
 
   constructor() {
     super("brickbuilder-mobile");
     this.version(1).stores({
       projects: "id, name, updatedAt",
       metadata: "key",
+    });
+    this.version(2).stores({
+      projects: "id, name, updatedAt",
+      metadata: "key",
+      partPackages: "id",
+      libraryParts: "id, packageId, ldrawId, category",
+      libraryFiles: "id, packageId",
     });
   }
 }

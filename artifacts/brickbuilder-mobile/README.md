@@ -47,8 +47,8 @@ Produktionsbuilds wurden geprüft, nicht ein vollständiger Offline-Browserlauf.
 
 ## Noch nicht enthalten
 
-- LDraw-Teilebibliothek, Paket-Downloads, Lizenzhinweise pro Teilepaket und
-  Katalogsuche über die drei Phase-1-Steine hinaus.
+- Original-LDraw-Geometrien im 3D-Editor (die Bibliothek ist lokal durchsuchbar;
+  aktuell bleiben nur die drei prozedural unterstützten Formen platzierbar).
 - BrickLink-IDs, Farbmapping, Preise oder Verfügbarkeitsdaten.
 - Import/Export für LDR, MPD oder IO. Es gibt keine behauptete Dateikompatibilität.
 - Mehrfachauswahl, Langzeitmessungen mit tausenden Steinen oder Cloud-Sync.
@@ -60,7 +60,27 @@ mit den internen Stein-IDs gleichzusetzen. Die getrennte Formatarchitektur,
 Lizenzgrenzen und spätere Prüfschritte sind in
 [`docs/architecture.md`](docs/architecture.md) festgehalten.
 
-## Entwicklung
+## Lokale Teilebibliothek
+
+Im Steine-Dialog unter **LDraw-Bibliothek** sind die Pakete **Steine** und
+**Platten** einzeln ladbar (je sechs Teile samt Unterteilen und Primitiven).
+Nach dem Download bleiben Originaldateien, Suchdaten, Urheber und Lizenztexte
+in IndexedDB gespeichert. Name, Kategorie und LDraw-Nummer sind ohne Netzwerk
+durchsuchbar. Pro Paket zeigt „Herkunft und Lizenz“ Quellen, Autoren, Änderungen
+und nach Installation die lokal gespeicherten Rechtstexte.
+
+Die Pakete sind unveränderte, geprüfte CC-BY-4.0-Dateien aus der offiziellen
+LDraw-Bibliothek; Details: [`docs/parts-licensing.md`](docs/parts-licensing.md).
+Es handelt sich um eine technische Lizenzprüfung, keine anwaltliche Beratung.
+Netzwerkfehler, falsche Prüfsummen und Speicherfehler werden angezeigt;
+unvollständige Downloads ersetzen keine Installation. Vorhandene Projekte
+bleiben beim Datenbankupgrade erhalten.
+
+Weitere automatisierte Tests prüfen Snapshot-Hashes, rekursive Vollständigkeit,
+getrennte Paketinstallation, Offline-Suche nach Wiederöffnen, Abbruch und
+Fehlerfälle, Transaktions-Rollback und Migration bestehender Projekte.
+
+## Entwicklungsbefehle
 
 ```sh
 # Replit injects PORT and BASE_PATH through the managed workflow.
