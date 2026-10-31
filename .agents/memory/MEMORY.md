@@ -1,3 +1,0 @@
-- [Produktprioritäten](product-priorities.md) — IO-Import sowie BrickLink-Teile und -Farben haben Vorrang.
-- [Teilebibliothek](parts-library-policy.md) — bewusst geprüfte Snapshots und unabhängig installierbare Pakete statt automatischer Fremddaten-Updates.
-- [GitHub-Codebackups](github-backups.md) — bereinigte Code-Snapshots ohne Uploads oder Checkpoint-Historie; normaler Git-Zugriff kann unabhängig vom Connector funktionieren.
