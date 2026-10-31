@@ -53,3 +53,13 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Private uploads, local agent context, and generated downloads
+/attached_assets/
+/.agents/
+/generated-artifacts/
+
+# Local environment files; sanitized examples may be versioned
+.env
+.env.*
+!.env.example
