@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronDown, Download, FileUp, LoaderCircle, X } from 'l
 import type { BuilderDocument } from '@/features/editor/model';
 import type { ImportedModel } from './types';
 import { exportModel, importModelFile } from './adapters';
+import ImportPartNotification from './ImportPartNotification';
 import './format-dialog.css';
 
 type ExportFormat = 'json' | 'ldr' | 'mpd' | 'io';
@@ -43,6 +44,7 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
         <div><b>{parts}</b><small>Teile</small></div>
         <div><b>{colors}</b><small>Farben</small></div>
       </div>
+      <ImportPartNotification model={model} dismissible={false} />
       {(model.issues.length > 0 || unsupported > 0) && (
         <div className="fmt-warn" role="status">
           <AlertTriangle size={15} />
