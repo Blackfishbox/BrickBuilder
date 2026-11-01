@@ -89,7 +89,7 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
         ))}</ul>
       </details>
       <p className="fmt-muted">Quelldaten werden unverändert im Projekt aufbewahrt ({Object.keys(model.resources ?? {}).length} Ressourcen).</p>
-      {model.edited && <p className="fmt-muted">Bearbeitetes Modell: LDR, MPD und der minimale IO-Export verwenden die aktuellen Einzelteile als flache Struktur. Die ursprüngliche Hierarchie, Quelldaten und unbekannte Metadaten bleiben vollständig in der JSON-Projektsicherung erhalten; eine vollständige Studio-Rückwärtskompatibilität ist nicht zugesichert.</p>}
+      <p className="fmt-muted">LDR exportiert flache Einzelteile ohne eingebettete Geometrie. MPD und minimaler IO-Export erhalten darstellbare Untermodellstrukturen und eingebettete LDraw-Abschnitte; einzelne bearbeitete Vorkommen erhalten bei Bedarf eigene Untermodelle. Bei nicht invertierbaren Transformationen werden betroffene Teile auf die oberste Ebene verschoben. Unbekannte LDraw-Befehle bleiben als Text erhalten, werden aber nicht an Änderungen angepasst. Anleitung, LXFML, Texturen, Studio-Geometrie und unbekannte proprietäre Archivdaten werden im minimalen IO nicht übernommen. Originalarchiv und Quelldaten bleiben in der JSON-Sicherung unverändert. Keine zugesicherte Studio-Rückwärtskompatibilität.</p>
       <details className="fmt-details">
         <summary>Geometrie-/Zuordnungsherkunft und Lizenzen <ChevronDown size={14} /></summary>
         <p className="fmt-muted">Originaldateien unverändert; Auswahl und Paketierung durch BrickBuilder. Lizenz pro Datei: CC BY 4.0 oder CC0. Bei dualer Lizenz wird CC BY 4.0 genutzt.</p>
