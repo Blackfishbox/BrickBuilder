@@ -99,5 +99,6 @@ export async function removeStoredProject(id: string, currentProjectId: string):
       throw new Error("Dieses Projekt ist geöffnet. Öffne zuerst ein anderes Projekt, bevor du es löschst.");
     }
     await builderDatabase.projects.delete(id);
+    await builderDatabase.metadata.delete("project-summary:" + id);
   });
 }

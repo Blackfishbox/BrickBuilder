@@ -206,7 +206,7 @@ function App() {
                     data-testid={`button-open-project-${project.id}`}
                   >
                     <span>{project.name || 'Neues Modell'}</span>
-                    <small>{project.bricks.length + (project.imported?.instances.length ?? 0)} Steine</small>
+                    <small>{project.brickCount} Steine</small>
                   </button>
                 )) : <span className="no-saved-projects">Noch keine Projekte gespeichert</span>}
               </div>
