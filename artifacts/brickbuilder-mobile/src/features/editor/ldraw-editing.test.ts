@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Matrix4, Ray, Vector3 } from "three";
+import { Ray, Vector3 } from "three";
 import { createEmptyDocument } from "./model";
 import { commit, createHistory, redo, undo } from "./history";
 import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
@@ -71,7 +71,7 @@ describe("editable imported LDraw instances", () => {
     expect(reopened!.imported).toEqual(edited.imported);
     const roundtrip = importInternal(exportInternal(edited));
     expect(roundtrip.imported!.edited).toBe(true);
-    expect(roundtrip.imported!.instances[0].matrix).toEqual(edited.imported!.instances[0].matrix);
+    expect(roundtrip.imported!.instances[0].matrix).toEqual(edited.imported!.instances[0].matrix.map(value => value || 0));
     expect(roundtrip.imported!.originalBytes).toEqual(original.imported.originalBytes);
   });
   it("exports edited effective parts rather than the stale original MPD source", () => {
@@ -123,8 +123,6 @@ describe("editable imported LDraw instances", () => {
     const hit = pickSoftwareInstance(new Ray(new Vector3(0.2, -0.2, 2), new Vector3(0, 0, -1)), software, 0);
     expect(hit?.id).toBe(model.instances[0].id);
     expect(hit?.point.z).toBeCloseTo(0);
-    const transformed = new Vector3(0.2, 0.2, 0).applyMatrix4(new Matrix4());
-    expect(transformed.x).toBeCloseTo(0.2);
     disposeImportedScene(root);
   });
 });

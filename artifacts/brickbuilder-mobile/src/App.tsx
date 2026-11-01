@@ -25,7 +25,6 @@ import {
   Plus,
   RotateCw,
   Save,
-  Search,
   Settings2,
   Trash2,
   Undo2,
@@ -137,6 +136,9 @@ function App() {
   const selectedBrick = BRICKS.find((brick) => brick.type === editor.selectedType) ?? BRICKS[0];
   const selectedColor = COLORS.find(color => color.ldrawCode === editor.selectedColorCode) ??
     COLORS.find((color) => color.value.toLowerCase() === editor.selectedColor.toLowerCase()) ?? { name: "Eigene Farbe", value: editor.selectedColor, ldrawCode: "" };
+  const isSelectedColor = (color: typeof COLORS[number]) => editor.selectedColorCode
+    ? editor.selectedColorCode === color.ldrawCode
+    : editor.selectedColor.toLowerCase() === color.value.toLowerCase();
 
   if (!editor.isReady) {
     return (
@@ -324,13 +326,13 @@ function App() {
                 <button
                   key={color.ldrawCode}
                   type="button"
-                  className={`swatch ${editor.selectedColor.toLowerCase() === color.value.toLowerCase() ? 'selected' : ''}`}
+                  className={`swatch ${isSelectedColor(color) ? 'selected' : ''}`}
                   style={{ '--swatch-color': color.value } as CSSProperties}
                   aria-label={`${color.name} auswählen`}
-                  aria-pressed={editor.selectedColor.toLowerCase() === color.value.toLowerCase()}
+                  aria-pressed={isSelectedColor(color)}
                   onClick={() => editor.setSelectedColor(color.value, color.ldrawCode)}
                   data-testid={`button-color-${color.name.toLowerCase()}`}
-                >{editor.selectedColor.toLowerCase() === color.value.toLowerCase() && <Check size={13} />}</button>
+                >{isSelectedColor(color) && <Check size={13} />}</button>
               ))}
             </div>
           </div>
@@ -405,13 +407,13 @@ function App() {
                 <button
                   key={color.ldrawCode}
                   type="button"
-                  className={`mobile-color-option ${editor.selectedColor.toLowerCase() === color.value.toLowerCase() ? 'selected' : ''}`}
+                  className={`mobile-color-option ${isSelectedColor(color) ? 'selected' : ''}`}
                   onClick={() => { editor.setSelectedColor(color.value, color.ldrawCode); setColorsOpen(false); }}
                   data-testid={`mobile-color-${color.name.toLowerCase()}`}
                 >
                   <span style={{ '--swatch-color': color.value } as CSSProperties} />
                   <span>{color.name}</span>
-                  {editor.selectedColor.toLowerCase() === color.value.toLowerCase() && <Check size={16} />}
+                  {isSelectedColor(color) && <Check size={16} />}
                 </button>
               ))}
             </div>
