@@ -85,7 +85,8 @@ describe("geometry, formats and storage (private-reference cases are optional)",
     expect(snapshot.files).toHaveLength(manifest.fileCount);
     for (const file of snapshot.files) {
       expect(file.author.length).toBeGreaterThan(0);
-      expect(file.sourceUrl).toBe(`https://library.ldraw.org/library/official/${file.path}`);
+      const status = file.path === "parts/5844.dat" ? "unofficial" : "official";
+      expect(file.sourceUrl).toBe(`https://library.ldraw.org/library/${status}/${file.path}`);
       expect(file.content).toMatch(/0 !LICENSE Licensed under CC (?:BY (?:2\.0 and CC BY )?4\.0|0) : see CAreadme.txt/);
     }
     expect(snapshot.legalDocuments).toHaveLength(2);
