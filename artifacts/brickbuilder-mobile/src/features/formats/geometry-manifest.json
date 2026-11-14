@@ -1,8 +1,8 @@
 {
   "url": "parts/import-geometry-2026-10-31.bin",
-  "bytes": 98923,
-  "sha256": "3611c261dc046428a019a0625bea3d7156d73de2244d9fe92413908e06dbaf6f",
-  "partCount": 74,
-  "fileCount": 321,
+  "bytes": 100210,
+  "sha256": "e67f2cda389bb342240aba93fc52302d014c75f5a3232690dc3e6b167e517579",
+  "partCount": 75,
+  "fileCount": 324,
   "missing": []
 }

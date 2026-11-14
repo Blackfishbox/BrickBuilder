@@ -1,5 +1,8 @@
-/** Fixed public source identity. Catalog IDs are deliberately not part of this contract. */
+/** Allowlisted source identities. Catalog IDs are not part of this contract.
+ * Unofficial provenance is used by explicitly reviewed bundles, not live fallback.
+ */
 export const OFFICIAL = "https://library.ldraw.org/library/official/";
+export const UNOFFICIAL = "https://library.ldraw.org/library/unofficial/";
 export const LEGAL_PATHS = ["CAreadme.txt", "CAlicense4.txt", "CC0-1.0.txt"] as const;
 export const sourceUrl = (path: string) => path === "CC0-1.0.txt"
   ? "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt" : `${OFFICIAL}${path}`;
@@ -28,7 +31,8 @@ export interface SourceFile {
   content: string;
 }
 /** Validate original headers and every executable geometry line before accepting a file. */
-export function inspectFile(path: string, bytes: Uint8Array): SourceFile {
+export function inspectFile(path: string, bytes: Uint8Array, origin: typeof OFFICIAL | typeof UNOFFICIAL = OFFICIAL): SourceFile {
+  if (origin !== OFFICIAL && origin !== UNOFFICIAL) throw new Error("Nicht freigegebene LDraw-Quelle.");
   normalizePath(path);
   if (bytes.length > 2 * 1024 * 1024 || !bytes.length) throw new Error("LDraw-Dateigröße ungültig.");
   const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -52,7 +56,7 @@ export function inspectFile(path: string, bytes: Uint8Array): SourceFile {
         (type !== 1 && tokens.length !== count + 2)) throw new Error("Ungültige Geometriezeile.");
     if (type === 1) normalizeReference(tokens.slice(14).join(" "));
   }
-  return { path, content, sourceUrl: `${OFFICIAL}${path}`, author, license };
+  return { path, content, sourceUrl: `${origin}${path}`, author, license };
 }
 export function dependencies(content: string): string[] {
   return [...new Set(content.replace(/^\uFEFF/, "").split(/\r?\n/)
