@@ -7,6 +7,8 @@ import { exportMPD } from "./mpd/export";
 import { importIO } from "./io/import";
 import { exportIO } from "./io/export";
 import type { ResolveOptions } from "./online-geometry";
+import { exportBrickLink } from "./bricklink/export";
+import { ensureCatalog } from "../catalog/client";
 
 export function validateImportFile(file: Pick<File, "name" | "size">): void {
   const format = file.name.split(".").pop()?.toLowerCase();
@@ -28,7 +30,14 @@ export async function importModelFile(file: File, options: ResolveOptions = {}):
     default: return importLDraw(bytes, file.name, "ldr", bytes, options);
   }
 }
-export async function exportModel(document: BuilderDocument, format: "json" | "ldr" | "mpd" | "io") {
+export async function exportModel(document: BuilderDocument, format: "json" | "ldr" | "mpd" | "io" | "bricklink") {
+  if (format === "bricklink") {
+    // Saved verified evidence still works offline if the optional catalog is unavailable.
+    try { await ensureCatalog(); } catch { /* The exporter explicitly blocks unresolved IDs. */ }
+    return { bytes: exportBrickLink(document),
+      filename: `${document.name.replace(/[^a-z0-9äöüß_-]/gi, "_") || "Modell"}-bricklink.xml`,
+      mime: "application/xml;charset=utf-8" };
+  }
   const bytes = format === "json" ? exportInternal(document) : format === "ldr" ? exportLDR(document) : format === "mpd" ? exportMPD(document) : exportIO(document);
   return { bytes, filename: `${document.name.replace(/[^a-z0-9äöüß_-]/gi, "_") || "Modell"}.${format}`, mime: format === "json" ? "application/json" : format === "io" ? "application/zip" : "text/plain" };
 }
