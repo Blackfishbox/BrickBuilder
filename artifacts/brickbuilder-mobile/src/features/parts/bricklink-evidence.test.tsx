@@ -68,7 +68,9 @@ describe("separately licensed explicit BrickLink evidence", () => {
         status: "confirmed", candidates: [{ ldrawId: id, brickLinkId: expected }],
       });
     }
-    for (const unknown of ["3023", "3069a", "73587", "s/6141", "3004", "invented"]) {
+    // The official 3023 file explicitly moves to 3023b; this is not suffix guessing.
+    expect(resolvePartMapping("3023.dat")).toMatchObject({ status: "confirmed", candidates: [{ brickLinkId: "3023" }] });
+    for (const unknown of ["3069a", "73587", "s/6141", "3004", "invented"]) {
       expect(resolvePartMapping(`${unknown}.dat`)).toEqual({ status: "unknown", candidates: [] });
     }
     expect(resolvePartMapping("invented.dat", [{ ...localPart("invented", "123"), mappings: undefined, brickLinkId: "123" }]).status).toBe("unknown");
