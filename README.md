@@ -102,6 +102,11 @@ LDraw resources are separately licensed from application code. See
 and [BrickLink mapping evidence](artifacts/brickbuilder-mobile/docs/bricklink-mapping-licensing.md).
 No endorsement by LEGO, BrickLink or LDraw is claimed.
 
+Export the current model as a BrickLink Wanted List XML file from the file
+dialog. It groups confirmed BrickLink part/color IDs and quantities and blocks
+unknown or conflicting mappings instead of creating a partial shopping list.
+See [parts-list export and upload instructions](docs/bricklink-parts-list-export.md).
+
 ## Optional missing-part downloads
 
 The bundled offline geometry also includes a bounded, validated selection of
