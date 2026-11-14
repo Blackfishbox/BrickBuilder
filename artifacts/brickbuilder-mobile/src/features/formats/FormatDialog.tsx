@@ -8,13 +8,15 @@ import { importDiagnostics } from './import-diagnostics';
 import CatalogPanel from '../catalog/CatalogPanel';
 import { resolveGeometry } from './geometry-resolver';
 import type { GeometryProgress } from './online-geometry';
+import { BrickLinkExportError, type PartsListIssue } from './bricklink/export';
 import './format-dialog.css';
 import { exportFile } from '@/platform/export-file';
 
-type ExportFormat = 'json' | 'ldr' | 'mpd' | 'io';
+type ExportFormat = 'json' | 'ldr' | 'mpd' | 'io' | 'bricklink';
 type WithImported = BuilderDocument & { imported?: ImportedModel };
 
 const EXPORTS: { format: ExportFormat; label: string; note: string }[] = [
+  { format: 'bricklink', label: 'BrickLink-Teileliste (.xml)', note: 'Aktuelles Modell: Teile, Farben und Mengen für eine Wanted List' },
   { format: 'json', label: 'Projekt (JSON)', note: 'Vollständige Sicherung dieses Projekts' },
   { format: 'ldr', label: 'LDraw (.ldr)', note: 'Einzelmodell für LDraw-Programme' },
   { format: 'mpd', label: 'LDraw (.mpd)', note: 'Mehrteilige LDraw-Datei' },
@@ -134,6 +136,8 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
+  const [partsListIssues, setPartsListIssues] = useState<PartsListIssue[]>([]);
+  const [partsListExported, setPartsListExported] = useState(false);
   const token = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const [progress, setProgress] = useState<GeometryProgress | null>(null);
@@ -194,11 +198,15 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
   };
 
   const doExport = async (format: ExportFormat) => {
-    setExporting(format); setExportError('');
+    setExporting(format); setExportError(''); setPartsListIssues([]); setPartsListExported(false);
     try {
       const { bytes, filename, mime } = await exportModel(document, format);
       await exportFile(bytes, filename, mime);
-    } catch (e) { setExportError(e instanceof Error ? e.message : 'Export fehlgeschlagen.'); }
+      setPartsListExported(format === 'bricklink');
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export fehlgeschlagen.');
+      if (e instanceof BrickLinkExportError) setPartsListIssues(e.issues);
+    }
     finally { setExporting(null); }
   };
 
@@ -256,6 +264,15 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
             ))}
           </div>
           {exportError && <div className="fmt-error" role="alert" data-testid="status-export-error">{exportError}</div>}
+          {partsListIssues.length > 0 && <div className="fmt-error" data-testid="bricklink-export-issues">
+            <b>{partsListIssues.reduce((sum, issue) => sum + issue.quantity, 0)} verbaute Teile nicht eindeutig zugeordnet:</b>
+            <ul>{partsListIssues.slice(0, 50).map((issue, index) => <li key={index}>
+              {issue.quantity}× {issue.reference} · {issue.color}: {issue.reason}
+            </li>)}</ul>
+            {partsListIssues.length > 50 && <p>Weitere {partsListIssues.length - 50} Positionen betroffen.</p>}
+          </div>}
+          {partsListExported && <p role="status" className="fmt-muted">BrickLink-XML erstellt. Bei BrickLink unter „Want → Upload → Upload BrickLink XML format“ den Dateiinhalt einfügen und vor dem Übernehmen prüfen. Es wurden keine Daten an BrickLink gesendet.</p>}
+          <p className="fmt-muted">Die BrickLink-Teileliste zählt alle aktuell verbauten Teile, auch ohne darstellbare Geometrie. Unverbrauchte Teile aus „Meine Teileliste“ werden nicht mitgezählt. Fehlende oder mehrdeutige Zuordnungen verhindern den Export; es werden keine IDs oder ähnlichen Farben geraten.</p>
           <p className="fmt-muted" data-testid="text-inventory-backup-notice">Teileliste: Nur die interne JSON-Sicherung bewahrt „Meine Teileliste“ samt Mengen und Zuordnungen verbauter Teile. LDR, MPD und IO enthalten keine Teilelisten-Zuordnungen.</p>
         </div>
       </section>
