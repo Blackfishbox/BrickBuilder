@@ -104,6 +104,11 @@ No endorsement by LEGO, BrickLink or LDraw is claimed.
 
 ## Optional missing-part downloads
 
+The bundled offline geometry also includes a bounded, validated selection of
+unofficial Parts Tracker files with complete dependencies. See
+[coverage and limitations](docs/reviewed-geometry.md). This improves IO/LDR/MPD
+imports without copying Studio resources or silently updating upstream files.
+
 Import checks the saved model, installed packages, verified local cache and bundled
 snapshot before trying `/api/ldraw/file`. The optional resolver obtains original
 licensed LDraw files and recursive dependencies, not catalog images or guessed
