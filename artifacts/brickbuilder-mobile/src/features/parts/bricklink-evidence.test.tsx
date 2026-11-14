@@ -11,6 +11,7 @@ import { PART_PACKAGES } from "./library";
 import { Report } from "../formats/FormatDialog";
 import type { ImportedModel } from "../formats/types";
 import { IDENTITY } from "../formats/ldraw/parser";
+import { candidates, dependencies, OFFICIAL } from "@workspace/ldraw-source";
 
 const localPart = (id: string, brickLinkId: string): LibraryPart => ({
   id: `test:${id}`, packageId: "test", ldrawId: id, name: id, category: "", keywords: [],
@@ -33,8 +34,23 @@ describe("separately licensed explicit BrickLink evidence", () => {
       expect(e.mappingSet).toBe(MAPPING_SET.id);
       expect(e.version).toBe(MAPPING_SET.version);
     }
+    // Test the official evidence package, not unrelated unofficial import roots.
+    const byPath = new Map(snapshot.files.map(file => [file.path, file]));
+    const closure = new Set<string>();
+    function collect(path: string) {
+      if (closure.has(path)) return;
+      closure.add(path);
+      const file = byPath.get(path)!;
+      expect(file.sourceUrl).toBe(`${OFFICIAL}${path}`);
+      for (const ref of dependencies(file.content)) {
+        const child = candidates(ref).find(candidate => byPath.has(candidate));
+        expect(child).toBeDefined();
+        collect(child!);
+      }
+    }
+    for (const evidence of BRICKLINK_EVIDENCE) collect(`parts/${evidence.ldrawId}.dat`);
     const pkg: PackagePayload = {
-      id: "evidence", version: MAPPING_SET.version, files: snapshot.files, legalDocuments: snapshot.legalDocuments,
+      id: "evidence", version: MAPPING_SET.version, files: [...closure].map(path => byPath.get(path)!), legalDocuments: snapshot.legalDocuments,
       parts: BRICKLINK_EVIDENCE.map(e => ({
         id: `evidence:${e.ldrawId}`, packageId: "evidence", ldrawId: e.ldrawId,
         name: e.name, category: "", keywords: [], file: `parts/${e.ldrawId}.dat`, mappings: [e],

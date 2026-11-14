@@ -179,7 +179,12 @@ describe("approved recursive acquisition", () => {
     const first = new OnlineGeometry({}), second = new OnlineGeometry({});
     const [a, b] = await Promise.all([first.get("parts/byte-fixture.dat"), second.get("parts/byte-fixture.dat")]);
     expect(a.content).toBe(text); expect(a.sha256).toBe(await hashBytes(encode(text)));
-    expect(a).toEqual(b);
+    // Callers share transport bytes, not necessarily the same completion millisecond.
+    const { retrievedAt: firstTime, ...firstData } = a;
+    const { retrievedAt: secondTime, ...secondData } = b;
+    expect(firstData).toEqual(secondData);
+    expect(Number.isFinite(Date.parse(firstTime!))).toBe(true);
+    expect(Number.isFinite(Date.parse(secondTime!))).toBe(true);
     expect(calls.filter(p => p === "parts/byte-fixture.dat")).toHaveLength(1);
   });
   it("keeps original project and source data on quota failure while reporting the failed cache write", async () => {
