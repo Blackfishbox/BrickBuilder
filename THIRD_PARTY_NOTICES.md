@@ -8,6 +8,13 @@ original resource-specific legal texts when distributing source or builds.
 
 ## LDraw
 
+The import geometry bundle also contains an explicitly reviewed **unofficial**
+LDraw part 5844 by Rene Rechthaler [Blechtaler], under CC BY 4.0. Its original
+source URL and license header are preserved. See
+[reviewed geometry additions](docs/reviewed-geometry.md) for the pinned source,
+official primitive credits and scope; no general unofficial-library fallback
+is enabled.
+
 Original authors retain their rights. Reviewed parts packages use CC BY 4.0;
 the import/reference snapshots additionally include explicitly declared CC0
 files and files offering a CC BY 4.0 option. This is not a declaration that

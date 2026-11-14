@@ -7,7 +7,7 @@ import { resolveColor } from "./colors";
 import { refreshModelColors } from "./model-colors";
 import { compilePart, invalidateGeometry } from "../engine/ldraw-geometry";
 import { MAPPING_LEGAL_DOCUMENT, resolvePartMapping } from "../parts/bricklink-evidence";
-import { candidates, dependencies, inspectFile, normalizeReference } from "@workspace/ldraw-source";
+import { candidates, dependencies, inspectFile, normalizeReference, OFFICIAL, UNOFFICIAL } from "@workspace/ldraw-source";
 import { findOnline, hashBytes, OnlineGeometry, type ResolveOptions } from "./online-geometry";
 import type { RetrievalSnapshot } from "./types";
 import { ensureCatalog, catalogManifest, getCatalogState } from "../catalog/client";
@@ -37,7 +37,7 @@ export async function resolveGeometry(model: ImportedModel, options: ResolveOpti
       if (file.sha256) {
         const bytes = new TextEncoder().encode(file.content);
         if (await hashBytes(bytes) !== file.sha256 || bytes.length !== file.byteLength) throw new Error("Cache-Prüfsumme ungültig.");
-        const inspected = inspectFile(file.path, bytes);
+        const inspected = inspectFile(file.path, bytes, file.sourceUrl === `${UNOFFICIAL}${file.path}` ? UNOFFICIAL : OFFICIAL);
         if (inspected.sourceUrl !== file.sourceUrl || inspected.license !== file.license || inspected.author !== file.author) throw new Error("Cache-Herkunft ungültig.");
       }
       available[file.path] = file;
