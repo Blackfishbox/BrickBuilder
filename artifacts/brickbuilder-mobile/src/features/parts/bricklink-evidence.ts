@@ -1,6 +1,9 @@
 import type { LibraryPart, PartMappingEvidence, PartMappingResult } from "./types";
 import catalogManifest from "../catalog/manifest.json";
 import { getCatalogState } from "../catalog/state";
+import aliasSnapshot from "./ldraw-aliases.json";
+
+const aliases = new Map(aliasSnapshot.aliases.map(alias => [alias.from, alias]));
 
 /**
  * Derived from explicit !KEYWORDS only. CC BY 4.0, independently of app code.
@@ -57,12 +60,13 @@ export const MAPPING_LEGAL_DOCUMENT = {
     `${MAPPING_SET.id} / ${MAPPING_SET.version}: CC BY 4.0`,
     MAPPING_SET.licenseUrl,
     "Derived selection from official LDraw !KEYWORDS. Extraction, whitespace-normalized names and variant notes by BrickBuilder. No endorsement by the original authors, LDraw or BrickLink.",
+    `Reviewed identity-only ~Moved to aliases: ${aliasSnapshot.version}; official archive SHA-256 ${aliasSnapshot.archiveSha256}. Alias-derived evidence additionally retains each alias source URL, source hash, original author and license. Target catalog evidence retains its own attribution and license.`,
     ...BRICKLINK_EVIDENCE.map(e => `${e.ldrawId} → ${e.brickLinkId}: ${e.name}\n${e.author}\n${e.sourceUrl}\nSHA-256 ${e.sourceSha256}\n${e.sourceLine}`),
   ].join("\n\n"),
 };
 
-export function resolvePartMapping(reference: string, local: LibraryPart[] = [], prior: PartMappingEvidence[] = []): PartMappingResult {
-  // Case and file extension only: never strip suffixes, paths or print codes.
+export function resolvePartMapping(reference: string, local: LibraryPart[] = [], prior: PartMappingEvidence[] = [], trail: string[] = []): PartMappingResult {
+  // Never strip suffixes, paths or print codes. Follow only pinned explicit aliases.
   const id = reference.toLowerCase().replace(/\.dat$/, "");
   const seen = new Set<string>();
   const index = getCatalogState().index?.parts;
@@ -76,7 +80,16 @@ export function resolvePartMapping(reference: string, local: LibraryPart[] = [],
     author: "Rebrickable community", license: "Rebrickable-Attribution",
     mappingSet: "rebrickable-complete-catalog", version: catalogManifest.version,
   })));
-  const candidates = [...BRICKLINK_EVIDENCE, ...complete, ...prior, ...local.flatMap(p =>
+  const alias = aliases.get(id);
+  const inherited: PartMappingEvidence[] = alias && !trail.includes(id) && trail.length < 48
+    ? resolvePartMapping(`${alias.to}.dat`, local, [], [...trail, id]).candidates.map(evidence => ({
+      ...evidence, ldrawId: id,
+      variant: `Reviewed identity alias ${id} → ${alias.to}; ${evidence.variant}`,
+      // Keep the target's real catalog row/license; append independently licensed
+      // alias evidence rather than claiming an absent catalog LD row exists.
+      sourceLine: `${evidence.sourceLine}\n${alias.header}\n${alias.referenceLine}\nAlias source: ${alias.sourceUrl}\nSHA-256: ${alias.sha256}\nAuthor: ${alias.author}; license: ${alias.license}`,
+    })) : [];
+  const candidates = [...BRICKLINK_EVIDENCE, ...complete, ...inherited, ...prior, ...local.flatMap(p =>
     p.ldrawId.toLowerCase() === id ? p.mappings ?? [] : [])]
     .filter(e => e.ldrawId.toLowerCase() === id)
     .filter(e => {

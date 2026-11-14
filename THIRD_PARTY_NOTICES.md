@@ -8,6 +8,12 @@ original resource-specific legal texts when distributing source or builds.
 
 ## LDraw
 
+The reviewed identity-alias metadata in
+`artifacts/brickbuilder-mobile/src/features/parts/ldraw-aliases.json` is derived
+from explicit official LDraw `~Moved to` records. Per-file authors, licenses,
+source URLs and hashes are retained. Target BrickLink mapping evidence keeps
+its separate source and license; the alias metadata does not relicense it.
+
 The import geometry bundle also contains a fixed, validated selection from the
 **unofficial** LDraw Parts Tracker, including part 5844 by Rene Rechthaler
 [Blechtaler]. Original authors, file contents, license headers and actual source

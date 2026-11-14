@@ -24,6 +24,16 @@ the whole export and show affected references, color codes and quantities.
 No incomplete list is silently downloaded. LDraw filenames are not assumed to
 be BrickLink IDs, and RGB colors are not rounded to purchasable colors.
 
+Official LDraw `~Moved to` aliases are supported through a pinned, reviewed
+identity-only alias snapshot. For example, `60481 → 60481a`, `2654 → 2654a`
+and `3665 → 3665a` use the canonical file's confirmed catalog mapping while
+retaining the model's original reference. Only single color-16 references
+with an identity transform are admitted; suffixes are never guessed.
+Alias source headers, authors, licenses, hashes and target mapping evidence
+remain distinguishable, and conflicting direct evidence still blocks export.
+Maintain the snapshot explicitly with `scripts/review-ldraw-aliases.ts` against
+an approved official archive; ordinary builds do not query or update LDraw.
+
 Tests cover aggregation, aliases, edits/deletions, missing geometry, conflicts,
 unknown colors, unchanged source data, XML re-import through the existing list
 parser, and the export button's download/error behavior.
