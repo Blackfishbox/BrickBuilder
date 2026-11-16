@@ -1,3 +1,15 @@
+# Part-color observations
+
+The separately versioned offline part-color index contains observed element
+pairs and explicit ID mappings sourced from Rebrickable and its community:
+https://rebrickable.com/downloads/. Catalog use permission is described in
+https://rebrickable.com/terms/ sections 5.1 and 5.3, reviewed 2026-11-16.
+This permission is not a Creative Commons license. No MOC content, images,
+Studio resources, BrickLink stock or price data is included. The observations
+are not a complete historical availability guarantee. Source hashes, date,
+coverage and reproduction are documented in `docs/part-color-evidence.md`
+and the separately pinned `color-evidence-manifest.json`.
+
 # Third-party notices and license boundaries
 
 The root [MIT license](LICENSE) covers independently authored first-party

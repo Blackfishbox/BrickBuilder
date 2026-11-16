@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, CloudOff, Download, ExternalLink, LoaderCircle, Plus, RotateCw, Search, X } from 'lucide-react';
-import { PART_PACKAGES, installPackage, listInstalledPackages, searchLocalParts } from './library';
+import { PART_PACKAGES, ensureBundledPackages, installPackage, listInstalledPackages, searchLocalParts } from './library';
 import type { InstalledPackage, LibraryPart } from './types';
 import './parts-library.css';
 import CatalogPanel from "../catalog/CatalogPanel";
 
 type PkgState = { status: 'idle' | 'pending' | 'error'; error?: string };
-type Category = '' | 'Steine' | 'Platten';
+const CATEGORIES = ['', 'Steine', 'Platten', 'Fliesen', 'Schrägsteine', 'Technik', 'Fahrzeug & Details'];
 
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} KB`;
@@ -28,7 +28,8 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
   const [installedError, setInstalledError] = useState('');
   const [pkgState, setPkgState] = useState<Record<string, PkgState>>({});
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<Category>('');
+  const [category, setCategory] = useState('');
+  const [visibleCount, setVisibleCount] = useState(40);
   const [results, setResults] = useState<LibraryPart[] | null>(null);
   const [searchError, setSearchError] = useState('');
   const [searchNonce, setSearchNonce] = useState(0);
@@ -45,6 +46,7 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
   const loadInstalled = useCallback(async () => {
     setInstalledError('');
     try {
+      await ensureBundledPackages();
       const list = await listInstalledPackages();
       if (mountedRef.current) setInstalled(list);
     } catch (error) {
@@ -58,7 +60,9 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
   useEffect(() => { void loadInstalled(); }, [loadInstalled]);
 
   useEffect(() => {
+    if (installed === null) return;
     let active = true;
+    setVisibleCount(40);
     setResults(null);
     setSearchError('');
     const timer = window.setTimeout(() => {
@@ -101,7 +105,7 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
         </div>
         {!online && (
           <span className="plib-offline" role="status" data-testid="status-library-offline">
-            <CloudOff size={13} /> Offline · nur installierte Teile
+            <CloudOff size={13} /> Offline · mitgelieferte und installierte Teile
           </span>
         )}
       </div>
@@ -125,6 +129,8 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
         </div>
       )}
 
+      <details>
+      <summary>Mitgelieferte Teilepakete und Lizenzen ({PART_PACKAGES.reduce((sum, pkg) => sum + pkg.partCount, 0)} Einträge)</summary>
       <ul className="plib-packages">
         {PART_PACKAGES.map((pkg) => {
           const state = pkgState[pkg.id]?.status ?? 'idle';
@@ -153,7 +159,7 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
                     type="button"
                     className="plib-btn"
                     onClick={() => void install(pkg.id)}
-                    disabled={!online}
+                    disabled={!online && !pkg.bundled}
                     aria-label={`${pkg.title} ${state === 'error' ? 'erneut ' : ''}herunterladen`}
                     data-testid={`button-install-${pkg.id}`}
                   >
@@ -187,7 +193,7 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
                 {inst?.legalDocuments?.length ? (
                   <div className="plib-legal" aria-label="Lokal gespeicherte Lizenzdokumente">
                     {inst.legalDocuments.map((doc) => (
-                      <details key={doc.name} className="plib-doc" data-testid={`legal-${pkg.id}-${doc.name}`}>
+                      <details key={`${doc.name}:${doc.sourceUrl}`} className="plib-doc" data-testid={`legal-${pkg.id}-${doc.name}`}>
                         <summary>{doc.name} <span>offline lesbar</span></summary>
                         <pre tabIndex={0} aria-label={doc.name}>{doc.content}</pre>
                         <a href={doc.sourceUrl} target="_blank" rel="noreferrer noopener">Originalquelle <ExternalLink size={11} /></a>
@@ -202,6 +208,7 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
           );
         })}
       </ul>
+      </details>
 
       <div className="plib-search-row">
         <label className="search-field plib-search">
@@ -217,7 +224,7 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
           {query && <button type="button" onClick={() => setQuery('')} aria-label="Suche leeren"><X size={14} /></button>}
         </label>
         <div className="plib-filter" role="group" aria-label="Kategorie">
-          {(['', 'Steine', 'Platten'] as Category[]).map((c) => (
+          {CATEGORIES.map((c) => (
             <button
               key={c || 'alle'}
               type="button"
@@ -242,9 +249,9 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
           <div className="drawer-empty" data-testid="status-library-empty">
             <Search size={19} />
             <strong>{hasInstalled ? 'Keine passenden Teile' : 'Noch keine Pakete installiert'}</strong>
-            <span>{hasInstalled ? 'Suche nach Name oder LDraw-Nummer, z. B. 3001.' : 'Lade oben ein Paket, um es offline zu durchsuchen.'}</span>
+            <span>{hasInstalled ? 'Suche nach Name oder LDraw-Nummer, z. B. 3001.' : 'Mitgelieferte Pakete werden lokal eingerichtet. Bei einem Fehler oben erneut versuchen.'}</span>
           </div>
-        ) : results.map((part) => {
+        ) : results.slice(0, visibleCount).map((part) => {
           const body = (
             <>
               <span className="plib-id">LDraw<br /><b>{part.ldrawId}</b></span>
@@ -270,6 +277,11 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
           );
         })}
       </div>
+      {results && results.length > visibleCount && (
+        <button type="button" className="plib-btn" onClick={() => setVisibleCount(count => count + 40)}>
+          Weitere Teile zeigen ({visibleCount} von {results.length})
+        </button>
+      )}
     </section>
   );
 }
