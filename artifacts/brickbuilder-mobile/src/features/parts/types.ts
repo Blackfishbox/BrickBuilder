@@ -58,6 +58,9 @@ export interface PackagePayload {
 }
 
 export interface PackageManifest {
+  /** Included in the app/PWA bundle; no upstream download or opt-in needed. */
+  bundled?: boolean;
+  compression?: "gzip";
   id: string;
   version: string;
   title: string;

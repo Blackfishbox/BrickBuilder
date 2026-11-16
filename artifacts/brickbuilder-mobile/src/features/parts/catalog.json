@@ -15,7 +15,8 @@
       "CC-BY-4.0"
     ],
     "attribution": "James Jessiman; Niels Karsdorp [nielsk]; Steffen [Steffen]; Owen Burgoyne [C3POwen]; Tore Eriksson [Tore_Eriksson]; Willy Tschager [Holly-Wood]",
-    "changes": "Originaldateien unverändert; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder."
+    "changes": "Originaldateien unverändert; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "bundled": true
   },
   {
     "id": "ldraw-plates",
@@ -33,6 +34,127 @@
       "CC-BY-4.0"
     ],
     "attribution": "James Jessiman; Orion Pobursky [OrionP]; Massimo Maso [Sirio]; Tore Eriksson [Tore_Eriksson]; Steffen [Steffen]",
-    "changes": "Originaldateien unverändert; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder."
+    "changes": "Originaldateien unverändert; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "bundled": true
+  },
+  {
+    "id": "ldraw-default-bricks",
+    "version": "2026-11-16",
+    "title": "LDraw · Steine · Basis",
+    "description": "36 zusätzliche, geprüfte Bauteile. Automatisch offline verfügbar.",
+    "url": "parts/ldraw-default-bricks-2026-11-16.bin",
+    "sha256": "ab49d35bd68dd3a80765e8e77b70875b29970439035329eeefef763f36e35b80",
+    "bytes": 102198,
+    "partCount": 36,
+    "fileCount": 276,
+    "sourceUrl": "https://library.ldraw.org/library/official/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenses": [
+      "CC-BY-4.0"
+    ],
+    "attribution": "Alex Taylor [anathema]; Brent Jackson [bjackson]; Chris Dee [cwdee]; Damien Roux [Darats]; Donald Sutter [technog]; Franklin W. Cain [fwcain]; Gerald Lasser [GeraldLasser]; Greg Teft [gregteft]; J.C. Tchang [tchang]; James Jessiman; Jeff Jones [notmaster]; Magnus Forsberg [MagFors]; Marc Klein [marckl]; Mark Kennedy [mkennedy]; Massimo Maso [Sirio]; Max Martin Richter [MMR1988]; Michael Heidemann [mikeheide]; N. W. Perry [Plastikean]; Niels Karsdorp [nielsk]; Orion Pobursky [OrionP]; Owen Burgoyne [C3POwen]; Paul Easter [pneaster]; Peter Blomberg [WUIt]; Philippe Hurbain [Philo]; Rene Rechthaler [Blechtaler]; Santeri Piippo [arezey]; Steffen [Steffen]; Stephan Meisinger [smr]; Steve Bliss [sbliss]; Takeshi Takahashi [RainbowDolphin]; Tim Gould [timgould]; Tore Eriksson [Tore_Eriksson]; Vincent Messenet [Cheenzo]; Willy Tschager [Holly-Wood]",
+    "changes": "Originaldateien unverändert aus dem geprüften Import-Snapshot; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "compression": "gzip",
+    "bundled": true
+  },
+  {
+    "id": "ldraw-default-plates",
+    "version": "2026-11-16",
+    "title": "LDraw · Platten · Basis",
+    "description": "49 zusätzliche, geprüfte Bauteile. Automatisch offline verfügbar.",
+    "url": "parts/ldraw-default-plates-2026-11-16.bin",
+    "sha256": "89784173c719d5325edcbf075740c80c087a477d2fcf912aeab6a5259d6385d7",
+    "bytes": 86494,
+    "partCount": 49,
+    "fileCount": 265,
+    "sourceUrl": "https://library.ldraw.org/library/official/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenses": [
+      "CC-BY-4.0"
+    ],
+    "attribution": "Alex Taylor [anathema]; Bertrand Lequy [Berth]; Chris Böhnke [KnightOfTarenta]; Chris Dee [cwdee]; Donald Sutter [technog]; Evert-Jan Boer [ejboer]; Gerald Lasser [GeraldLasser]; Guy Vivan [guyvivan]; J.C. Tchang [tchang]; James Jessiman; Jeff Jones [notmaster]; John Riley [jriley]; Magnus Forsberg [MagFors]; Marc Klein [marckl]; Mark Kennedy [mkennedy]; Massimo Maso [Sirio]; Max Martin Richter [MMR1988]; Michael Heidemann [mikeheide]; Niels Karsdorp [nielsk]; Orion Pobursky [OrionP]; Owen Burgoyne [C3POwen]; Paul Easter [pneaster]; Peter Blomberg [WUIt]; Peter Grass [Evilspyre]; Philippe Hurbain [Philo]; Remco Braak [remco1974]; Rene Rechthaler [Blechtaler]; Steffen [Steffen]; Steve Bliss [sbliss]; Tim Gould [timgould]; Tore Eriksson [Tore_Eriksson]; Vincent Messenet [Cheenzo]; Willy Tschager [Holly-Wood]; [PTadmin]",
+    "changes": "Originaldateien unverändert aus dem geprüften Import-Snapshot; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "compression": "gzip",
+    "bundled": true
+  },
+  {
+    "id": "ldraw-default-tiles",
+    "version": "2026-11-16",
+    "title": "LDraw · Fliesen · Basis",
+    "description": "33 zusätzliche, geprüfte Bauteile. Automatisch offline verfügbar.",
+    "url": "parts/ldraw-default-tiles-2026-11-16.bin",
+    "sha256": "5c57cd0adb9553b352b16555cef93e7f944d9269135b315328a87d216521cbcd",
+    "bytes": 48480,
+    "partCount": 33,
+    "fileCount": 187,
+    "sourceUrl": "https://library.ldraw.org/library/official/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenses": [
+      "CC-BY-4.0"
+    ],
+    "attribution": "Alex Taylor [anathema]; Andy Westrate [westrate]; Chris Dee [cwdee]; Donald Sutter [technog]; Gerald Lasser [GeraldLasser]; Guy Vivan [guyvivan]; J.C. Tchang [tchang]; James Jessiman; Magnus Forsberg [MagFors]; Marc Klein [marckl]; Mark Kennedy [mkennedy]; Massimo Maso [Sirio]; Max Martin Richter [MMR1988]; Michael Heidemann [mikeheide]; N. W. Perry [Plastikean]; Niels Karsdorp [nielsk]; Owen Burgoyne [C3POwen]; Paul Easter [pneaster]; Peter Grass [Evilspyre]; Philippe Hurbain [Philo]; Rolf Osterthun [Rolf]; Santeri Piippo [arezey]; Steffen [Steffen]; Takeshi Takahashi [RainbowDolphin]; Tim Gould [timgould]; Tore Eriksson [Tore_Eriksson]; Ulrich Röder [UR]; Vincent Messenet [Cheenzo]; Willy Tschager [Holly-Wood]",
+    "changes": "Originaldateien unverändert aus dem geprüften Import-Snapshot; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "compression": "gzip",
+    "bundled": true
+  },
+  {
+    "id": "ldraw-default-slopes",
+    "version": "2026-11-16",
+    "title": "LDraw · Schrägsteine · Basis",
+    "description": "62 zusätzliche, geprüfte Bauteile. Automatisch offline verfügbar.",
+    "url": "parts/ldraw-default-slopes-2026-11-16.bin",
+    "sha256": "a469020eff2badb4076f907d2306719d3a40121c6ec041b580ef86c38d3180d1",
+    "bytes": 122897,
+    "partCount": 62,
+    "fileCount": 273,
+    "sourceUrl": "https://library.ldraw.org/library/official/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenses": [
+      "CC-BY-4.0"
+    ],
+    "attribution": "Alex Taylor [anathema]; Andy Westrate [westrate]; Chris Böhnke [KnightOfTarenta]; Chris Dee [cwdee]; Donald Sutter [technog]; Evert-Jan Boer [ejboer]; Franklin W. Cain [fwcain]; Gerald Lasser [GeraldLasser]; Guy Vivan [guyvivan]; J.C. Tchang [tchang]; James Jessiman; Jeff Jones [notmaster]; John Van Zwieten [jvan]; Magnus Forsberg [MagFors]; Marc Klein [marckl]; Mark Kennedy [mkennedy]; Massimo Maso [Sirio]; Max Martin Richter [MMR1988]; Michael Heidemann [mikeheide]; Niels Karsdorp [nielsk]; Orion Pobursky [OrionP]; Owen Burgoyne [C3POwen]; Paul Easter [pneaster]; Philippe Hurbain [Philo]; Rene Rechthaler [Blechtaler]; Santeri Piippo [arezey]; Steffen [Steffen]; Steve Bliss [sbliss]; Tim Gould [timgould]; Tore Eriksson [Tore_Eriksson]; Vincent Messenet [Cheenzo]; Willy Tschager [Holly-Wood]; [PTadmin]",
+    "changes": "Originaldateien unverändert aus dem geprüften Import-Snapshot; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "compression": "gzip",
+    "bundled": true
+  },
+  {
+    "id": "ldraw-default-technic",
+    "version": "2026-11-16",
+    "title": "LDraw · Technik · Basis",
+    "description": "51 zusätzliche, geprüfte Bauteile. Automatisch offline verfügbar.",
+    "url": "parts/ldraw-default-technic-2026-11-16.bin",
+    "sha256": "78abe229f6d180531b29aa00de2a8a3668e33708d012d543cdf309cfa6e9ea32",
+    "bytes": 129092,
+    "partCount": 51,
+    "fileCount": 310,
+    "sourceUrl": "https://library.ldraw.org/library/official/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenses": [
+      "CC-BY-4.0"
+    ],
+    "attribution": "Alex Taylor [anathema]; Andreas Weissenburg [grubaluk]; Andy Westrate [westrate]; Chris Böhnke [KnightOfTarenta]; Chris Dee [cwdee]; Damien Roux [Darats]; Donald Sutter [technog]; Franklin W. Cain [fwcain]; Gerald Lasser [GeraldLasser]; Guy Vivan [guyvivan]; J.C. Tchang [tchang]; Jaco van der Molen [Jaco]; James Jessiman; Jeff Jones [notmaster]; Jens Brühl [jb70]; John Van Zwieten [jvan]; Magnus Forsberg [MagFors]; Marc Klein [marckl]; Mark Kennedy [mkennedy]; Massimo Maso [Sirio]; Max Martin Richter [MMR1988]; Max Murtazin [SwampKryakwa]; Michael Heidemann [mikeheide]; Niels Karsdorp [nielsk]; Orion Pobursky [OrionP]; Owen Burgoyne [C3POwen]; Paul Easter [pneaster]; Philippe Hurbain [Philo]; Rene Rechthaler [Blechtaler]; Ross Crawford [rosco]; Santeri Piippo [arezey]; Steffen [Steffen]; Steve Bliss [sbliss]; Tim Gould [timgould]; Tore Eriksson [Tore_Eriksson]; William Howard [WilliamH]; Willy Tschager [Holly-Wood]; [PTadmin]",
+    "changes": "Originaldateien unverändert aus dem geprüften Import-Snapshot; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "compression": "gzip",
+    "bundled": true
+  },
+  {
+    "id": "ldraw-default-details",
+    "version": "2026-11-16",
+    "title": "LDraw · Fahrzeug & Details · Basis",
+    "description": "69 zusätzliche, geprüfte Bauteile. Automatisch offline verfügbar.",
+    "url": "parts/ldraw-default-details-2026-11-16.bin",
+    "sha256": "cd56ada0d4d2fc212575edd89285e28d1435c796c3efb4065ff5166c57a6685c",
+    "bytes": 201796,
+    "partCount": 69,
+    "fileCount": 431,
+    "sourceUrl": "https://library.ldraw.org/library/official/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenses": [
+      "CC-BY-4.0"
+    ],
+    "attribution": "Alex Taylor [anathema]; Arne Hackstein; Bernd Broich [bbroich]; C.L.Rasmussen [johnny-thunder]; Chris Dee [cwdee]; Chris Moseley; Damien Roux [Darats]; Donald Sutter [technog]; Franklin W. Cain [fwcain]; Gerald Lasser [GeraldLasser]; J.C. Tchang [tchang]; James Jessiman; Johann Eisner [technicbasics]; John Van Zwieten [jvan]; Magnus Forsberg [MagFors]; Manfred Moolhuysen; Marc Klein [marckl]; Mark Kennedy [mkennedy]; Massimo Maso [Sirio]; Max Martin Richter [MMR1988]; Max Murtazin [SwampKryakwa]; Michael Heidemann [mikeheide]; N. W. Perry [Plastikean]; Niels Karsdorp [nielsk]; Orion Pobursky [OrionP]; Paul Easter [pneaster]; Philippe Hurbain [Philo]; Rene Rechthaler [Blechtaler]; Rolf Osterthun [Rolf]; Santeri Piippo [arezey]; Steffen [Steffen]; Steve Bliss [sbliss]; Takeshi Takahashi [RainbowDolphin]; Thomas Burger [grapeape]; Tim Gould [timgould]; Tore Eriksson [Tore_Eriksson]; Ulrich Röder [UR]; Vincent Messenet [Cheenzo]; Willy Tschager [Holly-Wood]; [PTadmin]",
+    "changes": "Originaldateien unverändert aus dem geprüften Import-Snapshot; Auswahl, Paketierung und Suchmetadaten durch BrickBuilder.",
+    "compression": "gzip",
+    "bundled": true
   }
 ]
