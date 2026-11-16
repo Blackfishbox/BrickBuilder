@@ -108,13 +108,13 @@ jobs:
           UPLOAD_KEY_BASE64: ${{ secrets.ANDROID_UPLOAD_KEY_BASE64 }}
         run: |
           umask 077
-          printf '%s' "$UPLOAD_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/brickbuilder-upload.jks"
-          test -s "$RUNNER_TEMP/brickbuilder-upload.jks"
+          printf '%s' "$UPLOAD_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/brickbuilder-upload.p12"
+          test -s "$RUNNER_TEMP/brickbuilder-upload.p12"
       - name: Build the signed release AAB
         working-directory: artifacts/brickbuilder-mobile/android
         env:
           ANDROID_REQUIRE_SIGNING: "true"
-          ANDROID_UPLOAD_STORE_FILE: ${{ runner.temp }}/brickbuilder-upload.jks
+          ANDROID_UPLOAD_STORE_FILE: ${{ runner.temp }}/brickbuilder-upload.p12
           ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
@@ -158,6 +158,6 @@ jobs:
       - name: Remove temporary signing and personal build data
         if: always()
         run: |
-          rm -f "$RUNNER_TEMP/brickbuilder-upload.jks" "$RUNNER_TEMP/aab-verification.txt"
+          rm -f "$RUNNER_TEMP/brickbuilder-upload.p12" "$RUNNER_TEMP/aab-verification.txt"
           rm -f artifacts/brickbuilder-mobile/dist/public/privacy.html
           rm -f artifacts/brickbuilder-mobile/android/app/src/main/assets/public/privacy.html
