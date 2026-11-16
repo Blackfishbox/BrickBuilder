@@ -35,7 +35,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  native-insets:
+    uses: ./.github/workflows/android-native-insets.yml
+    with:
+      catalog_url: ${{ inputs.catalog_url || vars.ANDROID_CATALOG_URL }}
   android:
+    needs: native-insets
     if: ${{ inputs.catalog_url != '' || vars.ANDROID_CATALOG_URL != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40

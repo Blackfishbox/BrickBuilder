@@ -18,6 +18,10 @@ does not request network or broad storage permission. The PWA service worker is
 disabled for the native build; Android updates replace its packaged assets.
 The ordinary web/PWA build remains unchanged.
 
+Native status/navigation bar, display-cutout and keyboard bounds are handled
+by the activity's content container, with emulator regression checks. See
+[Native Android system-bar bounds](android-system-insets.md).
+
 ### Important coverage limits
 
 - The complete **mapping/search catalog is not the complete geometry library**.
