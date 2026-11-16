@@ -67,9 +67,12 @@ tests or `android:prepare`.
 
 ## Identity, tools and versions
 
-- Release application ID: `io.github.blackfishbox.brickbuilder`.
-  Confirm it before the first Play upload: it cannot be changed for that listing.
-- Debug ID: `io.github.blackfishbox.brickbuilder.debug`; separate projects and
+- Release application ID: `brickbuilder.blackfishbox.de`.
+  This identifier is fixed for the new Play listing and cannot be changed after
+  the listing is created. It differs from older Android builds
+  (`io.github.blackfishbox.brickbuilder`), so those installs cannot be upgraded
+  in place and keep separate app data.
+- Debug ID: `brickbuilder.blackfishbox.de.debug`; separate projects and
   storage, allowing debug and release apps to coexist.
 - Minimum Android: API 24 (Android 7). Target/compile: API 36 (Android 16).
   Actual 3D functionality also requires a working current Android System WebView

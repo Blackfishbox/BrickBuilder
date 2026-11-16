@@ -17,10 +17,10 @@ if ((signingCount != 0 && signingCount != signingNames.size()) ||
 }
 
 android {
-    namespace = "io.github.blackfishbox.brickbuilder"
+    namespace = "brickbuilder.blackfishbox.de"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "io.github.blackfishbox.brickbuilder"
+        applicationId "brickbuilder.blackfishbox.de"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode requestedCode.toInteger()
