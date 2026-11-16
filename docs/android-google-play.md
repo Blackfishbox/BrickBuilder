@@ -204,6 +204,16 @@ internal testing). `release-info.json` records package ID, version, source
 commit and workflow run without controller details or credentials. Artifacts
 expire after **14 days**; archive the releases you need privately.
 
+Release builds enable R8 code shrinking and obfuscation. Download
+`brickbuilder-proguard-<versionCode>-<attempt>` from the **same workflow run**
+to obtain the generated **`mapping.txt`** for native Android crash
+deobfuscation in Google Play Console. Keep it together with that exact AAB;
+another release's mapping cannot reliably decode its crash reports.
+This artifact also expires after **14 days**. The build fails if R8 does not
+produce a non-empty mapping. Capacitor's consumer rules preserve its native
+plugins, and app rules preserve JavaScript bridge methods and source locations.
+This mapping does not decode JavaScript/TypeScript stack traces.
+
 `versionCode` is `ANDROID_VERSION_CODE_OFFSET + github.run_number`. Each new
 push/run increases the number; rerunning the same run preserves it. **Every
 Play upload must have a strictly higher code than the previous upload.**
@@ -216,7 +226,7 @@ on the default branch; automatic Android-branch pushes work without that.
 The workflow verifies the AAB signature and checks that its packaged privacy
 policy has no unresolved placeholders. It deletes the temporary keystore and
 unpackaged personal HTML even on failure, and never uses a debug key for
-release. Only the signed AAB and non-personal release metadata are uploaded;
+release. Only the signed AAB, its R8 mapping and non-personal release metadata are uploaded;
 no keystore or separately rendered policy is a CI artifact.
 
 GitHub-hosted runner minutes/storage are subject to your GitHub account's
