@@ -11,6 +11,7 @@ import type { GeometryProgress } from './online-geometry';
 import { BrickLinkExportError, type PartsListIssue } from './bricklink/export';
 import './format-dialog.css';
 import { exportFile } from '@/platform/export-file';
+import { importFileAccept } from '@/platform/import-file';
 
 type ExportFormat = 'json' | 'ldr' | 'mpd' | 'io' | 'bricklink';
 type WithImported = BuilderDocument & { imported?: ImportedModel };
@@ -226,7 +227,7 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
           <label className="fmt-drop">
             <FileUp size={20} />
             <span><b>{fileName || 'Datei auswählen'}</b><small>IO, LDR, MPD bis 32 MiB · JSON-Projektsicherungen auch größer</small></span>
-            <input type="file" accept=".io,.ldr,.mpd,.json" disabled={creating} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} data-testid="input-import-file" />
+            <input type="file" accept={importFileAccept('model')} disabled={creating} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} data-testid="input-import-file" />
           </label>
           {busy && <div className="fmt-loading" role="status" style={{ flexWrap: 'wrap' }}>
             <LoaderCircle className="spin" size={15} />

@@ -214,6 +214,13 @@ remain handled by Capacitor. The browser/PWA source retains its original
 viewport. CI tests the transformation and checks the packaged AAB's HTML.
 Physical-device confirmation of both navigation modes is still required.
 
+Android model and inventory file pickers use the unrestricted `*/*` MIME
+filter. Document providers do not consistently identify IO, LDraw, JSON, XML
+or CSV files, and filtering by extensions can leave valid documents disabled.
+The existing importers still validate file names, sizes and contents after
+selection; this does not grant broad storage permissions or bypass import
+validation. Browser/PWA picker filters remain unchanged.
+
 Release builds enable R8 code shrinking and obfuscation. Download
 `brickbuilder-proguard-<versionCode>-<attempt>` from the **same workflow run**
 to obtain the generated **`mapping.txt`** for native Android crash
