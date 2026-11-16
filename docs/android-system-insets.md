@@ -31,6 +31,11 @@ three-button and gesture navigation, and measures actual native WebView bounds
 against the window's reported system/IME insets and verifies that the DOM
 viewport and bottom controls fit inside the fitted native WebView.
 
+The calling release workflow passes its effective catalog URL into the
+reusable workflow's `catalog_url` input, so manual input overrides and the
+release job use the same snapshot. For standalone dispatch, provide that URL
+explicitly or configure the repository's `ANDROID_CATALOG_URL` fallback.
+
 Navigation verification reads the enabled system overlay and checks the actual
 button inset against the measured gesture inset. Android 15 can retain stale
 overlay-resource values in an already running application's Resources object;
