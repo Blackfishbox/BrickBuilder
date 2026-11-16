@@ -224,6 +224,13 @@ allowance and spending settings. No paid service is configured or purchased.
 
 ## Upload key and Play App Signing
 
+The initial upload key for this application is an encrypted PKCS#12 keystore.
+Keep an offline copy of the `.p12` file and its password in separate secure
+locations. GitHub Actions secrets cannot be downloaded again as a backup.
+The key alias and private-key password must match the configured keystore;
+the initial setup uses the store password for the private key as well.
+Never generate a new key on every workflow run.
+
 Create an upload key locally using Android Studio's **Generate Signed Bundle**
 flow or `keytool`, protect it with a strong password, and maintain a secure
 offline backup. Store key material only in your own secure storage and GitHub
