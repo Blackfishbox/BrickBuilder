@@ -11,4 +11,5 @@ trap collect_evidence EXIT
 adb shell settings put secure show_ime_with_hard_keyboard 1
 cd "$ROOT/artifacts/brickbuilder-mobile/android"
 bash gradlew --no-daemon :app:testDebugUnitTest :app:connectedDebugAndroidTest \
+  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
   -Pandroid.testInstrumentationRunnerArguments.class=brickbuilder.blackfishbox.de.NativeInsetsInstrumentedTest

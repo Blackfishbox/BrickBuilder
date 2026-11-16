@@ -16,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Test;
@@ -24,12 +25,16 @@ import org.junit.runner.RunWith;
 /** Actual Android window/WebView bounds, not a browser viewport approximation. */
 @RunWith(AndroidJUnit4.class)
 public class NativeInsetsInstrumentedTest {
-    private void shell(String command) throws Exception {
+    private String shell(String command) throws Exception {
         try (ParcelFileDescriptor descriptor = InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation().executeShellCommand(command);
              ParcelFileDescriptor.AutoCloseInputStream stream =
                 new ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
-            while (stream.read() != -1) { /* wait for command completion */ }
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = stream.read(buffer)) != -1) output.write(buffer, 0, count);
+            return output.toString(StandardCharsets.UTF_8.name());
         }
     }
 
@@ -59,6 +64,7 @@ public class NativeInsetsInstrumentedTest {
                 View web = activity.getBridge().getWebView();
                 WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(decor);
                 if (insets == null || web.getHeight() == 0) return;
+                Insets cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
                 Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
                     | WindowInsetsCompat.Type.displayCutout());
                 Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
@@ -68,9 +74,9 @@ public class NativeInsetsInstrumentedTest {
                 int right = position[0] + web.getWidth(), end = position[1] + web.getHeight();
                 report[0] = "window=" + decor.getWidth() + "x" + decor.getHeight()
                     + "\nweb=" + position[0] + "," + position[1] + "," + right + "," + end
-                    + "\nbars=" + bars + "\nime=" + ime + "\n";
+                    + "\nbars=" + bars + "\ncutout=" + cutout + "\nime=" + ime + "\n";
                 // Exact native fit also catches duplicate padding and cumulative growth.
-                passed.set(bars.top > 0 && bars.bottom + bars.right > 0
+                passed.set(bars.top > 0 && bars.bottom + bars.right > 0 && !cutout.equals(Insets.NONE)
                     && insets.isVisible(WindowInsetsCompat.Type.ime()) == keyboard
                     && Math.abs(position[0] - bars.left) <= 1
                     && Math.abs(position[1] - bars.top) <= 1
@@ -79,8 +85,29 @@ public class NativeInsetsInstrumentedTest {
             });
             if (!passed.get()) SystemClock.sleep(100);
         }
-        capture(name, report[0]);
+        AtomicBoolean domFits = new AtomicBoolean(false);
+        String[] domReport = { "not measured" };
+        deadline = SystemClock.uptimeMillis() + 10000;
+        while (passed.get() && !domFits.get() && SystemClock.uptimeMillis() < deadline) {
+            scenario.onActivity(a -> {
+                int expectedHeight = a.getBridge().getWebView().getHeight();
+                a.getBridge().getWebView().evaluateJavascript(
+                    "(()=>{const s=document.querySelector('.editor-shell')?.getBoundingClientRect();"
+                    + "const d=document.querySelector('.mobile-dock')?.getBoundingClientRect();"
+                    + "return !!s && Math.abs(innerHeight*devicePixelRatio-" + expectedHeight + ")<=3"
+                    + "&& s.top>=-1 && s.bottom<=innerHeight+1"
+                    + "&& (!d || d.height===0 || (d.top>=-1 && d.bottom<=innerHeight+1));})()",
+                    value -> domFits.set("true".equals(value)));
+                a.getBridge().getWebView().evaluateJavascript(
+                    "({innerHeight,devicePixelRatio,shell:document.querySelector('.editor-shell')"
+                    + "?.getBoundingClientRect().toJSON(),dock:document.querySelector('.mobile-dock')"
+                    + "?.getBoundingClientRect().toJSON()})", value -> domReport[0] = value);
+            });
+            SystemClock.sleep(100);
+        }
+        capture(name, report[0] + "\nDOM=" + domReport[0]);
         assertTrue(name + ": " + report[0], passed.get());
+        assertTrue(name + ": editor or bottom controls do not fit the native WebView: " + domReport[0], domFits.get());
     }
 
     @Test public void systemBarsRotationKeyboardAndResume() throws Exception {
@@ -95,14 +122,18 @@ public class NativeInsetsInstrumentedTest {
             assertTrue("The real editor must load, not only a blank WebView", ready.get());
             shell("cmd overlay enable --user 0 com.android.internal.display.cutout.emulation.tall");
             for (String mode : new String[] { "threebutton", "gestural" }) {
-                shell("cmd overlay enable-exclusive --category com.android.internal.systemui.navbar." + mode);
-                SystemClock.sleep(1000);
-                scenario.onActivity(a -> {
-                    int resource = a.getResources().getIdentifier("config_navBarInteractionMode", "integer", "android");
-                    assertTrue("Navigation mode resource must exist", resource != 0);
-                    assertEquals("The requested navigation mode must actually be active",
-                        mode.equals("threebutton") ? 0 : 2, a.getResources().getInteger(resource));
-                });
+                String output = shell("cmd overlay enable-exclusive --user 0 --category com.android.internal.systemui.navbar." + mode);
+                AtomicBoolean modeReady = new AtomicBoolean(false);
+                long modeDeadline = SystemClock.uptimeMillis() + 15000;
+                while (!modeReady.get() && SystemClock.uptimeMillis() < modeDeadline) {
+                    scenario.onActivity(a -> {
+                        int resource = a.getResources().getIdentifier("config_navBarInteractionMode", "integer", "android");
+                        modeReady.set(resource != 0 && a.getResources().getInteger(resource)
+                            == (mode.equals("threebutton") ? 0 : 2));
+                    });
+                    if (!modeReady.get()) SystemClock.sleep(100);
+                }
+                assertTrue("The requested navigation mode must actually be active: " + mode + " " + output, modeReady.get());
                 scenario.onActivity(a -> {
                     a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
                     WindowCompat.getInsetsController(a.getWindow(), a.getWindow().getDecorView())
