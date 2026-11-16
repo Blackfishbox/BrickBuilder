@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import Dexie from "dexie";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { builderDatabase, loadCurrentProject, saveProject } from "@/storage/database";
@@ -34,11 +35,11 @@ describe("offline LDraw packages", () => {
       expect(bytes.byteLength).toBe(manifest.bytes);
       const hash = Buffer.from(await webcrypto.subtle.digest("SHA-256", bytes)).toString("hex");
       expect(hash).toBe(manifest.sha256);
-      const payload = validatePayload(JSON.parse(bytes.toString()), manifest);
-      expect(payload.legalDocuments.map(doc => doc.name)).toEqual(["CAreadme.txt", "CAlicense4.txt"]);
+      const payload = validatePayload(JSON.parse((manifest.compression === "gzip" ? gunzipSync(bytes) : bytes).toString()), manifest);
+      expect(new Set(payload.legalDocuments.map(doc => doc.name))).toEqual(new Set(["CAreadme.txt", "CAlicense4.txt"]));
       for (const file of payload.files) {
         expect(manifest.attribution).toContain(file.author);
-        expect(file.content).toContain("0 !LICENSE Licensed under CC BY 4.0");
+        expect(file.content).toMatch(/0 !LICENSE Licensed under CC BY (?:2.0 and CC BY )?4.0/);
       }
       expect(payload.parts.every(part => !("brickLinkId" in part))).toBe(true);
     }

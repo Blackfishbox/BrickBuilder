@@ -36,7 +36,7 @@
 .plib-alert span { flex: 1; }
 .plib-alert button { border: 1px solid #e0c4b6; border-radius: 7px; background: #fbf6f0; color: #a84f3a; padding: 5px 9px; cursor: pointer; font-size: 10px; font-weight: 800; }
 .plib-search-row { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid #e5e1d5; }
-.plib-filter { display: flex; gap: 6px; }
+.plib-filter { display: flex; flex-wrap: wrap; gap: 6px; }
 .plib-filter button { min-height: 30px; padding: 0 12px; border: 1px solid #dcded3; border-radius: 999px; background: #f8f7ef; color: #5d7064; cursor: pointer; font-size: 10px; font-weight: 800; }
 .plib-filter button.active { border-color: #809a88; background: #e8eee4; color: #30463d; }
 .plib-results { display: flex; flex-direction: column; gap: 8px; }
