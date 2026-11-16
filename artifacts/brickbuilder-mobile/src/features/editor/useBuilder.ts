@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  BRICK_DEFINITIONS,
   BRICK_HEIGHT,
   createEmptyDocument,
   normalizeDocument,
@@ -17,6 +18,8 @@ import type { LibraryPart } from "../parts/types";
 import { ensureCatalog, resolveStoredInventory, useCatalog } from "../catalog/client";
 import { refreshedCatalogModel } from "../catalog/refresh-model";
 import { resolveColor } from "../formats/colors";
+import { selectionColorEvidence } from "../catalog/color-evidence";
+import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
@@ -218,12 +221,23 @@ export function useBuilder() {
   }, []);
 
   const setSelectedColor = useCallback(
-    (color: string, code?: string) => {
+    (color: string, code?: string, additionalIds: string[] = []) => {
+      const document = historyRef.current.document;
+      const ids = new Set(selectedId ? [selectedId, ...additionalIds] : []);
+      const instances = document.imported?.instances.filter(instance => ids.has(instance.id)) ?? [];
+      // Inventory allocations retain their specified colors, even through a stale UI callback.
+      if ((!selectedId && placementRef.current?.inventory) || instances.some(instance => instance.allocation)) return;
+      const references = instances.length ? instances.map(instance => instance.part.ldrawId)
+        : selectedId && document.bricks.some(brick => brick.id === selectedId)
+          ? [BRICK_DEFINITIONS[document.bricks.find(brick => brick.id === selectedId)!.type].ldrawId]
+          : placementRef.current ? [placementRef.current.prepared.part.ldrawId] : [];
+      const constraint = selectionColorEvidence(references, getColorEvidenceState().index);
+      if (constraint.codes && (!code || !constraint.codes.includes(code))) return;
       setSelectedColorValue(color);
       setSelectedColorCode(code);
       if (!selectedId) return;
-      if (historyRef.current.document.imported?.instances.some(instance => instance.id === selectedId)) {
-        updateDocument(document => recolorImported(document, selectedId, color, code));
+      if (instances.length) {
+        updateDocument(document => instances.reduce((next, instance) => recolorImported(next, instance.id, color, code), document));
         return;
       }
       updateDocument((document) => ({
@@ -417,6 +431,9 @@ export function useBuilder() {
       if (instance) {
         const color = resolveColor(instance.colorCode);
         if (color) { setSelectedColorValue(color.hex); setSelectedColorCode(instance.colorCode); }
+      } else {
+        const brick = historyRef.current.document.bricks.find(item => item.id === id);
+        if (brick) { setSelectedColorValue(brick.color); setSelectedColorCode(`0x2${brick.color.replace("#", "").toUpperCase()}`); }
       }
     },
     [remove, toolMode],

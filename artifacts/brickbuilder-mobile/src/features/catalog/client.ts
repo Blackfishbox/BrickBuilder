@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { builderDatabase } from "@/storage/database";
 import manifest from "./manifest.json";
+import evidenceManifest from "./color-evidence-manifest.json";
+import { getColorEvidenceState, subscribeColorEvidence, updateColorEvidenceState } from "./color-evidence-state";
 import type { Inventory, InventoryPreview } from "../inventory/types";
 import { MAX_LIST_BYTES } from "../inventory/types";
 import { getCatalogState, subscribeCatalog, updateCatalogState as update } from "./state";
@@ -9,6 +11,41 @@ export { default as catalogManifest } from "./manifest.json";
 export type CatalogSearchResult = { id: string; name: string; mappings: string[][] };
 export function useCatalog() {
   return useSyncExternalStore(subscribeCatalog, getCatalogState, getCatalogState);
+}
+export function useColorEvidence() {
+  return useSyncExternalStore(subscribeColorEvidence, getColorEvidenceState, getColorEvidenceState);
+}
+let evidencePending: Promise<void> | undefined;
+export function ensureColorEvidence(): Promise<void> {
+  if (getColorEvidenceState().status === "ready") return Promise.resolve();
+  if (evidencePending) return evidencePending;
+  updateColorEvidenceState({ status: "loading" });
+  evidencePending = (async () => {
+    const stored = await builderDatabase.catalogSnapshots.get(evidenceManifest.sha256);
+    let bytes = stored?.bytes;
+    if (!bytes) {
+      const response = await fetch(`${import.meta.env.BASE_URL}${evidenceManifest.url}`, { signal: AbortSignal.timeout(30000) });
+      if (!response.ok) throw new Error(`Farbnachweis: HTTP ${response.status}`);
+      bytes = new Uint8Array(await response.arrayBuffer());
+    }
+    let loaded;
+    try {
+      if (bytes.length !== evidenceManifest.bytes) throw new Error("Farbnachweisgröße stimmt nicht.");
+      loaded = await request({ type: "load-evidence", bytes, sha256: evidenceManifest.sha256 });
+      if (loaded.index.version !== evidenceManifest.version || loaded.index.snapshotDate !== evidenceManifest.snapshotDate) {
+        throw new Error("Farbnachweisversion stimmt nicht.");
+      }
+    } catch (error) {
+      if (stored) await builderDatabase.catalogSnapshots.delete(evidenceManifest.sha256);
+      throw error;
+    }
+    if (!stored) await builderDatabase.catalogSnapshots.put({ id: evidenceManifest.sha256, bytes });
+    updateColorEvidenceState({ status: "ready", index: loaded.index });
+  })().catch(error => {
+    updateColorEvidenceState({ status: "error", error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }).finally(() => { evidencePending = undefined; });
+  return evidencePending;
 }
 let worker: Worker | undefined;
 let sequence = 0;

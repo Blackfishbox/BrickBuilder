@@ -14,6 +14,9 @@ import { gunzipSync } from "fflate";
 import { hashBytes } from "../formats/online-geometry";
 import { parseInventory } from "../inventory/import";
 import type { LibraryPart } from "../parts/types";
+import { indexColorEvidence } from "../catalog/color-evidence";
+import { updateColorEvidenceState } from "../catalog/color-evidence-state";
+import evidenceManifest from "../catalog/color-evidence-manifest.json";
 
 vi.mock("../catalog/client", () => ({
   useCatalog: () => ({ status: "ready" }), ensureCatalog: async () => {},
@@ -29,6 +32,7 @@ let root: ReturnType<typeof createRoot> | undefined;
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = undefined; await builderDatabase.delete(); vi.unstubAllGlobals();
+  updateColorEvidenceState({ status: "idle" });
 });
 const part = (id: string): LibraryPart => ({
   id: `catalog:${id}`, packageId: "catalog", ldrawId: id, name: id, category: "", keywords: [], file: `parts/${id}.dat`,
@@ -61,14 +65,37 @@ it("prepares actual catalog geometry and commits catalog/inventory plates throug
   expect(editor.imported!.instances).toHaveLength(1);
   await act(async () => editor.redo());
   expect(editor.imported!.instances[1]).toEqual(placed);
+  const beforeColors = editor.imported!.instances.map(instance => instance.colorCode);
+  const sources = JSON.stringify([editor.imported!.sourceText, editor.imported!.originalBytes, editor.imported!.resources]);
+  const evidence = JSON.parse(new TextDecoder().decode(gunzipSync(readFileSync(resolve("public", evidenceManifest.url)))));
+  updateColorEvidenceState({ status: "ready", index: indexColorEvidence(evidence) });
+  await act(async () => editor.select(placed.id));
+  expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(beforeColors);
+  await act(async () => editor.setSelectedColor("#abcdef", "0x2ABCDEF", [editor.imported!.instances[0].id]));
+  expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(beforeColors);
+  await act(async () => editor.setSelectedColor("#1B2A34", "0", [editor.imported!.instances[0].id]));
+  expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(["0", "0"]);
+  expect(JSON.stringify([editor.imported!.sourceText, editor.imported!.originalBytes, editor.imported!.resources])).toBe(sources);
+  await act(async () => editor.undo());
+  expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(beforeColors);
   const inventory = parseInventory("part_id,color_id,quantity\n3023,5,1", "self-authored.csv");
   await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
   await act(async () => editor.selectInventoryPart({ listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3023b", colorCode: "4" }));
   expect(editor.partError).toBeNull();
+  await act(async () => editor.setSelectedColor("#1B2A34", "0"));
+  expect(editor.selectedColorCode).toBe("4");
   await act(async () => editor.place({ x: 0.03, y: 0.6, z: -0.52 }));
   expect(editor.imported!.instances).toHaveLength(3);
   const allocated = editor.imported!.instances[2];
   expect(allocated.matrix).toEqual([1, 0, 0, 0, 0, 1, 0, -16, 0, 0, 1, -10]);
+  await act(async () => editor.select(allocated.id));
+  await act(async () => editor.setSelectedColor("#1B2A34", "0"));
+  expect(editor.imported!.instances[2].colorCode).toBe("4");
+  await act(async () => editor.select(placed.id));
+  const beforeMixed = editor.imported!.instances.map(instance => instance.colorCode);
+  await act(async () => editor.setSelectedColor("#1B2A34", "0", [allocated.id]));
+  expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(beforeMixed);
+  await act(async () => editor.select(null));
   await act(async () => editor.place({ x: 2, y: 0.6, z: -0.5 }));
   expect(editor.imported!.instances).toHaveLength(3);
   expect(editor.partError).toBeTruthy();

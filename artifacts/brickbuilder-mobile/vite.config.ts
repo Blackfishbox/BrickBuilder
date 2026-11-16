@@ -5,6 +5,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import geometryManifest from './src/features/formats/geometry-manifest.json';
 import partPackages from './src/features/parts/catalog.json';
+import colorEvidenceManifest from './src/features/catalog/color-evidence-manifest.json';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
@@ -67,6 +68,9 @@ export default defineConfig({
       },
       workbox: {
         additionalManifestEntries: [{
+          url: `${basePath}${colorEvidenceManifest.url}`,
+          revision: colorEvidenceManifest.sha256,
+        }, {
           url: `${basePath}${geometryManifest.url}`,
           revision: geometryManifest.sha256,
         }, ...partPackages.filter(pkg => pkg.bundled).map(pkg => ({
