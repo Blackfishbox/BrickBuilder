@@ -204,6 +204,16 @@ internal testing). `release-info.json` records package ID, version, source
 commit and workflow run without controller details or credentials. Artifacts
 expire after **14 days**; archive the releases you need privately.
 
+The Android asset build changes only its generated viewport to
+`viewport-fit=contain`. Capacitor then sizes the entire WebView inside status
+and navigation bars and display cutouts, including in landscape and with
+gesture navigation. This avoids relying on partial CSS padding: newer
+WebViews otherwise pass safe-area handling to CSS when `viewport-fit=cover`
+is present, even with `SystemBars.insetsHandling=native`. Keyboard insets
+remain handled by Capacitor. The browser/PWA source retains its original
+viewport. CI tests the transformation and checks the packaged AAB's HTML.
+Physical-device confirmation of both navigation modes is still required.
+
 Release builds enable R8 code shrinking and obfuscation. Download
 `brickbuilder-proguard-<versionCode>-<attempt>` from the **same workflow run**
 to obtain the generated **`mapping.txt`** for native Android crash
