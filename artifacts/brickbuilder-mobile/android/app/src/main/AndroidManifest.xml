@@ -39,5 +39,6 @@
 
     <!-- Permissions -->
 
-    <!-- Assets are local. No network, storage or account permissions required. -->
+    <!-- Optional, user-enabled downloads from the first-party HTTPS geometry API. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

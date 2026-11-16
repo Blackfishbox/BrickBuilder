@@ -1,5 +1,7 @@
 import { candidates, inspectFile, LEGAL_PATHS, normalizePath, sourceUrl } from "@workspace/ldraw-source";
 import type { LibraryFile, PackagePayload } from "../parts/types";
+import { requireGeometryPermission } from "../privacy/geometry-consent";
+import { requestGeometry } from "../../platform/geometry-request";
 
 export interface GeometryProgress { files: number; bytes: number; roots: number; total: number; reference?: string }
 export interface ResolveOptions {
@@ -36,9 +38,7 @@ function retryDelay(value: string | null) {
 /** Same-origin API artifact path; never infer a geometry ID from a catalog ID. */
 async function transport(path: string) {
   normalizePath(path);
-  if (import.meta.env.VITE_NATIVE_ANDROID === "true") {
-    throw new DownloadError(`LDraw ${path}: nicht im lokalen Android-Teilepaket vorhanden. Es wird kein externer Modellserver verwendet.`, 404);
-  }
+  requireGeometryPermission();
   const cachedError = negative.get(path);
   if (cachedError && cachedError.until > Date.now()) throw cachedError;
   const shared = inflight.get(path);
@@ -48,10 +48,10 @@ async function transport(path: string) {
     active++;
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
+        requireGeometryPermission();
         if (blockedUntil > Date.now()) throw new DownloadError("Quelle gedrosselt. Später erneut versuchen.", 429, blockedUntil);
-        const response = await fetch(`/api/ldraw/file?path=${encodeURIComponent(path)}`, {
-          signal: AbortSignal.timeout(15_000), headers: { Accept: "application/octet-stream" },
-        });
+        const response = await requestGeometry(path);
+        requireGeometryPermission();
         if (!response.ok) {
           const delay = retryDelay(response.headers.get("retry-after"));
           if (response.status === 429) blockedUntil = Date.now() + delay;
