@@ -19,3 +19,29 @@ it("opens the bundled policy without leaving the editor and allows closing", () 
     act(() => root.unmount()); host.remove(); vi.unstubAllGlobals();
   }
 });
+
+it("persists Android opt-in and allows withdrawal after reopening", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubEnv("VITE_NATIVE_ANDROID", "true");
+  localStorage.clear();
+  const host = document.createElement("div"); document.body.appendChild(host);
+  let root = createRoot(host);
+  try {
+    act(() => root.render(<PrivacyDialog onClose={() => {}} />));
+    let checkbox = document.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+    expect(checkbox.checked).toBe(false);
+    expect(document.querySelector("[role=dialog]")?.textContent).toContain("IP-Adresse");
+    act(() => checkbox.click());
+    expect(checkbox.checked).toBe(true);
+    act(() => root.unmount());
+    root = createRoot(host);
+    act(() => root.render(<PrivacyDialog onClose={() => {}} />));
+    checkbox = document.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+    expect(checkbox.checked).toBe(true);
+    act(() => checkbox.click());
+    expect(checkbox.checked).toBe(false);
+  } finally {
+    act(() => root.unmount()); host.remove(); localStorage.clear();
+    vi.unstubAllGlobals(); vi.unstubAllEnvs();
+  }
+});
