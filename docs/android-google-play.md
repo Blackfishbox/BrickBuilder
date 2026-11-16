@@ -207,15 +207,15 @@ internal testing). `release-info.json` records package ID, version, source
 commit and workflow run without controller details or credentials. Artifacts
 expire after **14 days**; archive the releases you need privately.
 
-The Android asset build changes only its generated viewport to
-`viewport-fit=contain`. Capacitor then sizes the entire WebView inside status
-and navigation bars and display cutouts, including in landscape and with
-gesture navigation. This avoids relying on partial CSS padding: newer
-WebViews otherwise pass safe-area handling to CSS when `viewport-fit=cover`
-is present, even with `SystemBars.insetsHandling=native`. Keyboard insets
-remain handled by Capacitor. The browser/PWA source retains its original
-viewport. CI tests the transformation and checks the packaged AAB's HTML.
-Physical-device confirmation of both navigation modes is still required.
+`MainActivity` now fits the entire WebView inside actual system-bar, cutout
+and keyboard insets. Capacitor's competing inset listener is disabled.
+The earlier `viewport-fit=contain` change alone did not establish correct
+layout on the user's device; it is not the mechanism of this native fix.
+The release workflow gates the AAB on API 35/36 emulator checks of native
+bounds, HTML viewport sizing, navigation modes, rotation and keyboard behavior.
+See [Native Android system-bar bounds](android-system-insets.md) for ownership,
+screenshots and local testing. The browser/PWA viewport remains unchanged.
+Physical manufacturer-device testing remains distinct from emulator evidence.
 
 Android model and inventory file pickers use the unrestricted `*/*` MIME
 filter. Document providers do not consistently identify IO, LDraw, JSON, XML

@@ -28,7 +28,13 @@ The existing signed-release workflow calls
 `.github/workflows/android-native-insets.yml` before releasing an AAB.
 It boots API 35 and 36 emulators, loads the real editor, switches between
 three-button and gesture navigation, and measures actual native WebView bounds
-against the window's reported system/IME insets.
+against the window's reported system/IME insets and verifies that the DOM
+viewport and bottom controls fit inside the fitted native WebView.
+
+Navigation verification reads the enabled system overlay and checks the actual
+button inset against the measured gesture inset. Android 15 can retain stale
+overlay-resource values in an already running application's Resources object;
+those values are not a reliable assertion of SystemUI's navigation mode.
 
 It covers portrait, landscape, returning to portrait, keyboard opening/closing
 and pause/resume. Screenshots and numeric bounds are retained in
@@ -43,6 +49,8 @@ Run on a connected emulator/device after `android:prepare`:
 bash scripts/android/check-native-insets.sh
 ```
 
+Use a fresh test emulator without private projects: screenshots capture its
+visible editor. The script retains the test APK until screenshot collection.
 The scripted navigation-overlay commands require a test device which exposes
 Android's navigation emulation overlays. A passing emulator check is not a
 claim that a physical manufacturer's device was tested.
