@@ -19,3 +19,7 @@ expertMode = true
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
 
+[nix]
+channel = "stable-25_05"
+packages = ["jdk21_headless", "actionlint"]
+
