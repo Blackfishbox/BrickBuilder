@@ -92,7 +92,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Check types and regressions
         run: |
-          node --test scripts/android/release-privacy.test.mjs
+          node --test scripts/android/*.test.mjs
           pnpm run typecheck:libs
           pnpm --filter @workspace/brickbuilder-mobile typecheck
           pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/platform src/features/privacy src/features/engine/camera-gesture.test.ts src/features/connections/standard-plates.test.ts
@@ -137,6 +137,9 @@ jobs:
           if "# compiler: R8" not in mapping.read_text(encoding="utf-8"):
               raise SystemExit("Release mapping.txt is not an R8-generated mapping.")
           with zipfile.ZipFile(aab) as archive:
+              index = archive.read("base/assets/public/index.html").decode("utf-8")
+              if "viewport-fit=contain" not in index or "viewport-fit=cover" in index:
+                  raise SystemExit("Release AAB does not contain the system-bar-safe Android viewport.")
               policy = archive.read("base/assets/public/privacy.html").decode("utf-8")
               if any(value in policy for value in (
                   "[Name des Verantwortlichen]", "[Straße und Hausnummer]",

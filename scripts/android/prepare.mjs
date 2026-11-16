@@ -4,6 +4,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { renderReleasePrivacy } from "./release-privacy.mjs";
+import { renderAndroidViewport } from "./viewport.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const app = resolve(root, "artifacts/brickbuilder-mobile");
@@ -20,6 +21,9 @@ function run(command, args, env = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 run("pnpm", ["exec", "vite", "build"], { PORT: "23048", BASE_PATH: "/", VITE_NATIVE_ANDROID: "true", NODE_ENV: "production" });
+// Apply to generated assets only: browser/PWA safe-area behavior stays unchanged.
+const index = resolve(app, "dist/public/index.html");
+await writeFile(index, renderAndroidViewport(await readFile(index, "utf8")));
 if (process.env.ANDROID_RELEASE_BUILD === "true") {
   const privacy = resolve(app, "dist/public/privacy.html");
   const template = await readFile(privacy, "utf8");
