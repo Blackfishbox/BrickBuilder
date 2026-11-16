@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "version": "2026-11-16.1",
+  "snapshotDate": "2026-11-16",
+  "sha256": "dc044211d89d4a137b35adfb2f16a55b8f600a8cca592a7fc0a1dfb4916903ed",
+  "bytes": 286661,
+  "url": "catalog/part-colors-dc044211d89d4a137b35adfb2f16a55b8f600a8cca592a7fc0a1dfb4916903ed.bin",
+  "sources": {
+    "elements": {
+      "url": "https://cdn.rebrickable.com/media/downloads/elements.csv.gz",
+      "sha256": "244c52dbc68d160681df9b3b3d006afa082fe3734bd3a0d0c19524811f6e0340",
+      "decodedSha256": "cf6bc3cf6ce7ecb2d93adbe6e02cfe2e932bf8c3eb56665e0598e8613719e9c1",
+      "rows": 114794,
+      "bytes": 1137159,
+      "columns": [
+        "element_id",
+        "part_num",
+        "color_id",
+        "design_id"
+      ]
+    },
+    "parts": {
+      "url": "https://cdn.rebrickable.com/media/downloads/parts.csv.gz",
+      "sha256": "1b4fdafa80ca2264d355de41c68339f27fad09c93cd985ddd79b19379c8f4c01",
+      "decodedSha256": "86f243840a0a82acbe94a469018e8b2b2b1b6d74228c2b974bdbf24c9eb7c6b8",
+      "rows": 65035,
+      "bytes": 1060912,
+      "columns": [
+        "part_num",
+        "name",
+        "part_cat_id",
+        "part_material"
+      ]
+    },
+    "colors": {
+      "url": "https://cdn.rebrickable.com/media/downloads/colors.csv.gz",
+      "sha256": "05ae5b20110d301f8850fd0df8b5924376e977586cb29c0f898a98bfa298bb19",
+      "decodedSha256": "a7f4bafca1d72ead8ebaaf8e3b90c73c4a7d44797a4d40ab2836ca608af42d44",
+      "rows": 275,
+      "bytes": 4890,
+      "columns": [
+        "id",
+        "name",
+        "rgb",
+        "is_trans",
+        "num_parts",
+        "num_sets",
+        "y1",
+        "y2"
+      ]
+    },
+    "part_mappings": {
+      "url": "https://cdn.rebrickable.com/media/downloads/part_mappings.csv.gz",
+      "sha256": "d055da36fdc177557e34e9764fb3961a1433d2c1a6f3e78194a8917ed3d9f091",
+      "decodedSha256": "5ed537137274bd1cd948fa58731287b6e617b0e33a2f748ac8abf61e5ee3b087",
+      "rows": 183480,
+      "bytes": 1436605,
+      "columns": [
+        "part_num",
+        "ext_system",
+        "ext_id",
+        "is_export_id",
+        "is_import_id"
+      ]
+    },
+    "color_mappings": {
+      "url": "https://cdn.rebrickable.com/media/downloads/color_mappings.csv.gz",
+      "sha256": "9c4095212507dbc53689e4d777d93abfcdb4555a8ec0825ede0594e198afc822",
+      "decodedSha256": "d67da183c57811768343b1cba40d981123e974a8797748bdaf9c6adc022d3f32",
+      "rows": 846,
+      "bytes": 8007,
+      "columns": [
+        "id",
+        "ext_system",
+        "ext_id",
+        "ext_descr",
+        "is_export_id",
+        "is_import_id"
+      ]
+    }
+  },
+  "coverage": {
+    "parts": 47883,
+    "pairs": 89136,
+    "excludedUnknownColorRows": 0,
+    "excludedMissingPartRows": [
+      [
+        "6121016",
+        "21921pr0001",
+        "19"
+      ]
+    ]
+  },
+  "attribution": "Element and mapping data sourced from Rebrickable and its community (https://rebrickable.com/downloads/).",
+  "termsUrl": "https://rebrickable.com/terms/",
+  "termsReviewed": "2026-11-16",
+  "license": "Rebrickable catalog use permission, terms sections 5.1 and 5.3; not a Creative Commons license.",
+  "scope": "Observed element part-color pairs only; not BrickLink stock, prices, or exhaustive historical availability. No MOCs, images, geometry or Studio resources."
+}

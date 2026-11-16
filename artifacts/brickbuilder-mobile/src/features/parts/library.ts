@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gunzipSync } from "fflate";
 import { builderDatabase } from "@/storage/database";
 import catalog from "./catalog.json";
 import type { PackageManifest, PackagePayload, LibraryPart } from "./types";
@@ -17,6 +18,8 @@ const payloadSchema = z.object({
   files: z.array(z.object({
     path: safePath, sourceUrl: z.string().url(), author: z.string().min(1),
     license: z.enum(["CC-BY-4.0", "CC0-1.0"]), content: z.string().min(1),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    byteLength: z.number().int().nonnegative().optional(),
   })),
   legalDocuments: z.array(z.object({
     name: z.string(), sourceUrl: z.string().url(), content: z.string().min(1),
@@ -30,10 +33,19 @@ export function validatePayload(input: unknown, manifest: PackageManifest): Pack
     throw new Error("Paket stimmt nicht mit dem Katalog überein.");
   }
   const paths = new Set(payload.files.map(file => file.path));
+  if (payload.files.some(file => file.license === "CC0-1.0") &&
+      !payload.legalDocuments.some(doc => doc.name.includes("CC0") && doc.content.includes("Creative Commons"))) {
+    throw new Error("CC0-Lizenztext fehlt im Paket.");
+  }
   for (const name of ["CAreadme.txt", "CAlicense4.txt"]) {
     if (!payload.legalDocuments.some(doc => doc.name === name &&
       doc.sourceUrl === `https://library.ldraw.org/library/official/${name}`)) {
       throw new Error("Lizenztext fehlt im Paket.");
+    }
+    if (payload.files.some(file => file.sourceUrl.startsWith("https://library.ldraw.org/library/unofficial/")) &&
+        !payload.legalDocuments.some(doc => doc.name === name &&
+          doc.sourceUrl === `https://library.ldraw.org/library/unofficial/${name}`)) {
+      throw new Error("Inoffizieller Lizenztext fehlt im Paket.");
     }
   }
   if (paths.size !== payload.files.length ||
@@ -62,7 +74,8 @@ export function validatePayload(input: unknown, manifest: PackageManifest): Pack
     const licensed = file.content.split(/\r?\n/).some(line => line === licenseHeader ||
       (file.license === "CC-BY-4.0" &&
        line === "0 !LICENSE Licensed under CC BY 2.0 and CC BY 4.0 : see CAreadme.txt"));
-    if (file.sourceUrl !== `https://library.ldraw.org/library/official/${file.path}` ||
+    if (![ "official", "unofficial" ].some(source =>
+          file.sourceUrl === `https://library.ldraw.org/library/${source}/${file.path}`) ||
         !licensed) throw new Error("Lizenz oder Quelle nicht freigegeben.");
     for (const line of file.content.split(/\r?\n/)) {
       if (!/^1\s/.test(line)) continue;
@@ -78,14 +91,23 @@ export function validatePayload(input: unknown, manifest: PackageManifest): Pack
 export async function installPackage(id: string, signal?: AbortSignal): Promise<void> {
   const manifest = PART_PACKAGES.find(pkg => pkg.id === id);
   if (!manifest) throw new Error("Unbekanntes Teilepaket.");
-  const response = await fetch(`${import.meta.env.BASE_URL}${manifest.url}`, { signal, cache: "no-store" });
+  // Default caching permits the PWA precache and Capacitor asset handler offline.
+  const response = await fetch(`${import.meta.env.BASE_URL}${manifest.url}`, { signal });
   if (!response.ok) throw new Error(`Download fehlgeschlagen (HTTP ${response.status}).`);
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength !== manifest.bytes) throw new Error("Unvollständiger Paketdownload.");
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
   if (hash !== manifest.sha256) throw new Error("Die Prüfsumme des Pakets ist ungültig.");
-  const payload = validatePayload(JSON.parse(new TextDecoder().decode(bytes)), manifest);
+  const decoded = manifest.compression === "gzip" ? gunzipSync(new Uint8Array(bytes)) : new Uint8Array(bytes);
+  const payload = validatePayload(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decoded)), manifest);
+  for (const file of payload.files) {
+    if (!file.sha256) continue;
+    const encoded = new TextEncoder().encode(file.content);
+    const digest = await crypto.subtle.digest("SHA-256", encoded);
+    const actual = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+    if (actual !== file.sha256 || encoded.length !== file.byteLength) throw new Error("Datei-Prüfsumme stimmt nicht.");
+  }
   for (const part of payload.parts) {
     for (const evidence of part.mappings ?? []) {
       const file = payload.files.find(f => f.path === part.file)!;
@@ -107,6 +129,22 @@ export async function installPackage(id: string, signal?: AbortSignal): Promise<
         ...manifest, installedAt: new Date().toISOString(), legalDocuments: payload.legalDocuments,
       });
     });
+}
+
+let initialization: Promise<void> | undefined;
+/** Only metadata/source text is installed; no mesh compilation or online resolver. */
+export function ensureBundledPackages(): Promise<void> {
+  if (initialization) return initialization;
+  initialization = (async () => {
+    for (const manifest of PART_PACKAGES.filter(pkg => pkg.bundled)) {
+      const installed = await builderDatabase.partPackages.get(manifest.id);
+      // Do not downgrade separately installed newer versions.
+      if (installed && (installed.version > manifest.version ||
+          (installed.version === manifest.version && installed.sha256 === manifest.sha256))) continue;
+      await installPackage(manifest.id);
+    }
+  })().finally(() => { initialization = undefined; });
+  return initialization;
 }
 
 export async function listInstalledPackages() {

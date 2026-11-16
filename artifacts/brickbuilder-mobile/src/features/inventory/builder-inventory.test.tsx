@@ -84,7 +84,8 @@ it("handles failed/cancelled loading, fast taps, stale source colors, catalog ex
   expect(container.textContent).toContain("Alle Teile dieser Liste sind verbaut");
   expect(editor.partError).toContain("aufgebraucht");
   await act(async () => editor.setSelectedColor("#1E5AA8", "1"));
-  expect(editor.imported!.instances[0].colorCode).toBe("1");
+  // Allocated inventory colors are fixed, not a recolorable palette suggestion.
+  expect(editor.imported!.instances[0].colorCode).toBe("4");
   expect(allocatedCounts(editor.document).get(choice.rowId)).toBe(1);
   await act(async () => editor.deleteSelected());
   expect(allocatedCounts(editor.document).size).toBe(0);
