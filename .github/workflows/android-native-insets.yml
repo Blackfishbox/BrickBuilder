@@ -2,7 +2,17 @@ name: Verify native Android system-bar bounds
 
 on:
   workflow_call:
+    inputs:
+      catalog_url:
+        description: "Effective catalog URL used by the calling release build"
+        required: false
+        type: string
   workflow_dispatch:
+    inputs:
+      catalog_url:
+        description: "Reviewed HTTPS catalog URL; defaults to ANDROID_CATALOG_URL"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -16,7 +26,7 @@ jobs:
       matrix:
         api: [35, 36]
     env:
-      CATALOG_URL: ${{ vars.ANDROID_CATALOG_URL }}
+      CATALOG_URL: ${{ inputs.catalog_url || vars.ANDROID_CATALOG_URL }}
       ANDROID_CATALOG_PATH: ${{ github.workspace }}/generated-artifacts/android-inputs/catalog.bin
     steps:
       - uses: actions/checkout@v4

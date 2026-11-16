@@ -18,6 +18,8 @@ permissions:
 jobs:
   native-insets:
     uses: ./.github/workflows/android-native-insets.yml
+    with:
+      catalog_url: ${{ vars.ANDROID_CATALOG_URL }}
   android:
     needs: native-insets
     runs-on: ubuntu-24.04
