@@ -41,6 +41,8 @@ import ImportPartNotification from '@/features/formats/ImportPartNotification';
 import StorageManager from '@/features/storage/StorageManager';
 import InventoryPanel from '@/features/inventory/InventoryPanel';
 import PrivacyDialog from '@/features/privacy/PrivacyDialog';
+import EvidencedColorPicker from '@/features/catalog/EvidencedColorPicker';
+import { resolveColor } from '@/features/formats/colors';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -66,6 +68,26 @@ function App() {
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
+  const [additionalColorIds, setAdditionalColorIds] = useState<string[]>([]);
+  const [colorTargetsOpen, setColorTargetsOpen] = useState(false);
+  const [colorTargetQuery, setColorTargetQuery] = useState("");
+  useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
+  const colorInstances = editor.imported?.instances.filter(instance =>
+    instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
+  const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
+  const colorReferences = colorInstances.length ? colorInstances.map(instance => instance.part.ldrawId)
+    : [selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId
+      : editor.selectedPart?.ldrawId].filter((id): id is string => Boolean(id));
+  const colorLocked = Boolean(colorInstances.some(instance => instance.allocation) ||
+    (!editor.selectedId && editor.selectedInventory));
+  const currentColors = colorInstances.length ? colorInstances.map(instance => ({
+    ldrawCode: instance.colorCode, name: instance.color?.name ?? resolveColor(instance.colorCode)?.name ?? `LDraw ${instance.colorCode}`,
+    value: instance.color?.hex ?? resolveColor(instance.colorCode)?.hex ?? "#ff00ff",
+  })) : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? "Eigene Farbe",
+    value: editor.selectedColor, ldrawCode: editor.selectedColorCode ?? "" }];
+  const colorPicker = (mobile = false) => <EvidencedColorPicker palette={COLORS} current={currentColors}
+    references={colorReferences} locked={colorLocked} mobile={mobile}
+    onChange={color => { editor.setSelectedColor(color.value, color.ldrawCode, additionalColorIds); if (mobile) setColorsOpen(false); }} />;
   const activeInventoryRow = editor.selectedInventory && editor.document.inventory?.id === editor.selectedInventory.listId
     ? editor.document.inventory.rows.find(row => row.id === editor.selectedInventory!.rowId) : undefined;
   useEffect(() => {
@@ -145,9 +167,6 @@ function App() {
   const selectedBrick = BRICKS.find((brick) => brick.type === editor.selectedType) ?? BRICKS[0];
   const selectedColor = COLORS.find(color => color.ldrawCode === editor.selectedColorCode) ??
     COLORS.find((color) => color.value.toLowerCase() === editor.selectedColor.toLowerCase()) ?? { name: "Eigene Farbe", value: editor.selectedColor, ldrawCode: "" };
-  const isSelectedColor = (color: typeof COLORS[number]) => editor.selectedColorCode
-    ? editor.selectedColorCode === color.ldrawCode
-    : editor.selectedColor.toLowerCase() === color.value.toLowerCase();
 
   if (!editor.isReady) {
     return (
@@ -346,20 +365,9 @@ function App() {
               <ChevronDown size={16} className="piece-chevron" />
             </button>
             <div className="color-heading"><span>FARBE</span><span className="color-name">{selectedColor.name}</span></div>
-            <div className="color-grid" role="group" aria-label="Steinfarbe" style={{ maxHeight: 180, overflowY: "auto" }}>
-              {COLORS.map((color) => (
-                <button
-                  key={color.ldrawCode}
-                  type="button"
-                  className={`swatch ${isSelectedColor(color) ? 'selected' : ''}`}
-                  style={{ '--swatch-color': color.value } as CSSProperties}
-                  aria-label={`${color.name} auswählen`}
-                  aria-pressed={isSelectedColor(color)}
-                  onClick={() => editor.setSelectedColor(color.value, color.ldrawCode)}
-                  data-testid={`button-color-${color.name.toLowerCase()}`}
-                >{isSelectedColor(color) && <Check size={13} />}</button>
-              ))}
-            </div>
+            {colorPicker()}
+            {editor.selectedInstance && <button type="button" className="selection-action"
+              onClick={() => setColorsOpen(true)}>Mehrere Teile gemeinsam färben</button>}
           </div>
 
           <div className="rail-section selection-section">
@@ -430,21 +438,26 @@ function App() {
               <div><p className="popover-eyebrow">STEINFARBE</p><h2 id="colors-title">Farbe auswählen</h2></div>
               <button type="button" className="icon-button" onClick={() => setColorsOpen(false)} aria-label="Farbauswahl schließen" data-testid="button-close-colors"><X size={18} /></button>
             </div>
-            <div className="mobile-color-grid" role="group" aria-label="Steinfarbe" style={{ maxHeight: "55vh", overflowY: "auto" }}>
-              {COLORS.map((color) => (
-                <button
-                  key={color.ldrawCode}
-                  type="button"
-                  className={`mobile-color-option ${isSelectedColor(color) ? 'selected' : ''}`}
-                  onClick={() => { editor.setSelectedColor(color.value, color.ldrawCode); setColorsOpen(false); }}
-                  data-testid={`mobile-color-${color.name.toLowerCase()}`}
-                >
-                  <span style={{ '--swatch-color': color.value } as CSSProperties} />
-                  <span>{color.name}</span>
-                  {isSelectedColor(color) && <Check size={16} />}
-                </button>
-              ))}
-            </div>
+            {editor.selectedInstance && <details className="color-evidence-status"
+              onToggle={event => setColorTargetsOpen(event.currentTarget.open)}>
+              <summary>Mehrere Teile gemeinsam färben</summary>
+              <p>Zusätzlich zum ausgewählten Teil. Unbekannte Teile liefern keine Einschränkung; Teilelistenfarben bleiben fest.</p>
+              {colorTargetsOpen && <>
+              <input aria-label="Teile zum gemeinsamen Färben suchen" value={colorTargetQuery}
+                onChange={event => setColorTargetQuery(event.target.value)} placeholder="LDraw-ID oder Name" />
+              <p>{additionalColorIds.length} zusätzlich ausgewählt. Maximal 40 Treffer; Suche bei Bedarf verfeinern.</p>
+              <div style={{ maxHeight: 180, overflowY: "auto" }}>
+              {editor.imported?.instances.map((instance, index) => ({ instance, index })).filter(({ instance }) =>
+                instance.id !== editor.selectedId && `${instance.part.ldrawId} ${instance.part.name ?? ""}`
+                  .toLowerCase().includes(colorTargetQuery.trim().toLowerCase())).slice(0, 40).map(({ instance, index }) =>
+                <label key={instance.id} style={{ display: "block", minHeight: 44 }}>
+                  <input type="checkbox" checked={additionalColorIds.includes(instance.id)}
+                    onChange={event => setAdditionalColorIds(ids => event.target.checked ? [...ids, instance.id] : ids.filter(id => id !== instance.id))} />
+                  {" "}#{index + 1} · LDraw {instance.part.ldrawId} · {instance.color?.name ?? instance.colorCode}
+                </label>)}
+              </div></>}
+            </details>}
+            {colorPicker(true)}
           </section>
         </div>
       )}

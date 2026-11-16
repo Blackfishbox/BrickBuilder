@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 
 /** Fail the native build if a bundled selectable package was omitted or changed. */
 export async function verifyDefaultParts(app) {
+  const evidence = JSON.parse(await readFile(resolve(app, "src/features/catalog/color-evidence-manifest.json"), "utf8"));
+  const evidenceBytes = await readFile(resolve(app, "dist/public", evidence.url));
+  if (evidenceBytes.length !== evidence.bytes || createHash("sha256").update(evidenceBytes).digest("hex") !== evidence.sha256) {
+    throw new Error("Native release must contain the verified offline part-color evidence.");
+  }
   const catalog = JSON.parse(await readFile(resolve(app, "src/features/parts/catalog.json"), "utf8"));
   let count = 0;
   for (const manifest of catalog.filter(pkg => pkg.bundled)) {
