@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist/public",
   server: { androidScheme: "https" },
   android: { allowMixedContent: false, webContentsDebuggingEnabled: false },
-  plugins: { SystemBars: { insetsHandling: "native" } },
+  // MainActivity owns native padding; avoid a competing decor/CSS inset listener.
+  plugins: { SystemBars: { insetsHandling: "disable" } },
 };
 export default config;
