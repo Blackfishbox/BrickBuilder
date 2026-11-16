@@ -16,7 +16,10 @@ permissions:
 
 # Do not cancel pending runs: every push must receive its own build.
 jobs:
+  native-insets:
+    uses: ./.github/workflows/android-native-insets.yml
   android:
+    needs: native-insets
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
