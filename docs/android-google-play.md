@@ -114,10 +114,15 @@ That source is needed **only at build time**, never on the Android device.
 The preparation verifies both length and SHA-256 before copying the exact bytes
 into the Android asset tree at the existing relative catalog path.
 
-For repeatable GitHub builds, place this **licensed, non-user** data file in an
-appropriate immutable downloadable asset location (for example, an approved
-GitHub Release asset) and set repository Actions variable `ANDROID_CATALOG_URL`
-to its public HTTPS download URL. Retain the Rebrickable attribution/terms
+For repeatable GitHub builds, set repository Actions variable `ANDROID_CATALOG_URL`
+to the operator's pinned endpoint:
+
+```text
+https://blackfishbox.de/BrickBuilder/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c
+```
+
+An approved immutable GitHub Release asset is also supported. This is
+**licensed, non-user** data. Retain the Rebrickable attribution/terms
 listed in the manifest. Never upload an IO model or private project as this
 asset. No automatically refreshed external catalog is accepted.
 
@@ -155,41 +160,64 @@ or Play's internal testing to exercise a signed AAB.
 
 Workflow: `.github/workflows/android-google-play.yml`.
 
-1. Set Actions variable `ANDROID_CATALOG_URL` to the reviewed asset URL.
-   Without this build input, automatic branch/tag runs skip the Android job
-   rather than generate an incomplete or server-dependent application.
-2. Push to `android/google-play` to build a debug APK and unsigned AAB.
-3. Open Actions and download the output under that run's Artifacts section.
-   Artifacts expire after 14 days: keep your own release archive.
-4. For signed builds, create GitHub environment **`google-play-signing`**,
-   preferably with required reviewers and restricted tags. Configure:
-   - `ANDROID_UPLOAD_KEY_BASE64`
-   - `ANDROID_UPLOAD_STORE_PASSWORD`
-   - `ANDROID_UPLOAD_KEY_ALIAS`
-   - `ANDROID_UPLOAD_KEY_PASSWORD`
-5. Set `ANDROID_VERSION_NAME` (for example `0.1.0`). Push a deliberately chosen
-   `android-play-v...` tag from this Android branch to request signed artifacts.
-   Do not create such a tag just to try an unconfigured pipeline.
+Every push to `android/google-play` starts a **signed release AAB** build.
+There are no path filters, no unsigned fallback, no silently skipped job when
+configuration is missing, and no concurrency rule that cancels queued pushes.
+A multi-commit push builds its final tree once, as GitHub's push trigger works.
+There is no automatic upload to Google Play. Protect write access to this
+branch: code running there can access release secrets.
 
-For example, after configuring the environment and reviewing the branch:
+Configure these repository Actions variables:
 
-```sh
-git tag android-play-v0.1.0
-git push origin android-play-v0.1.0
-```
+| Variable | Value |
+| --- | --- |
+| `ANDROID_CATALOG_URL` | The pinned public catalog URL above |
+| `ANDROID_VERSION_NAME` | Displayed version, initially `0.1.0` |
+| `ANDROID_VERSION_CODE_OFFSET` | Initially `0`; increase deliberately if an existing Play upload requires it |
 
-Push-triggered builds use the workflow run number as `versionCode`; **every
-Play upload must have a strictly higher code than the previous upload**.
-Check before uploading, especially after moving/recreating workflows. The
-workflow also offers explicit code/name inputs for `workflow_dispatch`.
-GitHub normally exposes manual dispatch only when that workflow also exists
-on the repository's default branch; this preparation deliberately does not
-modify `main`. Branch/tag push triggers work without that default-branch change.
+Configure these **repository Actions secrets** (no environment approval is
+required on every push):
 
-Signed builds require all four signing secrets, verify AAB/APK signatures, use
-temporary runner files and delete the decoded key afterward. They never use a
-debug key for a release and never call the Play Publishing API. Build scripts
-do not generate or take possession of your permanent signing key.
+| Secret | Purpose |
+| --- | --- |
+| `ANDROID_UPLOAD_KEY_BASE64` | Base64-encoded encrypted upload keystore |
+| `ANDROID_UPLOAD_STORE_PASSWORD` | Keystore password |
+| `ANDROID_UPLOAD_KEY_ALIAS` | Upload key alias |
+| `ANDROID_UPLOAD_KEY_PASSWORD` | Private key password |
+| `PRIVACY_CONTROLLER_NAME` | Responsible person's/legal entity's name |
+| `PRIVACY_CONTROLLER_STREET` | Street and house number |
+| `PRIVACY_CONTROLLER_POSTAL_CITY` | Postal code and city |
+| `PRIVACY_CONTROLLER_COUNTRY` | Country |
+
+Do not put these values in YAML, repository variables, commits, tickets or
+workflow inputs. Use protected secret entry. Missing secrets fail the build
+explicitly with secret **names only**. The source privacy HTML keeps its four
+placeholders: `android:prepare` replaces them only in generated assets when
+`ANDROID_RELEASE_BUILD=true`, escaping HTML and rejecting empty fields.
+The final app necessarily exposes the completed policy to its users; using
+secrets keeps personal data out of Git history, not out of the published app.
+
+Open **Actions → Build signed Google Play AAB → the successful run → Artifacts**.
+Download `brickbuilder-play-aab-<versionCode>-<attempt>`, extract its ZIP, and
+manually upload **`app-release.aab`** in Google Play Console (for example to
+internal testing). `release-info.json` records package ID, version, source
+commit and workflow run without controller details or credentials. Artifacts
+expire after **14 days**; archive the releases you need privately.
+
+`versionCode` is `ANDROID_VERSION_CODE_OFFSET + github.run_number`. Each new
+push/run increases the number; rerunning the same run preserves it. **Every
+Play upload must have a strictly higher code than the previous upload.**
+Parallel runs may finish out of order, so inspect `release-info.json` before
+uploading. A new commit is required for a new code after a previously uploaded
+run. Manual dispatch optionally overrides only the display version name.
+GitHub normally exposes manual dispatch only when the workflow also exists
+on the default branch; automatic Android-branch pushes work without that.
+
+The workflow verifies the AAB signature and checks that its packaged privacy
+policy has no unresolved placeholders. It deletes the temporary keystore and
+unpackaged personal HTML even on failure, and never uses a debug key for
+release. Only the signed AAB and non-personal release metadata are uploaded;
+no keystore or separately rendered policy is a CI artifact.
 
 GitHub-hosted runner minutes/storage are subject to your GitHub account's
 allowance and spending settings. No paid service is configured or purchased.
@@ -199,7 +227,7 @@ allowance and spending settings. No paid service is configured or purchased.
 Create an upload key locally using Android Studio's **Generate Signed Bundle**
 flow or `keytool`, protect it with a strong password, and maintain a secure
 offline backup. Store key material only in your own secure storage and GitHub
-environment secrets, never in source, chat, an artifact or a public issue.
+repository secrets, never in source, chat, a CI artifact or a public issue.
 Enable **Play App Signing** in the Play Console. The upload key and Play's app
 signing key have different roles; do not substitute the debug key.
 
