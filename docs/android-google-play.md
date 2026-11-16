@@ -12,9 +12,10 @@ workers, original bundled LDraw resources, connector metadata and the reviewed
 catalog snapshot are installed with the app. IndexedDB remains local to the
 Android application.
 
-There is no `server.url`, live-reload host, API base URL, analytics SDK, account,
+There is no `server.url`, live-reload host, analytics SDK, account,
 advertising SDK or Play upload client in the native application. Its manifest
-does not request network or broad storage permission. The PWA service worker is
+requests INTERNET for optional, default-off first-party geometry downloads,
+but no broad storage permission. The PWA service worker is
 disabled for the native build; Android updates replace its packaged assets.
 The ordinary web/PWA build remains unchanged.
 
@@ -25,8 +26,9 @@ The ordinary web/PWA build remains unchanged.
   The existing import-geometry snapshot and geometries already present in a
   project/local database remain available.
 - Importing LDR/MPD/IO does not magically supply every missing geometry. The
-  native build will **not call the hosted geometry resolver** or silently fetch
-  a newer upstream dataset. Missing parts retain the existing part-ID warnings.
+  native build calls the hosted geometry resolver **only after explicit opt-in**
+  in the Android privacy dialog. It does not silently fetch a newer upstream
+  dataset. Missing parts retain the existing part-ID warnings.
   A complete, independently installable offline geometry distribution is a
   separate release prerequisite if the store listing promises that coverage.
 - Native and browser IndexedDB are separate. Export projects from the PWA as
@@ -35,10 +37,33 @@ The ordinary web/PWA build remains unchanged.
   and the inventory template use Android's local share/save sheet, not browser
   `blob:` downloads. Choose Files/a document provider there and verify the saved
   file. A cancelled share is not evidence that a backup exists.
-- The app's permission-free implementation does not send models to a server.
+- The app does not send model files to a server.
   A share target selected by the user can itself be a cloud application.
 - A browser/Node test is **not an Android hardware, WebGL, file-provider, memory
   or performance test**. These checks must happen before production submission.
+
+### Optional geometry API
+
+Enable **Datenschutz (Android) → Fehlende Geometrien online nachladen** to
+request missing files from `https://blackfishbox.de/BrickBuilder/api/ldraw/file`.
+The setting defaults to off and persists locally. Re-run an unsuccessful import
+after enabling it. Disable it to prevent subsequent requests; requests already
+sent may finish. Existing cached geometry still works offline.
+
+Native requests use CapacitorHttp, not WebView cross-origin fetch. Keep the
+server's browser same-origin protection intact: do not add a wildcard CORS
+exception for Android. The URL is fixed, HTTPS-only, redirects are disabled,
+timeouts are bounded, and the existing checksum, provenance, license, request
+concurrency and per-import budgets remain active. Downloads transmit file paths,
+IP addresses and technical metadata, not project files, quantities or colors.
+The Apache endpoint must already be installed and reachable; this code does
+not provision or publish the Ubuntu server.
+
+Before release, test opt-in, a real missing geometry, a second offline import,
+withdrawal and unavailable-server behavior on Android hardware. Review
+`docs/privacy-policy.md`, deploy the updated public HTML policy and update
+Play Data safety. No end-to-end device or live-server test is implied by unit
+tests or `android:prepare`.
 
 ## Identity, tools and versions
 

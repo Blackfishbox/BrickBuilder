@@ -25,4 +25,4 @@ await writeFile(output, bytes);
 // Native updates ship the complete local bundle. Never keep a PWA worker in it.
 await rm(resolve(app, "dist/public/sw.js"), { force: true });
 run("pnpm", ["exec", "cap", "sync", "android"]);
-console.log("Android assets synchronized with verified local catalog; no remote server URL.");
+console.log("Android assets synchronized with verified local catalog; optional first-party geometry API is disabled until opt-in.");
