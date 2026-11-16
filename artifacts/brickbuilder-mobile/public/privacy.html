@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Datenschutzerklärung für die lokal betriebene Android-App BrickBuilder Mobile.">
+  <meta name="description" content="Datenschutzerklärung für BrickBuilder Mobile für Android mit optionalem Geometrie-Download.">
   <title>Datenschutzerklärung – BrickBuilder Mobile</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; color: #243d37; background: #faf9f4; }
@@ -33,10 +33,10 @@
   <header>
     <p>BrickBuilder Mobile · Android-App</p>
     <h1>Datenschutzerklärung</h1>
-    <p class="date">Stand: 5. November 2026</p>
+    <p class="date">Stand: 16. November 2026</p>
   </header>
   <p class="notice">Diese Erklärung ist eine anhand der beschriebenen App-Funktionen erstellte Informationsvorlage und keine Rechtsberatung. Vor einer Veröffentlichung wird eine rechtliche Prüfung empfohlen.</p>
-  <p class="scope">Diese Erklärung gilt für die lokal betriebene Android-Fassung von <strong>BrickBuilder Mobile</strong>, die ohne eigenen Web- oder Modellserver genutzt wird. Sie gilt nicht für abweichend konfigurierte oder gehostete Webfassungen. Für eine solche Fassung wären insbesondere Hosting, Serverprotokolle und Netzwerkdienste gesondert zu erläutern.</p>
+  <p class="scope">Diese Erklärung gilt für die Android-Fassung von <strong>BrickBuilder Mobile</strong> mit lokaler Modellverarbeitung und dem optionalen Nachladen fehlender Geometrien von blackfishbox.de. Das Nachladen ist standardmäßig deaktiviert. Sie gilt nicht für abweichend konfigurierte oder gehostete Webfassungen; deren Website-Aufrufe und Hosting sind gesondert zu erläutern.</p>
 
   <section>
     <h2>1. Verantwortlicher und Kontakt</h2>
@@ -77,7 +77,11 @@
 
   <section>
     <h2>5. Internetverbindungen und externe Angebote</h2>
-    <p>Die lokale Android-Fassung lädt ihre mitgelieferten App-, Katalog- und Geometriedaten aus dem App-Paket beziehungsweise dem lokalen Speicher. Fehlende Geometrien werden in dieser Fassung nicht automatisch über einen gehosteten Modellserver nachgeladen. Eine lokale WebView-Adresse bezeichnet dabei keinen öffentlich erreichbaren Server.</p>
+    <p>Die Android-Fassung lädt ihre mitgelieferten App-, Katalog- und Geometriedaten aus dem App-Paket beziehungsweise dem lokalen Speicher. Eine lokale WebView-Adresse bezeichnet keinen öffentlich erreichbaren Server. Ohne Aktivierung des Online-Nachladens stellt die Geometriefunktion keine Verbindung zu unserem Server her.</p>
+    <p><strong>Optionaler Geometrie-Download:</strong> Unter „Datenschutz (Android)“ kannst du „Fehlende Geometrien online nachladen“ aktivieren. Erst dann fordert die App beim Importieren oder Bauen lokal nicht vorhandene LDraw-Dateien sowie benötigte Unterdateien und Lizenztexte über HTTPS von <strong>https://blackfishbox.de/BrickBuilder/api</strong> an. Empfänger ist der oben genannte Verantwortliche als Betreiber dieses Angebots sowie gegebenenfalls dessen technischer Hosting-Dienstleister. Die Anfragen enthalten die benötigten LDraw-Dateipfade, nicht deine Projektdateien, lokalen Dateinamen, Projektnamen, Farben, Mengen oder vollständigen Teilelisten. Aus der Folge angefragter Teile können dennoch Rückschlüsse auf ein Modell gezogen werden.</p>
+    <p>Bei diesen Verbindungen werden technisch deine öffentliche IP-Adresse, Zeitpunkt, angefragter Pfad einschließlich Teilekennung sowie gegebenenfalls vom Netzwerkstack übermittelte technische Angaben verarbeitet. Apache kann Zugriffe und Fehler protokollieren, etwa Antwortstatus und übertragene Datenmenge. Es werden dabei keine Analysekennungen oder Werbe-IDs durch die Downloadfunktion hinzugefügt. Die Verbindung kann Mobilfunk-Datenvolumen verbrauchen.</p>
+    <p>Das freiwillige Aktivieren ist die Einwilligung für das optionale Nachladen und die damit verbundene Datenübermittlung (Art. 6 Abs. 1 Buchst. a DSGVO). Du kannst die Funktion jederzeit im selben Dialog mit Wirkung für die Zukunft deaktivieren. Bereits abgesendete Anfragen können noch beim Server ankommen. Bereits heruntergeladene und geprüfte Geometrien bleiben lokal für die Offline-Nutzung gespeichert. Ohne Einwilligung bleiben die lokalen Funktionen nutzbar; nicht vorhandene Geometrien können dann nicht dargestellt werden.</p>
+    <p>Soweit technische Serverprotokolle zur Gewährleistung von Sicherheit, Fehleranalyse und Abwehr von Missbrauch erforderlich sind, erfolgt deren Verarbeitung auf Grundlage von Art. 6 Abs. 1 Buchst. f DSGVO. Das berechtigte Interesse ist der sichere und zuverlässige Betrieb des Downloadangebots. Protokolldaten werden nicht zur Werbung oder zur Erstellung von Nutzerprofilen verwendet. Die Aufbewahrungsdauer richtet sich nach der Erforderlichkeit für diese Zwecke; bei einem konkreten Sicherheitsvorfall können betroffene Einträge bis zur Klärung benötigt werden. Ein Widerruf beendet zukünftige Downloads, löscht aber nicht automatisch bereits rechtmäßig angefallene Serverprotokolle.</p>
     <p>Wenn du einen externen Link, beispielsweise zu Quellen oder Lizenzinformationen, selbst öffnest, kann dein Browser eine Verbindung zu diesem Anbieter herstellen. Dabei erhält dieser üblicherweise technische Verbindungsdaten wie deine IP-Adresse. Es gelten dann dessen Datenschutzhinweise. Deine Modelle werden durch das bloße Öffnen eines solchen Links nicht automatisch mitgesendet.</p>
   </section>
 
@@ -106,7 +110,7 @@
   <section>
     <h2>9. Sicherheit und Empfänger</h2>
     <p>Die App nutzt die Schutzmechanismen von Android für den appbezogenen Speicher. Eine zusätzliche eigene Verschlüsselung der Projektdaten oder Exportdateien wird nicht zugesichert. Schütze dein Gerät durch eine Bildschirmsperre und beachte, dass entsperrte Geräte, von dir freigegebene Exportdateien und andere Apps eigene Risiken mit sich bringen.</p>
-    <p>Da Projekte lokal verarbeitet werden, werden sie nicht automatisch einem Hosting-, Werbe- oder Analysedienst des Verantwortlichen übermittelt. Empfänger können von dir ausdrücklich ausgewählte Dokument- oder Teilen-Dienste sein. Bei einer freiwilligen Kontaktaufnahme sind der Verantwortliche und die zur Bearbeitung eingesetzten E-Mail-Dienste Empfänger deiner Nachricht. Ein technischer Zugriff durch diese Dienste kann nicht generell ausgeschlossen werden.</p>
+    <p>Da Projekte lokal verarbeitet werden, werden sie nicht automatisch einem Hosting-, Werbe- oder Analysedienst des Verantwortlichen übermittelt. Beim aktivierten Geometrie-Download erhalten der Betreiber und gegebenenfalls sein Hosting-Dienstleister die in Abschnitt 5 beschriebenen Anfragedaten. Weitere Empfänger können von dir ausdrücklich ausgewählte Dokument- oder Teilen-Dienste sein. Bei einer freiwilligen Kontaktaufnahme sind der Verantwortliche und die zur Bearbeitung eingesetzten E-Mail-Dienste Empfänger deiner Nachricht. Ein technischer Zugriff durch diese Dienste kann nicht generell ausgeschlossen werden.</p>
     <p>Für die lokale Modellverarbeitung ist keine Übermittlung an den Verantwortlichen in ein Land außerhalb des Europäischen Wirtschaftsraums vorgesehen. Bei von dir gewählten externen Diensten gelten deren Angaben zu Empfängern, Speicherorten und internationalen Datenübermittlungen.</p>
   </section>
 
