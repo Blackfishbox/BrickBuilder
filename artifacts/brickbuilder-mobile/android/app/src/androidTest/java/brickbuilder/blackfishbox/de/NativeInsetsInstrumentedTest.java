@@ -121,16 +121,17 @@ public class NativeInsetsInstrumentedTest {
             }
             assertTrue("The real editor must load, not only a blank WebView", ready.get());
             shell("cmd overlay enable --user 0 com.android.internal.display.cutout.emulation.tall");
-            for (String mode : new String[] { "threebutton", "gestural" }) {
+            int[] gestureBottom = { -1 };
+            for (String mode : new String[] { "gestural", "threebutton" }) {
                 String output = shell("cmd overlay enable-exclusive --user 0 --category com.android.internal.systemui.navbar." + mode);
                 AtomicBoolean modeReady = new AtomicBoolean(false);
                 long modeDeadline = SystemClock.uptimeMillis() + 15000;
                 while (!modeReady.get() && SystemClock.uptimeMillis() < modeDeadline) {
-                    scenario.onActivity(a -> {
-                        int resource = a.getResources().getIdentifier("config_navBarInteractionMode", "integer", "android");
-                        modeReady.set(resource != 0 && a.getResources().getInteger(resource)
-                            == (mode.equals("threebutton") ? 0 : 2));
-                    });
+                    // API 35 can keep stale framework overlay resources in an
+                    // already running app, even after SystemUI changes modes.
+                    // Query the actual enabled system overlay, not app resources.
+                    String overlays = shell("cmd overlay list --user 0 android");
+                    modeReady.set(overlays.contains("[x] com.android.internal.systemui.navbar." + mode));
                     if (!modeReady.get()) SystemClock.sleep(100);
                 }
                 assertTrue("The requested navigation mode must actually be active: " + mode + " " + output, modeReady.get());
@@ -139,6 +140,20 @@ public class NativeInsetsInstrumentedTest {
                     WindowCompat.getInsetsController(a.getWindow(), a.getWindow().getDecorView())
                         .show(WindowInsetsCompat.Type.systemBars());
                 });
+                if (mode.equals("threebutton")) {
+                    AtomicBoolean buttonsVisible = new AtomicBoolean(false);
+                    long buttonDeadline = SystemClock.uptimeMillis() + 15000;
+                    while (!buttonsVisible.get() && SystemClock.uptimeMillis() < buttonDeadline) {
+                        scenario.onActivity(a -> {
+                            WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(a.getWindow().getDecorView());
+                            buttonsVisible.set(insets != null && gestureBottom[0] > 0
+                                && insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom > gestureBottom[0]);
+                        });
+                        if (!buttonsVisible.get()) SystemClock.sleep(100);
+                    }
+                    assertTrue("SystemUI must expose a larger button navigation inset than the measured gesture inset",
+                        buttonsVisible.get());
+                }
                 awaitBounds(scenario, mode + "-portrait", false);
                 scenario.onActivity(a -> a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
                 SystemClock.sleep(800);
@@ -169,6 +184,10 @@ public class NativeInsetsInstrumentedTest {
                 scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
                 scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
                 awaitBounds(scenario, mode + "-resumed", false);
+                if (mode.equals("gestural")) {
+                    scenario.onActivity(a -> gestureBottom[0] = ViewCompat.getRootWindowInsets(
+                        a.getWindow().getDecorView()).getInsets(WindowInsetsCompat.Type.navigationBars()).bottom);
+                }
             }
         }
     }

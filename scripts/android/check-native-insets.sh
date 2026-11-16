@@ -13,3 +13,7 @@ cd "$ROOT/artifacts/brickbuilder-mobile/android"
 bash gradlew --no-daemon :app:testDebugUnitTest :app:connectedDebugAndroidTest \
   -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
   -Pandroid.testInstrumentationRunnerArguments.class=brickbuilder.blackfishbox.de.NativeInsetsInstrumentedTest
+collect_evidence
+trap - EXIT
+test -s "$OUTPUT/inset-evidence/gestural-resumed.png"
+test -s "$OUTPUT/inset-evidence/threebutton-resumed.png"
