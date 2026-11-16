@@ -1,4 +1,4 @@
-package io.github.blackfishbox.brickbuilder;
+package brickbuilder.blackfishbox.de;
 
 import com.getcapacitor.BridgeActivity;
 
