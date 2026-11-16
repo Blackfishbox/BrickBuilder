@@ -25,7 +25,10 @@ by the activity's content container, with emulator regression checks. See
 ### Important coverage limits
 
 - The complete **mapping/search catalog is not the complete geometry library**.
-  The two original bundled geometry packages contain six bricks and six plates.
+  The two original packages plus six automatic default packages provide
+  312 selectable references (311 physical parts and one compatibility alias).
+  See [default offline parts](default-offline-parts.md) for exact coverage,
+  licenses, storage increase and verification.
   The existing import-geometry snapshot and geometries already present in a
   project/local database remain available.
 - Importing LDR/MPD/IO does not magically supply every missing geometry. The

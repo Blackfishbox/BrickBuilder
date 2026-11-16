@@ -3,6 +3,7 @@ import { readFile, mkdir, writeFile, rm } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { verifyDefaultParts } from "./verify-default-parts.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const app = resolve(root, "artifacts/brickbuilder-mobile");
@@ -19,6 +20,7 @@ function run(command, args, env = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 run("pnpm", ["exec", "vite", "build"], { PORT: "23048", BASE_PATH: "/", VITE_NATIVE_ANDROID: "true", NODE_ENV: "production" });
+await verifyDefaultParts(app);
 const output = resolve(app, "dist/public", manifest.url);
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, bytes);
