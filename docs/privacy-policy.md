@@ -31,15 +31,19 @@ filename, quantity, color or model name is sent. Part requests can nevertheless
 reveal model interests. Downloaded geometry stays in the existing verified local
 cache; bundled geometry and offline editing remain available without consent.
 
-Before publishing this release, verify the real server's hosting provider,
-location, subprocessors and Apache access/error log retention. Add the actual
-provider/location and a concrete retention period to the public policy where
-applicable; these facts are not known from the repository and must not be
-invented. Configure deletion/rotation accordingly. The current policy explains
-the purposes and retention criteria but does not assert an unverified fixed
-number of days or hosting location. Check international-transfer safeguards
-if the actual hosting arrangement requires them. Update Play Data safety for
-the actual network-enabled release, including IP addresses/technical data.
+The operator confirmed that the API is hosted by **Ultahost in Frankfurt am
+Main, Germany**, and that Apache access/error logs are retained for **30 days**.
+The public policy reflects those supplied operational facts. This repository
+change does not configure deletion or rotation on the Ubuntu server: ensure the
+actual retention, including rotated logs and relevant backups, matches the
+published period. Do not equate 30 rotated files with a 30-day retention policy
+without checking the rotation schedule and the age of entries.
+
+Before publication, verify the actual processor agreement, subprocessors and any
+international access/transfer safeguards required by the hosting arrangement.
+A German server location alone does not prove that all provider processing
+occurs exclusively in Germany. Update Play Data safety for the actual
+network-enabled release, including IP addresses/technical data.
 
 Replace the HTML served at the existing `/brickbuilder-datenschutz` URL with
 `artifacts/brickbuilder-mobile/public/privacy.html`; updating a Git branch does
