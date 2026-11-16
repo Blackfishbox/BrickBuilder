@@ -98,7 +98,7 @@ jobs:
           node --test scripts/android/*.test.mjs
           pnpm run typecheck:libs
           pnpm --filter @workspace/brickbuilder-mobile typecheck
-          pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/platform src/features/privacy src/features/engine/camera-gesture.test.ts src/features/connections/standard-plates.test.ts
+          pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/platform src/features/privacy src/features/parts src/features/engine/camera-gesture.test.ts src/features/connections/standard-plates.test.ts
       - name: Build Android assets with private controller details
         env:
           ANDROID_RELEASE_BUILD: "true"
@@ -130,6 +130,7 @@ jobs:
           AAB="artifacts/brickbuilder-mobile/android/app/build/outputs/bundle/release/app-release.aab"
           jarsigner -J-Duser.language=en -J-Duser.country=US -verify "$AAB" > "$RUNNER_TEMP/aab-verification.txt"
           grep -q 'jar verified\.' "$RUNNER_TEMP/aab-verification.txt"
+          python3 scripts/android/verify-default-bundle.py "$AAB"
           python3 - <<'PY'
           import json, os, zipfile
           from pathlib import Path
