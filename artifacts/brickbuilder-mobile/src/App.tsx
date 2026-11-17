@@ -497,6 +497,9 @@ function App() {
                 <PartsLibrary
                   online={online}
                   selectedPartId={editor.selectedPart?.ldrawId}
+                  selectedColor={editor.selectedColor}
+                  selectedColorCode={editor.selectedColorCode}
+                  paletteRevision={catalog.status}
                   loading={editor.partLoading}
                   onSelect={part => { void editor.selectLibraryPart(part).then(success => { if (success) setPartsOpen(false); }); }}
                 />
