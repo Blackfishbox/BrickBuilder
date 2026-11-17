@@ -203,18 +203,20 @@ secrets keeps personal data out of Git history, not out of the published app.
 Open **Actions → Build signed Google Play AAB → the successful run → Artifacts**.
 Download `brickbuilder-play-aab-<versionCode>-<attempt>`, extract its ZIP, and
 manually upload **`app-release.aab`** in Google Play Console (for example to
-internal testing). `release-info.json` records package ID, version, source
-commit and workflow run without controller details or credentials. Artifacts
-expire after **14 days**; archive the releases you need privately.
+internal testing). The only other download is the matching ProGuard/R8
+`mapping.txt`. No release JSON, emulator reports or screenshots are uploaded.
+Use the Actions run and its commit to identify each release. Artifacts expire
+after **14 days**; archive the releases you need privately.
 
 `MainActivity` now fits the entire WebView inside actual system-bar, cutout
 and keyboard insets. Capacitor's competing inset listener is disabled.
 The earlier `viewport-fit=contain` change alone did not establish correct
 layout on the user's device; it is not the mechanism of this native fix.
-The release workflow gates the AAB on API 35/36 emulator checks of native
-bounds, HTML viewport sizing, navigation modes, rotation and keyboard behavior.
-See [Native Android system-bar bounds](android-system-insets.md) for ownership,
-screenshots and local testing. The browser/PWA viewport remains unchanged.
+The API 35/36 native-bound and screenshot checks were needed only once and have
+been removed from GitHub Actions. Signing, privacy, packaged-asset and ordinary
+regression checks remain. See
+[Native Android system-bar bounds](android-system-insets.md) for ownership and
+optional local testing. The browser/PWA viewport remains unchanged.
 Physical manufacturer-device testing remains distinct from emulator evidence.
 
 Android model and inventory file pickers use the unrestricted `*/*` MIME
@@ -237,8 +239,8 @@ This mapping does not decode JavaScript/TypeScript stack traces.
 `versionCode` is `ANDROID_VERSION_CODE_OFFSET + github.run_number`. Each new
 push/run increases the number; rerunning the same run preserves it. **Every
 Play upload must have a strictly higher code than the previous upload.**
-Parallel runs may finish out of order, so inspect `release-info.json` before
-uploading. A new commit is required for a new code after a previously uploaded
+Parallel runs may finish out of order, so check the version code in the artifact
+name and its Actions run before uploading. A new commit is required for a new code after a previously uploaded
 run. Manual dispatch optionally overrides only the display version name.
 GitHub normally exposes manual dispatch only when the workflow also exists
 on the default branch; automatic Android-branch pushes work without that.
