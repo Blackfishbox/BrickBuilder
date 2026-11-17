@@ -16,12 +16,7 @@ permissions:
 
 # Do not cancel pending runs: every push must receive its own build.
 jobs:
-  native-insets:
-    uses: ./.github/workflows/android-native-insets.yml
-    with:
-      catalog_url: ${{ vars.ANDROID_CATALOG_URL }}
   android:
-    needs: native-insets
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -136,7 +131,7 @@ jobs:
           grep -q 'jar verified\.' "$RUNNER_TEMP/aab-verification.txt"
           python3 scripts/android/verify-default-bundle.py "$AAB"
           python3 - <<'PY'
-          import json, os, zipfile
+          import zipfile
           from pathlib import Path
           aab = Path("artifacts/brickbuilder-mobile/android/app/build/outputs/bundle/release/app-release.aab")
           mapping = Path("artifacts/brickbuilder-mobile/android/app/build/outputs/mapping/release/mapping.txt")
@@ -154,15 +149,6 @@ jobs:
                   "[Postleitzahl und Ort]", "[Land]",
               )):
                   raise SystemExit("Release AAB still contains privacy placeholders.")
-          metadata = {
-              "applicationId": "brickbuilder.blackfishbox.de",
-              "versionCode": int(os.environ["BRICKBUILDER_VERSION_CODE"]),
-              "versionName": os.environ["BRICKBUILDER_VERSION_NAME"],
-              "commit": os.environ["GITHUB_SHA"],
-              "run": os.environ["GITHUB_RUN_ID"],
-              "signed": True,
-          }
-          (aab.parent / "release-info.json").write_text(json.dumps(metadata, indent=2) + "\n")
           print("Signed AAB, R8 mapping and completed bundled privacy policy verified.")
           PY
       - name: Upload the Google Play release bundle
@@ -171,9 +157,7 @@ jobs:
           name: brickbuilder-play-aab-${{ env.BRICKBUILDER_VERSION_CODE }}-${{ github.run_attempt }}
           retention-days: 14
           if-no-files-found: error
-          path: |
-            artifacts/brickbuilder-mobile/android/app/build/outputs/bundle/release/app-release.aab
-            artifacts/brickbuilder-mobile/android/app/build/outputs/bundle/release/release-info.json
+          path: artifacts/brickbuilder-mobile/android/app/build/outputs/bundle/release/app-release.aab
       - name: Upload the matching ProGuard mapping
         uses: actions/upload-artifact@v4
         with:
