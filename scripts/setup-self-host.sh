@@ -123,7 +123,9 @@ git -c safe.directory="$SOURCE" -C "$SOURCE" diff --quiet HEAD -- || die "Commit
 git -c safe.directory="$SOURCE" -C "$SOURCE" ls-files --error-unmatch scripts/setup-self-host.sh >/dev/null || die "Use a committed installer checkout"
 if [[ -z "$CATALOG" && -z "$CATALOG_URL" ]]; then
   SHA=$(sed -n 's/.*"sha256": "\([a-f0-9]\{64\}\)".*/\1/p' "$SOURCE/artifacts/brickbuilder-mobile/src/features/catalog/manifest.json" | head -1)
-  CATALOG="$INSTALL_ROOT/current/public/api/catalog/snapshot/$SHA"
+  CATALOG="$INSTALL_ROOT/current/public/api/catalog/snapshot/$SHA/catalog.bin"
+  # Accept an installed legacy snapshot as input when upgrading to the .bin route.
+  [[ -f "$CATALOG" ]] || CATALOG="$INSTALL_ROOT/current/public/api/catalog/snapshot/$SHA"
   [[ -f "$CATALOG" ]] || die "First install requires --catalog or --catalog-url"
 fi
 if [[ -z "$LDRAW_DIR" && "$APPROVE_LDRAW" == 0 ]]; then
@@ -272,9 +274,9 @@ as_builder python3 scripts/self-host/dependency-notices.py generated-artifacts/d
 as_builder env PORT=4173 BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/brickbuilder-mobile build
 as_builder pnpm --filter @workspace/api-server build
 ln -s artifacts/brickbuilder-mobile/dist/public "$RELEASE/public"
-mkdir -p "$RELEASE/public/api/catalog/snapshot"
-cp "$CATALOG" "$RELEASE/public/api/catalog/snapshot/$SHA"
-python3 "$SOURCE/scripts/self-host/verify-data.py" catalog "$RELEASE/artifacts/brickbuilder-mobile/src/features/catalog/manifest.json" "$RELEASE/public/api/catalog/snapshot/$SHA" >/dev/null
+mkdir -p "$RELEASE/public/api/catalog/snapshot/$SHA"
+cp "$CATALOG" "$RELEASE/public/api/catalog/snapshot/$SHA/catalog.bin"
+python3 "$SOURCE/scripts/self-host/verify-data.py" catalog "$RELEASE/artifacts/brickbuilder-mobile/src/features/catalog/manifest.json" "$RELEASE/public/api/catalog/snapshot/$SHA/catalog.bin" >/dev/null
 # Runtime users cannot change source, assets, configuration, or library data.
 chown -R root:root "$RELEASE" "$ARCHIVE"
 chmod -R a+rX,go-w "$RELEASE" "$ARCHIVE"
@@ -305,7 +307,7 @@ curl --fail --silent --show-error --retry 8 --retry-connrefused --retry-delay 1 
   "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null
 systemctl is-active --quiet brickbuilder-api
 systemctl reload nginx
-fetch --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/catalog/snapshot/$SHA" -o "$TEMP/served-catalog.bin"
+fetch --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/catalog/snapshot/$SHA/catalog.bin" -o "$TEMP/served-catalog.bin"
 python3 "$SOURCE/scripts/self-host/verify-data.py" catalog "$RELEASE/artifacts/brickbuilder-mobile/src/features/catalog/manifest.json" "$TEMP/served-catalog.bin" >/dev/null
 fetch --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/index.html" -o "$TEMP/served-index.html"
 cmp "$TEMP/served-index.html" "$RELEASE/public/index.html" || die "HTTPS is serving a different application"

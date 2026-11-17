@@ -56,7 +56,7 @@ def build(directory, version, download=False):
     digest = hashlib.sha256(packed).hexdigest()
     (directory / "catalog.bin").write_bytes(packed)
     manifest = dict(schema=1, version=version, sha256=digest, bytes=len(packed),
-                    url=f"api/catalog/snapshot/{digest}", sources=sources,
+                    url=f"api/catalog/snapshot/{digest}/catalog.bin", sources=sources,
                     attribution=attribution, termsUrl="https://rebrickable.com/terms/",
                     object=f"catalog/approved/{digest}/catalog.bin")
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
