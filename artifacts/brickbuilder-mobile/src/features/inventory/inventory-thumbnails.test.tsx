@@ -8,6 +8,8 @@ import { parseInventory } from "./import";
 import InventoryPanel from "./InventoryPanel";
 import type { Inventory, InventoryResolution } from "./types";
 import type { InstalledPackage, LibraryPart } from "../parts/types";
+import { hashBytes } from "../formats/online-geometry";
+import { OFFICIAL } from "@workspace/ldraw-source";
 
 const mocks = vi.hoisted(() => ({
   resolve: vi.fn(),
@@ -86,7 +88,7 @@ async function showThumbnails(count: number) {
 async function waitForImages(host: HTMLElement, count: number) {
   await vi.waitFor(async () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
-    expect(host.querySelectorAll("img")).toHaveLength(count);
+    expect(host.querySelectorAll("img"), host.querySelector('[role="img"]')?.getAttribute("title") ?? "").toHaveLength(count);
   });
 }
 
@@ -146,5 +148,46 @@ it("keeps missing local parts and dependencies as honest selectable fallbacks of
   expect(view.host.textContent).toContain("kein LDraw-Teil bekannt");
   expect([...view.host.querySelectorAll<HTMLButtonElement>(".inv-use")].every(button => !button.disabled)).toBe(true);
   expect(mocks.render).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("shows newly acquired geometry without installing a package, then removes it when the cache is deleted", async () => {
+  const view = await mount("part_id,color_id,quantity\n3003,5,1", () => ({
+    parts: [{ ldrawId: "3003", name: "Downloaded brick with a very long name ".repeat(8) }], colors: [red],
+  }));
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+    expect(view.host.querySelector('[aria-label="Vorschau nicht verfügbar"]')).not.toBeNull();
+  });
+  const files = await Promise.all([
+    ["parts/3003.dat", "1 16 0 0 0 1 0 0 0 1 0 0 0 1 child.dat"],
+    ["parts/child.dat", "3 16 0 0 0 20 0 0 0 -20 0"],
+  ].map(async ([path, geometry]) => {
+    const content = `0 Synthetic thumbnail fixture\n0 Name: ${path.split("/").pop()}\n0 Author: Synthetic fixture\n0 !LICENSE Licensed under CC0 : see CAreadme.txt\n${geometry}\n`;
+    const bytes = new TextEncoder().encode(content);
+    return { path, content, author: "Synthetic fixture", license: "CC0-1.0" as const,
+      sourceUrl: `${OFFICIAL}${path}`, byteLength: bytes.length, sha256: await hashBytes(bytes) };
+  }));
+  await act(async () => {
+    await builderDatabase.geometrySnapshots.put({ version: 1, id: "new-inventory-thumbnail", createdAt: "2026-11-17",
+      roots: ["3003.dat"], files, graph: { "parts/3003.dat": ["parts/child.dat"] }, legalDocuments: [] });
+  });
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+    expect(targets.size).toBe(1);
+  });
+  await showThumbnails(1);
+  await waitForImages(view.host, 1);
+  expect(view.host.querySelector("img")!.src).toContain(",4");
+  expect(await builderDatabase.libraryParts.where("ldrawId").equals("3003").count()).toBe(0);
+  expect(mocks.render.mock.calls.at(-1)![0]).toMatchObject({ resources: {
+    "parts/3003.dat": { content: files[0].content }, "parts/child.dat": { content: files[1].content },
+  } });
+  expect(view.host.textContent).toContain("Downloaded brick with a very long name");
+  await act(async () => { await builderDatabase.geometrySnapshots.delete("new-inventory-thumbnail"); });
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+    expect(view.host.querySelector("img")).toBeNull();
+  });
   expect(fetch).not.toHaveBeenCalled();
 });

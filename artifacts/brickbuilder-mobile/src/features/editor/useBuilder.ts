@@ -225,8 +225,6 @@ export function useBuilder() {
       const document = historyRef.current.document;
       const ids = new Set(selectedId ? [selectedId, ...additionalIds] : []);
       const instances = document.imported?.instances.filter(instance => ids.has(instance.id)) ?? [];
-      // Inventory allocations retain their specified colors, even through a stale UI callback.
-      if ((!selectedId && placementRef.current?.inventory) || instances.some(instance => instance.allocation)) return;
       const references = instances.length ? instances.map(instance => instance.part.ldrawId)
         : selectedId && document.bricks.some(brick => brick.id === selectedId)
           ? [BRICK_DEFINITIONS[document.bricks.find(brick => brick.id === selectedId)!.type].ldrawId]
@@ -325,7 +323,7 @@ export function useBuilder() {
         let id: string | null = null;
         updateDocument(document => {
           let next = selection.inventory
-            ? placeInventoryPart(document, selection.prepared, position, selection.inventory)
+            ? placeInventoryPart(document, selection.prepared, position, selection.inventory, { hex: selectedColor, code: selectedColorCode })
             : placePreparedPart(document, selection.prepared, position, selectedColor, selectedColorCode);
           id = next.imported!.instances.at(-1)!.id;
           inheritStackingBounds(document.imported, next.imported!);

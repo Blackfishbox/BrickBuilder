@@ -6,6 +6,11 @@ available when a preview cannot be generated.
 
 ## Geometry and appearance
 
+Inventory rows also reuse complete, previously acquired geometry snapshots
+when no installed package contains the part. They update when a download
+finishes or its cache is removed. Snapshot source hashes and provenance are
+checked before compilation; previews never initiate a geometry download.
+
 Previews read the selected installed package and its complete dependency
 closure from IndexedDB. They do not require the full mapping catalog, contact
 BrickLink, enable remote geometry access or download missing files. Missing
