@@ -136,7 +136,7 @@ class DataTests(unittest.TestCase):
             payload.write_bytes(b"reviewed")
             digest = hashlib.sha256(b"reviewed").hexdigest()
             manifest = root / "manifest.json"
-            descriptor = dict(sha256=digest, bytes=8, url="api/catalog/snapshot/" + digest)
+            descriptor = dict(sha256=digest, bytes=8, url="api/catalog/snapshot/" + digest + "/catalog.bin")
             manifest.write_text(json.dumps(descriptor))
             self.assertEqual(verify.catalog(manifest, payload), digest)
             payload.write_bytes(b"modified")

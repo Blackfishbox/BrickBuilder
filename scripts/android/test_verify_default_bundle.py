@@ -24,10 +24,12 @@ class VerifyDefaultBundleTest(unittest.TestCase):
         self.evidence = b"frozen evidence"
         self.parts = b"frozen building package"
         self.entries = {
+            "base/assets/public/api/catalog/snapshot/test/catalog.bin": b"frozen mapping catalog",
             "base/assets/public/catalog/evidence.bin": self.evidence,
             "base/assets/public/parts/building.bin": self.parts,
         }
         for name, data, extra in [
+            ("catalog/manifest.json", b"frozen mapping catalog", {"url": "api/catalog/snapshot/test/catalog.bin"}),
             ("catalog/color-evidence-manifest.json", self.evidence, {"url": "catalog/evidence.bin"}),
             ("parts/catalog.json", self.parts, {
                 "url": "parts/building.bin", "id": "building", "bundled": True, "partCount": 300,
@@ -52,6 +54,25 @@ class VerifyDefaultBundleTest(unittest.TestCase):
     def test_rejects_missing_evidence_after_sync(self):
         del self.entries["base/assets/public/catalog/evidence.bin"]
         with self.assertRaisesRegex(ValueError, "exactly one.*evidence"):
+            self.verify()
+
+    def test_rejects_missing_mapping_catalog(self):
+        del self.entries["base/assets/public/api/catalog/snapshot/test/catalog.bin"]
+        with self.assertRaisesRegex(ValueError, "exactly one.*mapping catalog"):
+            self.verify()
+
+    def test_rejects_mapping_corruption(self):
+        name = "base/assets/public/api/catalog/snapshot/test/catalog.bin"
+        self.entries[name] = b"x" * len(self.entries[name])
+        with self.assertRaisesRegex(ValueError, "hash mismatch.*mapping catalog"):
+            self.verify()
+
+    def test_rejects_extensionless_mapping_path(self):
+        path = self.app / "src/features/catalog/manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["url"] = "api/catalog/snapshot/test"
+        path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, "HTML5 route"):
             self.verify()
 
     def test_rejects_wrong_evidence_size(self):

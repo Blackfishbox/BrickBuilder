@@ -10,6 +10,7 @@ import { verifyDefaultParts } from "./verify-default-parts.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const app = resolve(root, "artifacts/brickbuilder-mobile");
 const manifest = JSON.parse(await readFile(resolve(app, "src/features/catalog/manifest.json"), "utf8"));
+if (!manifest.url.endsWith(".bin")) throw new Error("Catalog asset must end in .bin; Capacitor serves index.html for extensionless HTML5 routes.");
 const source = process.env.ANDROID_CATALOG_PATH;
 if (!source) throw new Error("Set ANDROID_CATALOG_PATH to the reviewed catalog.bin. See docs/android-google-play.md; the app must not require an API server.");
 const bytes = await readFile(resolve(source));

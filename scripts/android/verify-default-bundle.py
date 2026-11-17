@@ -11,10 +11,14 @@ def verify_bundle(bundle, app):
     evidence = json.loads(
         (app / "src/features/catalog/color-evidence-manifest.json").read_text()
     )
+    mapping = json.loads((app / "src/features/catalog/manifest.json").read_text())
+    if not mapping["url"].endswith(".bin"):
+        raise ValueError("Mapping catalog must use a .bin asset path, not an HTML5 route")
+    mapping = {**mapping, "id": "mapping catalog"}
     count = 0
     with zipfile.ZipFile(bundle) as archive:
         # Check the packaged bytes, not just dist/public before Capacitor sync.
-        for package in [evidence, *(p for p in catalog if p.get("bundled"))]:
+        for package in [mapping, evidence, *(p for p in catalog if p.get("bundled"))]:
             label = package.get("id", "part-color evidence")
             name = f"base/assets/public/{package['url']}"
             if archive.namelist().count(name) != 1:
@@ -37,5 +41,5 @@ if __name__ == "__main__":
     count, digest = verify_bundle(pathlib.Path(sys.argv[1]), app)
     print(
         f"Release AAB contains {count} selectable offline entries and verified "
-        f"part-color evidence ({digest}) with matching hashes and no PWA worker."
+        f"part-color evidence ({digest}), the verified .bin mapping catalog and no PWA worker."
     )

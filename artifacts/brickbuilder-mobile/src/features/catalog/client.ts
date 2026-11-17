@@ -6,6 +6,7 @@ import { getColorEvidenceState, subscribeColorEvidence, updateColorEvidenceState
 import type { Inventory, InventoryPreview } from "../inventory/types";
 import { MAX_LIST_BYTES } from "../inventory/types";
 import { getCatalogState, subscribeCatalog, updateCatalogState as update } from "./state";
+import { loadSnapshot } from "./load-snapshot";
 export { getCatalogState, installCatalogIndex } from "./state";
 export { default as catalogManifest } from "./manifest.json";
 export type CatalogSearchResult = { id: string; name: string; mappings: string[][] };
@@ -77,27 +78,18 @@ export function ensureCatalog(): Promise<void> {
   if (pending) return pending;
   update({ status: "loading" });
   pending = (async () => {
-    const stored = await builderDatabase.catalogSnapshots.get(manifest.sha256);
-    let bytes = stored?.bytes;
-    if (!bytes) {
-      const response = await fetch(`${import.meta.env.BASE_URL}${manifest.url}`, { signal: AbortSignal.timeout(30000) });
-      if (!response.ok) throw new Error(`Katalogdownload: HTTP ${response.status}`);
-      bytes = new Uint8Array(await response.arrayBuffer());
-    }
-    if (bytes.length !== manifest.bytes) {
-      if (stored) await builderDatabase.catalogSnapshots.delete(manifest.sha256);
-      throw new Error("Kataloggröße stimmt nicht. Bitte den Download erneut starten.");
-    }
-    let loaded;
-    try { loaded = await request({ type: "load", bytes, sha256: manifest.sha256 }); }
-    catch (error) {
-      if (stored) await builderDatabase.catalogSnapshots.delete(manifest.sha256);
-      throw error;
-    }
-    if (!stored) {
-      try { await builderDatabase.catalogSnapshots.put({ id: manifest.sha256, bytes }); }
-      catch { throw new Error("Katalog konnte nicht offline gespeichert werden. Bitte freien Browser-Speicher prüfen."); }
-    }
+    const loaded = await loadSnapshot({
+      url: `${import.meta.env.BASE_URL}${manifest.url}`,
+      expectedBytes: manifest.bytes,
+      read: async () => (await builderDatabase.catalogSnapshots.get(manifest.sha256))?.bytes,
+      remove: () => builderDatabase.catalogSnapshots.delete(manifest.sha256),
+      save: async bytes => { await builderDatabase.catalogSnapshots.put({ id: manifest.sha256, bytes }); },
+      validate: async bytes => {
+        const result = await request({ type: "load", bytes, sha256: manifest.sha256 });
+        if (result.version !== manifest.version) throw new Error("Katalogversion stimmt nicht. App und Katalogdatei gemeinsam aktualisieren.");
+        return result;
+      },
+    });
     update({ status: "ready", index: loaded.index });
   })().catch(error => {
     update({ status: "error", error: error instanceof Error ? error.message : String(error) });

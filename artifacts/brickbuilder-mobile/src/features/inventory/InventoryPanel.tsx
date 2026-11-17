@@ -50,6 +50,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
   const token = useRef(0);
   const mounted = useRef(true);
   const fileRef = useRef<HTMLInputElement>(null);
+  const retryFile = useRef<File | undefined>(undefined);
   const projectRef = useRef(projectId);
   const previewProjectRef = useRef(projectId);
   projectRef.current = projectId;
@@ -58,7 +59,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
     mounted.current = true;
     return () => { mounted.current = false; token.current++; };
   }, []);
-  useEffect(() => { token.current++; setPreview(null); setImporting(false); setImportError(''); setPicks({}); }, [projectId]);
+  useEffect(() => { token.current++; retryFile.current = undefined; setPreview(null); setImporting(false); setImportError(''); setPicks({}); }, [projectId]);
   useEffect(() => { setPicks({}); setRowError(''); setBusyRow(''); setPage(0); }, [inventory?.id]);
 
   useEffect(() => {
@@ -72,6 +73,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
 
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
+    retryFile.current = file;
     const my = ++token.current; const pid = projectId;
     setImportError(''); setPreview(null);
     if (!/\.(xml|csv)$/i.test(file.name)) { setImportError('Nur .xml (BrickLink) oder .csv werden unterstützt.'); return; }
@@ -156,7 +158,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
           <button type="button" onClick={downloadTemplate} data-testid="button-inventory-template"><Download size={14} /> CSV-Vorlage</button>
         </div>
         {importing && <div className="inv-status" role="status"><LoaderCircle className="spin" size={15} /> Liste wird geprüft … <button type="button" onClick={cancelImport} data-testid="button-inventory-cancel-loading">Abbrechen</button></div>}
-        {importError && <div className="inv-error" role="alert" data-testid="status-inventory-import-error">{importError}<button type="button" onClick={() => fileRef.current?.click()}><RotateCw size={13} /> Andere Datei</button></div>}
+        {importError && <div className="inv-error" role="alert" data-testid="status-inventory-import-error">{importError}<button type="button" onClick={() => void pickFile(retryFile.current)} data-testid="button-inventory-import-retry"><RotateCw size={13} /> Erneut prüfen</button><button type="button" onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}>Andere Datei</button></div>}
         {preview && <ImportPreview preview={preview} onCancel={cancelImport} onConfirm={confirmImport} replacing={!!inventory} />}
       </section>
 
