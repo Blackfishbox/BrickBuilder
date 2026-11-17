@@ -65,6 +65,7 @@ it("acquires visible catalog rows only, cancels hidden work, retries failures an
   await waitFor(() => expect(host.querySelector("button")).not.toBeNull());
   expect(host.textContent).not.toContain("undefined");
   expect(host.querySelector("button")!.title).toContain("deaktiviert");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Online-Nachladen ist deaktiviert");
   mocks.acquire.mockImplementation(() => new Promise(() => {}));
   await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
   await waitFor(() => expect(mocks.acquire).toHaveBeenCalledTimes(3));

@@ -1,3 +1,4 @@
+import { usableLDrawId } from "./ldraw-identity";
 import { gunzipSync } from "fflate";
 
 export interface CatalogData {
@@ -82,13 +83,16 @@ const buildingPrefixes: Record<string, string[]> = {
 };
 
 /** Page metadata in the worker; never load geometry while searching. */
-export function searchCatalogPage(data: CatalogData, query: string, kind: "parts" | "colors", offset = 0, limit = 40, category = "") {
+export function searchCatalogPage(data: CatalogData, query: string, kind: "parts" | "colors", offset = 0, limit = 40, category = "", buildingOnly = false) {
   const normalize = (value: string) => value.toLowerCase().replaceAll("×", "x").replace(/(\d+)\s*x\s*(\d+)/g, "$1x$2");
   const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
   const rows = data[kind];
   const external = kind === "parts" ? data.part_mappings : data.color_mappings;
+  const usable = buildingOnly && kind === "parts"
+    ? new Set(external.filter(mapping => usableLDrawId(mapping)).map(mapping => mapping[0])) : undefined;
   const matches = new Set(external.filter(row => terms.every(term => normalize(row[2]).includes(term))).map(row => row[0]));
-  const found = rows.filter(row => (!category || buildingPrefixes[category]?.includes(row[1].split(/\s+/)[0])) &&
+  const found = rows.filter(row => (!usable || usable.has(row[0])) &&
+    (!category || buildingPrefixes[category]?.includes(row[1].split(/\s+/)[0])) &&
     (matches.has(row[0]) || terms.every(term => normalize(`${row[0]} ${row[1]}`).includes(term))));
   const start = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
   const size = Number.isFinite(limit) ? Math.min(60, Math.max(1, Math.floor(limit))) : 40;
