@@ -29,6 +29,8 @@ it("restores the evidence from IndexedDB offline, independently of old catalog s
   });
   await ensureColorEvidence();
   expect(getColorEvidenceState()).toMatchObject({ status: "ready", index: { snapshotDate: manifest.snapshotDate } });
+  expect(getColorEvidenceState().index?.pairsBySource.setInventories["3023a"]).toContain("4");
+  expect(getColorEvidenceState().index?.pairsBySource.elements["3023a"]).toBeUndefined();
   expect(fetch).not.toHaveBeenCalled();
   expect(await builderDatabase.catalogSnapshots.count()).toBe(1);
 });
