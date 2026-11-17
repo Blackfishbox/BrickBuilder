@@ -54,3 +54,15 @@
 .plib-doc pre { max-height: 220px; overflow: auto; margin: 8px 0; padding: 9px; border-radius: 7px; background: #fbfaf5; color: #3c5046; font: 9px/1.5 var(--app-font-mono); white-space: pre-wrap; word-break: break-word; }
 .plib-doc pre:focus-visible { outline: 3px solid rgba(190,92,65,.38); }
 .plib-doc a { display: inline-flex; align-items: center; gap: 4px; color: #b34f38; font-size: 10px; font-weight: 700; }
+.plib-thumbnail { display: grid; place-items: center; width: 80px; height: 60px; flex: 0 0 80px; overflow: hidden; border: 1px solid #e5e1d5; border-radius: 9px; background: #f0eee5; color: #7c897f; }
+.plib-thumbnail img { display: block; width: 80px; height: 60px; object-fit: contain; }
+.plib-thumbnail.is-ready { background: #f8f6ed; }
+.plib-part-number { color: #5d7064; font: 500 10px/1.4 var(--app-font-mono); }
+.plib-part .drawer-piece-copy { min-width: 0; }
+@media (max-width: 380px) {
+  .plib-thumbnail { width: 64px; height: 52px; flex-basis: 64px; }
+  .plib-thumbnail img { width: 64px; height: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plib-thumbnail .spin { animation: none; }
+}

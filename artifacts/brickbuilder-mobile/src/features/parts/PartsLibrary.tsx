@@ -4,6 +4,7 @@ import { PART_PACKAGES, ensureBundledPackages, installPackage, listInstalledPack
 import type { InstalledPackage, LibraryPart } from './types';
 import './parts-library.css';
 import CatalogPanel from "../catalog/CatalogPanel";
+import PartThumbnail from "./PartThumbnail";
 
 type PkgState = { status: 'idle' | 'pending' | 'error'; error?: string };
 const CATEGORIES = ['', 'Steine', 'Platten', 'Fliesen', 'Schrägsteine', 'Technik', 'Fahrzeug & Details'];
@@ -17,11 +18,14 @@ const errorText = (error: unknown, fallback: string) =>
 interface Props {
   online: boolean;
   selectedPartId?: string;
+  selectedColor?: string;
+  selectedColorCode?: string;
+  paletteRevision?: string;
   loading?: boolean;
   onSelect: (part: LibraryPart) => void;
 }
 
-export default function PartsLibrary({ online, selectedPartId, loading = false, onSelect }: Props) {
+export default function PartsLibrary({ online, selectedPartId, selectedColor = "#B40000", selectedColorCode = "4", paletteRevision, loading = false, onSelect }: Props) {
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const [installed, setInstalled] = useState<InstalledPackage[] | null>(null);
@@ -254,9 +258,12 @@ export default function PartsLibrary({ online, selectedPartId, loading = false, 
         ) : results.slice(0, visibleCount).map((part) => {
           const body = (
             <>
-              <span className="plib-id">LDraw<br /><b>{part.ldrawId}</b></span>
+              <PartThumbnail part={part}
+                revision={`${installedMap.get(part.packageId)?.version}:${installedMap.get(part.packageId)?.sha256}`}
+                color={selectedColor} colorCode={selectedColorCode} paletteRevision={paletteRevision} />
               <span className="drawer-piece-copy">
                 <strong>{part.name}</strong>
+                <span className="plib-part-number">LDraw {part.ldrawId}</span>
                 <small>{part.category} · Geometrie wird vor dem Platzieren geprüft</small>
               </span>
             </>
