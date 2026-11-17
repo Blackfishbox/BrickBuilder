@@ -67,5 +67,6 @@ export default function InventoryThumbnail({ ldrawId, color, colorCode, acquireM
     {acquireMissing && downloadError && <button type="button" className="plib-preview-retry"
       aria-label={`Vorschau für LDraw ${ldrawId} erneut laden`} title={downloadError}
       onClick={() => setRetry(value => value + 1)}><RefreshCw size={16} /></button>}
+    {acquireMissing && downloadError && <small className="plib-preview-error" role="alert">{downloadError}</small>}
   </span>;
 }

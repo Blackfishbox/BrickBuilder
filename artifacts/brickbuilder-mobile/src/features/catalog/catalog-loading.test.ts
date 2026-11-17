@@ -55,11 +55,11 @@ describe.skipIf(!existsSync(path))("approved catalog through client, worker and 
     const reopened = await loadCurrentProject();
     const offline = await resolveStoredInventory(reopened!.inventory!);
     expect(offline).toEqual(preview);
-    const conePages = await Promise.all([0, 40, 80, 120, 160].map(offset => searchBuildingCatalog("cone", offset)));
-    expect(conePages.every(page => page.total === 165)).toBe(true);
-    expect(conePages.map(page => page.results.length)).toEqual([40, 40, 40, 40, 5]);
+    const conePages = await Promise.all([0, 40].map(offset => searchBuildingCatalog("cone", offset)));
+    expect(conePages.every(page => page.total === 57)).toBe(true);
+    expect(conePages.map(page => page.results.length)).toEqual([40, 17]);
     const coneResults = conePages.flatMap(page => page.results);
-    expect(new Set(coneResults.map(row => row.id)).size).toBe(165);
+    expect(new Set(coneResults.map(row => row.id)).size).toBe(57);
     expect(coneResults.flatMap(row => row.mappings).filter(mapping => mapping[1] === "LD" && mapping[4] === "True")).toHaveLength(58);
     expect(fetcher).toHaveBeenCalledOnce();
     // A later corrupt catalog and failed connection cannot remove the inventory or evidence.

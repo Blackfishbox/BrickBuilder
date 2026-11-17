@@ -31,7 +31,7 @@ self.onmessage = async (event: MessageEvent) => {
         const inventory = event.data.inventory ?? parseInventory(event.data.text, event.data.name);
         self.postMessage({ id, preview: resolveInventory(data, inventory) });
       } else if (type === "search-page") {
-        self.postMessage({ id, ...searchCatalogPage(data, query, "parts", event.data.offset, 40, event.data.category) });
+        self.postMessage({ id, ...searchCatalogPage(data, query, "parts", event.data.offset, 40, event.data.category, true) });
       } else self.postMessage({ id, results: searchCatalog(data, query, kind) });
     }
   } catch (error) { self.postMessage({ id, error: error instanceof Error ? error.message : String(error) }); }
