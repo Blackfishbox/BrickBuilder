@@ -18,7 +18,8 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
             }} />
           Fehlende Geometrien online nachladen
         </label>
-        <p>Optional und standardmäßig aus. Beim Bauen oder Import werden nur fehlende
+        <p>Optional und standardmäßig aus. Beim Bauen, Import oder Anzeigen sichtbarer
+          Suchvorschauen werden nur fehlende
           LDraw-Dateipfade und Lizenztexte von {GEOMETRY_API} angefordert.
           Der Server erhält dabei deine IP-Adresse, Zeitpunkt und technische
           Verbindungsdaten; angefragte Teile können Rückschlüsse auf dein Modell erlauben.

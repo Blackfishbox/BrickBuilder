@@ -19,13 +19,22 @@ LDraw references require a manual choice; absent mappings are shown but not
 guessed from similar Rebrickable or BrickLink numbers. Source identities stay
 separately labelled. Parts unavailable in the installed packages use the
 existing preparation/import path, which checks local geometry and resolves
-missing files on explicit selection, subject to the existing Android download
+missing files on selection or for visible search previews, subject to the existing Android download
 consent. An unavailable or unsupported source remains an error, not claimed
 compatibility.
 
-Passive previews use installed or already cached geometry only. Search never
-downloads geometries, installs the entire library or silently expands project
-inventory quantities. Building from this general catalog is unrestricted, as
+Catalog previews first use installed or already cached geometry. Visible rows
+with an explicit LDraw choice also acquire missing geometry through the existing
+validated resolver, one part at a time, with a 30-second per-part deadline.
+Scrolling away or changing the query cancels obsolete work. Android's existing
+online-geometry consent still applies; disabling it never triggers requests.
+Downloaded dependency closures are stored in IndexedDB for offline previews and
+building. Colors are rendered locally, so changing color does not download another
+geometry. Failures show an explicit retry control; records without a usable
+LDraw mapping cannot have a trustworthy generated preview.
+
+Inventory-list previews remain local-only. Search does not install the entire
+library or silently expand project inventory quantities. Building from this general catalog is unrestricted, as
 with the existing free LDraw tab; inventory-list quantities apply only to parts
 placed from the inventory tab.
 
