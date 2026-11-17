@@ -93,14 +93,16 @@ An authorized existing development instance can supply the pinned asset:
 ```sh
 mkdir -p generated-artifacts/android-inputs
 curl --fail --location \
-  'https://YOUR-DEVELOPMENT-OR-EXISTING-APP/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c' \
+  'https://YOUR-DEVELOPMENT-OR-EXISTING-APP/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c/catalog.bin' \
   -o generated-artifacts/android-inputs/catalog.bin
 sha256sum generated-artifacts/android-inputs/catalog.bin
 ```
 
 That source is needed **only at build time**, never on the Android device.
 The preparation verifies both length and SHA-256 before copying the exact bytes
-into the Android asset tree at the existing relative catalog path.
+into the Android asset tree at the manifest's relative `.bin` path. Do not remove
+the filename extension: Capacitor's HTML5 router serves `index.html` for an
+extensionless URL, even when a matching catalog asset exists in the AAB.
 
 For repeatable GitHub builds, place this **licensed, non-user** data file in an
 appropriate immutable downloadable asset location (for example, an approved
