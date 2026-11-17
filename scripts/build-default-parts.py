@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repackage 300 physical parts from the pinned, previously reviewed snapshot.
+"""Repackage eligible physical parts from the pinned, reviewed snapshot.
 
 No network requests, tracker updates, inferred catalog IDs or geometry edits.
 Run explicitly when maintaining the versioned default distribution.
@@ -13,7 +13,7 @@ import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "artifacts/brickbuilder-mobile"
-VERSION = "2026-11-16"
+VERSION = "2026-11-17"
 OFFICIAL = "https://library.ldraw.org/library/official/"
 UNOFFICIAL = "https://library.ldraw.org/library/unofficial/"
 
@@ -106,15 +106,15 @@ for path, file in sorted(files.items()):
         closure(path)  # Fail explicitly on an unsupported source/license/dependency.
         candidates[group].append((file["sourceUrl"].startswith(UNOFFICIAL), part_id, name, path))
 
-# Official roots first, then a balanced round-robin of already reviewed additions.
+# Include every eligible root in these six categories, official roots first.
 selected = collections.defaultdict(list)
 for unofficial in (False, True):
     queues = {key: [p for p in sorted(candidates[key]) if p[0] == unofficial] for key in groups}
-    while any(queues.values()) and sum(map(len, selected.values())) < 300:
+    while any(queues.values()):
         for key in groups:
-            if queues[key] and sum(map(len, selected.values())) < 300:
+            if queues[key]:
                 selected[key].append(queues[key].pop(0))
-assert sum(map(len, selected.values())) == 300, "Not enough verified physical parts"
+assert sum(map(len, selected.values())) == 357, "Reviewed physical-part coverage changed; inspect the source snapshot"
 
 manifests = []
 coverage = {}
@@ -156,7 +156,7 @@ for key, (category, _) in groups.items():
 for original in originals:
     original["bundled"] = True
 catalog_path.write_text(json.dumps(originals + manifests, ensure_ascii=False, indent=2) + "\n")
-report = dict(version=VERSION, sourceSha256=sha(raw), addedPhysicalParts=300,
+report = dict(version=VERSION, sourceSha256=sha(raw), addedPhysicalParts=sum(map(len, selected.values())),
               addedBundleBytes=sum(p["bytes"] for p in manifests),
               expandedPackageBytes=sum(g["expandedBytes"] for g in coverage.values()), packages=coverage)
 (APP / "docs/default-parts-coverage.json").write_text(json.dumps(report, indent=2) + "\n")
