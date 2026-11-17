@@ -4,6 +4,7 @@ import { normalizePath } from "@workspace/ldraw-source";
 import { restoreArchive } from "../lib/ldraw-archive";
 import { approvedSnapshot } from "../lib/ldraw-snapshot";
 import { ldrawStorage } from "../lib/ldraw-storage";
+import { allowedLDrawOrigin } from "../lib/ldraw-origin";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -16,10 +17,16 @@ logger.info({ snapshot: approvedSnapshot.archiveSha256, localOverride: !!process
   "LDraw archive resolver ready; no live upstream requests");
 const provider = new LDrawProvider(fetch, archivePath);
 router.get("/ldraw/file", async (req, res) => {
-  // No cross-origin browser access, even when the general API enables CORS.
+  // Cross-origin browser access requires an exact configured application origin.
   res.removeHeader("Access-Control-Allow-Origin");
-  if (req.get("sec-fetch-site") === "cross-site") {
+  const allowedOrigin = allowedLDrawOrigin(req.get("origin"));
+  if (req.get("sec-fetch-site") === "cross-site" && !allowedOrigin) {
     res.status(403).json({ error: "Nur gleichursprünglicher Zugriff erlaubt." }); return;
+  }
+  if (allowedOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+    res.setHeader("Access-Control-Expose-Headers", "X-LDraw-SHA256, X-LDraw-Snapshot");
+    res.vary("Origin");
   }
   let path: string;
   try {
