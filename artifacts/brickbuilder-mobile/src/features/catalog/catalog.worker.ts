@@ -24,7 +24,7 @@ self.onmessage = async (event: MessageEvent) => {
       const next = decodeCatalog(raw);
       const index = indexCatalog(next);
       data = next;
-      self.postMessage({ id, index, attribution: data.attribution });
+      self.postMessage({ id, index, version: data.version, attribution: data.attribution });
     } else {
       if (!data) throw new Error("Katalog noch nicht geladen.");
       if (type === "inventory") {
