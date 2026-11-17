@@ -53,7 +53,7 @@ The real `3942a` file and its recursive closure can be checked through the
 operator's pinned archive API with the optional integration test:
 
 ```sh
-BRICKBUILDER_REPRO_API=https://blackfishbox.de/BrickBuilder/api \
+BRICKBUILDER_REPRO_API=https://brickbuilder.blackfishbox.de/api \
   pnpm --filter @workspace/brickbuilder-mobile exec vitest run \
   src/features/formats/catalog-source-repro.test.ts
 ```

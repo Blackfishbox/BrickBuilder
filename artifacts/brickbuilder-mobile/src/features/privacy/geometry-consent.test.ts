@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { remoteGeometryEnabled, requireGeometryPermission, setRemoteGeometryEnabled } from "./geometry-consent";
+import { GEOMETRY_API, remoteGeometryEnabled, requireGeometryPermission, setRemoteGeometryEnabled } from "./geometry-consent";
 import { findOnline, OnlineGeometry } from "../formats/online-geometry";
 import { acquireThumbnailGeometry } from "../parts/thumbnails/acquire";
 
 afterEach(() => { localStorage.clear(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+it("uses the canonical first-party geometry API origin", () => {
+  expect(GEOMETRY_API).toBe("https://brickbuilder.blackfishbox.de/api");
+});
 it("defaults to offline and blocks Android requests until explicitly enabled", async () => {
   vi.stubEnv("VITE_NATIVE_ANDROID", "true");
   const network = vi.fn(); vi.stubGlobal("fetch", network);
