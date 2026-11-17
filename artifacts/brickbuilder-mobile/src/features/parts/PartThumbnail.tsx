@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, ImageOff, LoaderCircle } from "lucide-react";
 import type { LibraryPart } from "./types";
 import { observeThumbnail } from "./thumbnails/visibility";
+import "./parts-library.css";
 
 type Props = {
   part: LibraryPart; revision: string; color: string; colorCode?: string; paletteRevision?: string;
