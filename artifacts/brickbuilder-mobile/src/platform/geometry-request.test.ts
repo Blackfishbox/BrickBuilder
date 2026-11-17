@@ -12,6 +12,7 @@ it("requests the API from the current app origin", async () => {
   await expect(requestGeometry("18591.dat")).resolves.toBe(response);
   const expected = new URL("/api/ldraw/file?path=18591.dat", window.location.href).href;
   expect(fetchMock).toHaveBeenCalledWith(expected, expect.objectContaining({
+    mode: "same-origin",
     credentials: "omit",
     referrerPolicy: "no-referrer",
   }));
@@ -20,8 +21,10 @@ it("requests the API from the current app origin", async () => {
 it("shows the target and app origin when a browser fetch is blocked", async () => {
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
   const endpoint = new URL("/api/ldraw/file?path=18591.dat", window.location.href);
+  const frame = window.top === window.self ? "top-level" : "embedded";
+  const serviceWorker = navigator.serviceWorker?.controller?.scriptURL ?? "none";
 
   await expect(requestGeometry("18591.dat")).rejects.toThrow(
-    `Failed to fetch. API-Ziel: ${endpoint.origin}${endpoint.pathname}; App-Origin: ${window.location.origin}`,
+    `Failed to fetch. API-Ziel: ${endpoint.origin}${endpoint.pathname}${endpoint.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
   );
 });

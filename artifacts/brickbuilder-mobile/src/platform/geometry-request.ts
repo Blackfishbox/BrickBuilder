@@ -6,18 +6,20 @@ export async function requestGeometry(path: string): Promise<Response> {
   );
   try {
     return await fetch(url.href, {
+      mode: "same-origin",
       signal: AbortSignal.timeout(15_000),
       credentials: "omit",
       referrerPolicy: "no-referrer",
-      headers: { Accept: "application/octet-stream" },
     });
   } catch (error) {
     if (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name)) {
       throw error;
     }
     const reason = error instanceof Error ? error.message : "Unbekannter Netzwerkfehler";
+    const frame = window.top === window.self ? "top-level" : "embedded";
+    const serviceWorker = navigator.serviceWorker?.controller?.scriptURL ?? "none";
     throw new TypeError(
-      `${reason}. API-Ziel: ${url.origin}${url.pathname}; App-Origin: ${window.location.origin}`,
+      `${reason}. API-Ziel: ${url.origin}${url.pathname}${url.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
     );
   }
 }
