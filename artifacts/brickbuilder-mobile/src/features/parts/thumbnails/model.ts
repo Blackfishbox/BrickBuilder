@@ -1,4 +1,4 @@
-import { candidates, dependencies } from "@workspace/ldraw-source";
+import { candidates, dependencies, inspectFile, OFFICIAL, UNOFFICIAL } from "@workspace/ldraw-source";
 import { builderDatabase } from "@/storage/database";
 import { IDENTITY } from "../../formats/ldraw/parser";
 import type { ImportedModel } from "../../formats/types";
@@ -6,17 +6,23 @@ import type { LibraryFile, LibraryPart } from "../types";
 import { prepareGeometry } from "../../engine/prepare-geometry";
 import { compilePart } from "../../engine/ldraw-geometry";
 import { getLocalPartFiles } from "../library";
+import { hashBytes } from "../../formats/online-geometry";
+import { SNAPSHOT_PACKAGE_PREFIX, snapshotRevision } from "./snapshot-source";
 
 const models = new Map<string, { model: ImportedModel; bytes: number }>();
 let modelBytes = 0;
 let sourceCache: { key: string; files: Record<string, LibraryFile> } | undefined;
 const MODEL_BUDGET = 8 * 1024 * 1024;
 
-/** Read one installed package only; no catalog, resolver or network dependency. */
+/** Read installed or previously acquired geometry only; never resolve online. */
 export async function thumbnailModel(part: LibraryPart, revision: string, signal: AbortSignal): Promise<ImportedModel> {
   signal.throwIfAborted();
-  const installed = await builderDatabase.partPackages.get(part.packageId);
-  if (!installed || `${installed.version}:${installed.sha256}` !== revision) {
+  const snapshotId = part.packageId.startsWith(SNAPSHOT_PACKAGE_PREFIX)
+    ? part.packageId.slice(SNAPSHOT_PACKAGE_PREFIX.length) : undefined;
+  const snapshot = snapshotId ? await builderDatabase.geometrySnapshots.get(snapshotId) : undefined;
+  const installed = snapshotId ? undefined : await builderDatabase.partPackages.get(part.packageId);
+  if (snapshotId ? !snapshot || snapshotRevision(snapshot) !== revision
+    : !installed || `${installed.version}:${installed.sha256}` !== revision) {
     throw new Error("Teilepaket nicht mehr verfügbar. Bibliothek erneut öffnen.");
   }
   const key = `${part.id}:${revision}`;
@@ -28,7 +34,7 @@ export async function thumbnailModel(part: LibraryPart, revision: string, signal
   const packageKey = `${part.packageId}:${revision}`;
   let files = sourceCache?.key === packageKey ? sourceCache.files : undefined;
   if (!files) {
-    const local = await getLocalPartFiles(part.packageId);
+    const local = snapshot ? snapshot.files : await getLocalPartFiles(part.packageId);
     signal.throwIfAborted();
     files = Object.fromEntries(local.map(file => [file.path, file]));
     const cost = local.reduce((sum, file) => sum + file.content.length * 2, 0);
@@ -37,7 +43,8 @@ export async function thumbnailModel(part: LibraryPart, revision: string, signal
   }
   const resources: Record<string, LibraryFile> = Object.create(null);
   let sourceBytes = 0;
-  function collect(reference: string, stack: string[]) {
+  async function collect(reference: string, stack: string[]): Promise<void> {
+    signal.throwIfAborted();
     const path = candidates(reference).find(candidate => files![candidate]);
     if (!path) throw new Error(`Lokale Vorschaugeometrie fehlt: ${reference}`);
     if (stack.includes(path) || stack.length > 48) throw new Error("Geometriehierarchie ungültig.");
@@ -47,10 +54,20 @@ export async function thumbnailModel(part: LibraryPart, revision: string, signal
     if (sourceBytes > 4 * 1024 * 1024 || Object.keys(resources).length >= 3000) {
       throw new Error("Teil zu aufwendig für eine mobile Vorschau.");
     }
+    if (snapshot && file.sha256) {
+      const bytes = new TextEncoder().encode(file.content);
+      if (await hashBytes(bytes) !== file.sha256 || bytes.length !== file.byteLength) {
+        throw new Error(`Beschädigte Vorschaugeometrie: ${path}`);
+      }
+      const inspected = inspectFile(path, bytes, file.sourceUrl === `${UNOFFICIAL}${path}` ? UNOFFICIAL : OFFICIAL);
+      if (inspected.sourceUrl !== file.sourceUrl || inspected.license !== file.license || inspected.author !== file.author) {
+        throw new Error(`Ungültige Geometrieherkunft: ${path}`);
+      }
+    }
     resources[path] = file;
-    for (const child of dependencies(file.content)) collect(child, [...stack, path]);
+    for (const child of dependencies(file.content)) await collect(child, [...stack, path]);
   }
-  collect(part.file, []);
+  await collect(part.file, []);
   const model: ImportedModel = {
     version: 1, format: "ldr", sourceName: part.file, originalBytes: [], sourceText: "",
     root: part.file, sections: {}, resources, legalDocuments: [], issues: [],
