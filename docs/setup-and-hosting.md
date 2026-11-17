@@ -45,6 +45,13 @@ it adds no accounts, cloud sync, paid provider, database or API key requirement.
 Static-only hosting keeps local/offline editing and cached models available,
 but cannot download arbitrary missing geometry.
 
+The geometry endpoint denies untrusted cross-origin browser requests. Replit
+preview and deployment domains are allowed by their exact hostnames. If the web
+app is hosted on a different origin from the API, set
+`LDRAW_ALLOWED_ORIGINS` on the API service to a comma-separated list of exact
+origins, for example `https://brickbuilder.example`. Do not use `*`. A
+same-origin reverse proxy does not need this setting.
+
 Commands were checked on Linux x86-64 with **Node.js 24.22.1** and
 **pnpm 10.26.1**. Use `node --version` and `pnpm --version` to check your tools.
 Install pnpm with `npm install --global pnpm@10.26.1` if necessary.
