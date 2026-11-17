@@ -88,6 +88,10 @@ already linked by `inventories` to the `minifigs` table.
 
 The static binary ships with Android and is explicitly precached by the PWA.
 Android's preparation verifies its bytes and hash before synchronizing assets.
+The final AAB check (`scripts/android/verify-default-bundle.py`) also requires
+exactly one copy of the manifest-selected evidence asset inside
+`base/assets/public/`, with its pinned size and SHA-256. Missing, duplicate,
+truncated or changed assets fail the release check, even if preparation passed.
 As with other PWA assets, a web installation must finish before first offline
 use; the installed Android bundle needs no first-run network.
 
@@ -175,7 +179,26 @@ python3 scripts/build-color-evidence.py \
   --version 2026-11-16.2 --snapshot-date 2026-11-16 --approve
 python3 -m unittest scripts/test_color_evidence.py
 pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/features/catalog
+python3 -m unittest discover -s scripts/android -p 'test_*.py'
 ```
+
+### Separate Android branch
+
+Keep `main` and `android/google-play` separate. Transfer the reviewed
+evidence/picker commits with `git cherry-pick`, starting from the latest remote
+Android tip, rather than merging or replacing Android with `main`. Include the
+catalog worker/client, picker styling, editor guards, regression tests,
+attribution, pinned manifest/binary and coverage report along with the
+generator and documentation. The inventory extension is an already approved
+snapshot; do not regenerate it as part of an Android build.
+
+Do not replace Android's release workflow, native insets, document-provider
+import picker, optional geometry consent, privacy-secret injection, viewport
+transformation, icons or lockfile with their `main` versions. Run the catalog,
+construction and inventory color tests on the resulting Android tree, plus
+the Android platform and preparation regressions. Build with the existing
+`android:prepare` path and run the final AAB verifier before accepting the
+package. Neither this transfer nor the release workflow publishes to Play.
 
 Upstream URLs are mutable; today's download is not a promise to reproduce an
 older dated snapshot. Retain all nine frozen `.csv.gz` inputs outside Git
