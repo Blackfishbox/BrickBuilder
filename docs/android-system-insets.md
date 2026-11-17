@@ -22,19 +22,18 @@ The previous `viewport-fit=contain` workaround can remain in the Android asset
 pipeline, but **is not the mechanism or proof of this fix**. Browser/PWA layout
 and controls are unchanged.
 
-## Native regression gate
+## One-time native verification
 
-The existing signed-release workflow calls
-`.github/workflows/android-native-insets.yml` before releasing an AAB.
-It boots API 35 and 36 emulators, loads the real editor, switches between
+The native screen-bound checks were a one-time verification. They are no longer
+part of GitHub Actions: the emulator/screenshot workflow and release dependency
+have been removed at the user's request. Release downloads contain only the
+signed AAB and its matching `mapping.txt`; no screenshots or release JSON.
+Signing, privacy-policy, packaged-asset and ordinary regression checks remain.
+
+The retained local test script boots into the real editor, switches between
 three-button and gesture navigation, and measures actual native WebView bounds
 against the window's reported system/IME insets and verifies that the DOM
 viewport and bottom controls fit inside the fitted native WebView.
-
-The calling release workflow passes its effective catalog URL into the
-reusable workflow's `catalog_url` input, so manual input overrides and the
-release job use the same snapshot. For standalone dispatch, provide that URL
-explicitly or configure the repository's `ANDROID_CATALOG_URL` fallback.
 
 Navigation verification reads the enabled system overlay and checks the actual
 button inset against the measured gesture inset. Android 15 can retain stale
@@ -42,9 +41,9 @@ overlay-resource values in an already running application's Resources object;
 those values are not a reliable assertion of SystemUI's navigation mode.
 
 It covers portrait, landscape, returning to portrait, keyboard opening/closing
-and pause/resume. Screenshots and numeric bounds are retained in
-`android-native-insets-api-<api>-<attempt>` for 14 days, including failure
-evidence where available. The test build uses privacy placeholders, not
+and pause/resume. Running the script locally produces screenshots and numeric
+bounds in the ignored `generated-artifacts/native-insets` directory; these are
+not uploaded by a GitHub workflow. The test build uses privacy placeholders, not
 controller secrets. Local padding tests also cover side cutouts and repeated
 calculation from an unchanged baseline.
 

@@ -18,8 +18,12 @@ does not request network or broad storage permission. The PWA service worker is
 disabled for the native build; Android updates replace its packaged assets.
 The ordinary web/PWA build remains unchanged.
 
+The Android-branch release workflow uploads only the signed AAB and matching
+ProGuard/R8 `mapping.txt`. The one-time emulator screen-measurement and screenshot
+workflow has been removed; signing, privacy and ordinary regression checks remain.
+
 Native status/navigation bar, display-cutout and keyboard bounds are handled
-by the activity's content container, with emulator regression checks. See
+by the activity's content container, verified by one-time emulator checks. See
 [Native Android system-bar bounds](android-system-insets.md).
 
 ### Important coverage limits
