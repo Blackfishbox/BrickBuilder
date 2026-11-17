@@ -52,6 +52,60 @@ app is hosted on a different origin from the API, set
 origins, for example `https://brickbuilder.example`. Do not use `*`. A
 same-origin reverse proxy does not need this setting.
 
+## Update an existing Ubuntu Apache API
+
+The BrickBuilder API remains the existing Node service on port `5000`; do not
+start a second API process or download another geometry archive for this
+endpoint change. The Android app now uses
+`https://brickbuilder.blackfishbox.de/api`.
+
+Keep the HTTPS VirtualHost for `brickbuilder.blackfishbox.de` mapped to the
+existing service:
+
+```apache
+ProxyPass        /api/ http://127.0.0.1:5000/api/
+ProxyPassReverse /api/ http://127.0.0.1:5000/api/
+```
+
+After changing the VirtualHost, validate and reload Apache:
+
+```sh
+sudo apachectl configtest
+sudo systemctl reload apache2
+```
+
+Update the existing source checkout that runs the API. These commands assume it
+is at `/opt/brickbuilder`, uses the `main` branch, and has the systemd unit
+`brickbuilder-api.service`. If your checkout path differs, change only the
+`cd` path. Stop and review first if `git status --short` prints local changes;
+do not discard them.
+
+```sh
+cd /opt/brickbuilder
+git status --short
+git switch main
+git pull --ff-only origin main
+pnpm install --frozen-lockfile
+pnpm --filter @workspace/api-server run build
+sudo systemctl restart brickbuilder-api
+sudo systemctl --no-pager --full status brickbuilder-api
+```
+
+Verify the public route and the actual part file:
+
+```sh
+curl --fail --silent --show-error https://brickbuilder.blackfishbox.de/api/healthz
+curl --fail --silent --show-error \
+  'https://brickbuilder.blackfishbox.de/api/ldraw/file?path=parts%2F18591.dat' \
+  --output /tmp/18591.dat
+grep -m1 '18591.dat' /tmp/18591.dat
+```
+
+The port stays private behind Apache. A same-origin web app does not need an
+`LDRAW_ALLOWED_ORIGINS` setting. If the API is called by a separate browser
+origin, configure that exact HTTPS origin in the existing API service
+environment and restart the service; never use a wildcard.
+
 Commands were checked on Linux x86-64 with **Node.js 24.22.1** and
 **pnpm 10.26.1**. Use `node --version` and `pnpm --version` to check your tools.
 Install pnpm with `npm install --global pnpm@10.26.1` if necessary.
