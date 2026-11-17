@@ -6,7 +6,8 @@ import { ldrawStorage } from "../lib/ldraw-storage";
 
 const router = Router();
 let cached: Promise<Buffer> | undefined;
-router.get("/catalog/snapshot/:sha256", async (req, res) => {
+// Preserve the old public endpoint for existing web clients and release inputs.
+router.get(["/catalog/snapshot/:sha256/catalog.bin", "/catalog/snapshot/:sha256"], async (req, res) => {
   if (req.params.sha256 !== manifest.sha256) { res.status(404).end(); return; }
   try {
     cached ??= ldrawStorage.bucket(approvedSnapshot.bucket).file(manifest.object).download().then(([bytes]) => {

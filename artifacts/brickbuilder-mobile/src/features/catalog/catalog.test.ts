@@ -122,7 +122,7 @@ describe("complete catalog semantics", () => {
     expect(normalizeDocument(recolored).imported!.instances[0].color?.catalog).toBeUndefined();
   });
 });
-const fullPath = new URL("../../../../../generated-artifacts/catalog-sources/catalog.bin", import.meta.url);
+const fullPath = new URL("../../../../../generated-artifacts/android-inputs/catalog.bin", import.meta.url);
 describe.skipIf(!existsSync(fullPath))("complete approved source snapshot", () => {
   it("validates every published row, pinned digest, full coverage and supplied IO references", () => {
     const bytes = new Uint8Array(readFileSync(fullPath));

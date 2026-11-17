@@ -20,9 +20,9 @@ as described in the [catalog guide](../artifacts/brickbuilder-mobile/docs/comple
 After a frontend build, copy it under the **frontend base path**, for example:
 
 ```sh
-mkdir -p artifacts/brickbuilder-mobile/dist/public/api/catalog/snapshot
+mkdir -p artifacts/brickbuilder-mobile/dist/public/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c
 cp generated-artifacts/catalog-sources/catalog.bin \
-  artifacts/brickbuilder-mobile/dist/public/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c
+  artifacts/brickbuilder-mobile/dist/public/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c/catalog.bin
 ```
 
 Use the descriptor's actual digest when updating, serve `application/octet-stream`,

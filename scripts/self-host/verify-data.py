@@ -13,7 +13,7 @@ def catalog(manifest_path, payload_path):
     digest = manifest["sha256"]
     if not re.fullmatch(r"[a-f0-9]{64}", digest):
         raise ValueError("Invalid catalog digest")
-    if manifest["url"] != "api/catalog/snapshot/" + digest:
+    if manifest["url"] != "api/catalog/snapshot/" + digest + "/catalog.bin":
         raise ValueError("Unexpected catalog route")
     payload = Path(payload_path).read_bytes()
     if len(payload) != manifest["bytes"] or hashlib.sha256(payload).hexdigest() != digest:
