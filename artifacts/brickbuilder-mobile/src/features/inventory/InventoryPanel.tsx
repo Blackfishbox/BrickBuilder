@@ -3,6 +3,7 @@ import { AlertTriangle, Check, Download, FileUp, LoaderCircle, RotateCw, Search,
 import type { BuilderDocument } from '@/features/editor/model';
 import { previewInventory, resolveStoredInventory } from '@/features/catalog/client';
 import { allocatedCounts } from './accounting';
+import InventoryThumbnail from './InventoryThumbnail';
 import { MAX_LIST_BYTES, MAX_ROWS, type Inventory, type InventoryChoice, type InventoryPreview, type InventoryRow } from './types';
 import './inventory.css';
 import { importFileAccept } from '@/platform/import-file';
@@ -193,6 +194,9 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
               return (
                 <li key={row.id} className={`inv-row ${issue ? 'blocked' : ''} ${left === 0 ? 'empty' : ''} ${active ? 'active' : ''}`} data-testid={`row-inventory-${row.id}`}>
                   <div className="inv-row-main">
+                    {!issue && ldrawId && color && colorCode && (
+                      <InventoryThumbnail ldrawId={ldrawId} color={color.hex} colorCode={colorCode} />
+                    )}
                     <span className="inv-chip" style={{ background: color?.hex ?? 'transparent' }} aria-hidden="true" />
                     <div className="inv-row-copy">
                       <strong>{name}</strong>
