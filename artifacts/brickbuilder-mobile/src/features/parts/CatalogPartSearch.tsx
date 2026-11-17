@@ -39,7 +39,7 @@ export default function CatalogPartSearch({ query, category, installedIds, color
   const current = state?.key === key ? state : undefined;
   return <section className="plib-catalog-search" aria-label="Gesamtkatalog-Treffer" aria-busy={!current}>
     <h4><Search size={16} /> Gesamtkatalog {current?.total !== undefined && `· ${current.total} Treffer`}</h4>
-    <p className="plib-catalog-note">Gespeicherter Katalog, keine Live-Abfrage bei BrickLink. Geometrie wird erst beim Auswählen lokal geprüft und bei Bedarf nachgeladen; die Download-Freigabe bleibt erforderlich.</p>
+    <p className="plib-catalog-note">Gespeicherter Katalog, keine Live-Abfrage bei BrickLink. Fehlende Geometrien sichtbarer Vorschauen werden nacheinander nachgeladen und offline gespeichert. Unter Android ist dafür die Online-Freigabe unter Datenschutz erforderlich.</p>
     {!current ? <p role="status">Gesamtkatalog wird durchsucht …</p> : current.error ? <div className="plib-alert" role="alert">
       <AlertTriangle size={16} /><span>{current.error} Lokale Treffer bleiben nutzbar.</span>
       <button type="button" onClick={() => setRetry(value => value + 1)}>Erneut</button>
@@ -53,7 +53,7 @@ export default function CatalogPartSearch({ query, category, installedIds, color
           const local = Boolean(chosen && installedIds.has(chosen));
           return <li key={row.id} className="plib-catalog-row">
             <div className="plib-catalog-row-head">
-              {chosen && <InventoryThumbnail ldrawId={chosen} color={color} colorCode={colorCode} />}
+              {chosen && <InventoryThumbnail ldrawId={chosen} color={color} colorCode={colorCode} acquireMissing />}
               <div className="drawer-piece-copy">
                 <strong>{row.name}</strong>
                 <small>Rebrickable {row.id}{brickLinkIds.length ? ` · BrickLink ${brickLinkIds.join(", ")}` : " · BrickLink-Zuordnung nicht bestätigt"}</small>
