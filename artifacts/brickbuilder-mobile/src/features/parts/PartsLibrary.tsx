@@ -23,10 +23,11 @@ interface Props {
   selectedColorCode?: string;
   paletteRevision?: string;
   loading?: boolean;
-  onSelect: (part: LibraryPart) => void;
+  selectionError?: string | null;
+  onSelect: (part: LibraryPart) => void | boolean | Promise<void | boolean>;
 }
 
-export default function PartsLibrary({ online, selectedPartId, selectedColor = "#B40000", selectedColorCode = "4", paletteRevision, loading = false, onSelect }: Props) {
+export default function PartsLibrary({ online, selectedPartId, selectedColor = "#B40000", selectedColorCode = "4", paletteRevision, loading = false, selectionError, onSelect }: Props) {
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const [installed, setInstalled] = useState<InstalledPackage[] | null>(null);
@@ -106,8 +107,8 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
   const installedMap = new Map((installed ?? []).map((p) => [p.id, p]));
   const hasInstalled = installedMap.size > 0;
 
-  return (
-    <section className="plib" aria-labelledby="plib-title" data-testid="parts-library">
+  const libraryDetails = (
+    <>
       <div className="plib-head">
         <div>
           <p className="popover-eyebrow">LDRAW-BIBLIOTHEK</p>
@@ -220,6 +221,10 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
       </ul>
       </details>
 
+    </>
+  );
+  return (
+    <section className="plib" aria-labelledby="plib-title" data-testid="parts-library">
       <div className="plib-search-row">
         <label className="search-field plib-search">
           <Search size={16} />
@@ -297,7 +302,8 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
         </button>
       )}
       <CatalogPartSearch query={query} category={category} installedIds={installedIds}
-        color={selectedColor} colorCode={selectedColorCode} loading={loading} onSelect={onSelect} />
+        color={selectedColor} colorCode={selectedColorCode} loading={loading} selectionError={selectionError} onSelect={onSelect} />
+      {libraryDetails}
     </section>
   );
 }

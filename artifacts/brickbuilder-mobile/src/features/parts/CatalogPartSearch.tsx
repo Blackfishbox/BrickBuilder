@@ -3,23 +3,32 @@ import { AlertTriangle, Download, Search } from "lucide-react";
 import { searchBuildingCatalog, type CatalogSearchResult } from "../catalog/client";
 import InventoryThumbnail from "../inventory/InventoryThumbnail";
 import type { LibraryPart } from "./types";
-
-export function incomingLDrawIds(row: CatalogSearchResult): string[] {
-  return [...new Set(row.mappings.filter(mapping => mapping[1] === "LD" && mapping[4] === "True")
-    .map(mapping => mapping[2].toLowerCase().replace(/\.dat$/i, ""))
-    .filter(id => /^[a-z0-9_-]+$/.test(id)))];
-}
+import { incomingLDrawIds } from "../catalog/ldraw-identity";
+export { incomingLDrawIds } from "../catalog/ldraw-identity";
 
 type Props = {
   query: string; category: string; installedIds: ReadonlySet<string>;
-  color: string; colorCode: string; loading: boolean; onSelect(part: LibraryPart): void;
+  color: string; colorCode: string; loading: boolean; selectionError?: string | null;
+  onSelect(part: LibraryPart): void | boolean | Promise<void | boolean>;
 };
 
-export default function CatalogPartSearch({ query, category, installedIds, color, colorCode, loading, onSelect }: Props) {
+export default function CatalogPartSearch({ query, category, installedIds, color, colorCode, loading, selectionError, onSelect }: Props) {
   const [page, setPage] = useState(0);
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{ key: string; rows?: CatalogSearchResult[]; total?: number; error?: string }>();
   const [choices, setChoices] = useState<Record<string, string>>({});
+  const [selection, setSelection] = useState<{ id: string; pending?: boolean; error?: string }>();
+  async function select(part: LibraryPart, rowId: string) {
+    setSelection({ id: rowId, pending: true });
+    try {
+      const success = await onSelect(part);
+      setSelection({ id: rowId, ...(success === false ? {
+        error: "Geometrie konnte nicht vorbereitet werden. Online-Freigabe und Verbindung prüfen; Details stehen in der Fehlermeldung.",
+      } : {}) });
+    } catch (error) {
+      setSelection({ id: rowId, error: error instanceof Error ? error.message : "Geometrie konnte nicht geladen werden." });
+    }
+  }
   const term = query.trim();
   const key = JSON.stringify([term, category, page, retry]);
   useEffect(() => { setPage(0); setChoices({}); }, [term, category]);
@@ -39,21 +48,22 @@ export default function CatalogPartSearch({ query, category, installedIds, color
   const current = state?.key === key ? state : undefined;
   return <section className="plib-catalog-search" aria-label="Gesamtkatalog-Treffer" aria-busy={!current}>
     <h4><Search size={16} /> Gesamtkatalog {current?.total !== undefined && `· ${current.total} Treffer`}</h4>
-    <p className="plib-catalog-note">Gespeicherter Katalog, keine Live-Abfrage bei BrickLink. Fehlende Geometrien sichtbarer Vorschauen werden nacheinander nachgeladen und offline gespeichert. Unter Android ist dafür die Online-Freigabe unter Datenschutz erforderlich.</p>
+    <p className="plib-catalog-note">Gespeicherter Katalog, keine Live-Abfrage bei BrickLink. Treffer ohne verwendbare LDraw-Zuordnung sind ausgeblendet. Fehlende Geometrien sichtbarer Vorschauen werden nacheinander nachgeladen und offline gespeichert. Unter Android ist dafür die Online-Freigabe unter Datenschutz erforderlich.</p>
     {!current ? <p role="status">Gesamtkatalog wird durchsucht …</p> : current.error ? <div className="plib-alert" role="alert">
       <AlertTriangle size={16} /><span>{current.error} Lokale Treffer bleiben nutzbar.</span>
       <button type="button" onClick={() => setRetry(value => value + 1)}>Erneut</button>
     </div> : <>
       {!current.rows?.length && <p>Keine weiteren Katalogtreffer.</p>}
       <ul className="plib-catalog-rows">
-        {current.rows?.map(row => {
+        {current.rows?.filter(row => incomingLDrawIds(row).length > 0).map(row => {
           const ids = incomingLDrawIds(row);
           const chosen = ids.length === 1 ? ids[0] : ids.includes(choices[row.id]) ? choices[row.id] : "";
           const brickLinkIds = [...new Set(row.mappings.filter(mapping => mapping[1] === "BL" && mapping[3] === "True").map(mapping => mapping[2]))];
           const local = Boolean(chosen && installedIds.has(chosen));
           return <li key={row.id} className="plib-catalog-row">
             <div className="plib-catalog-row-head">
-              {chosen && <InventoryThumbnail ldrawId={chosen} color={color} colorCode={colorCode} acquireMissing />}
+              {chosen && <InventoryThumbnail ldrawId={chosen} color={color} colorCode={colorCode}
+                acquireMissing={!loading && !selection?.pending} />}
               <div className="drawer-piece-copy">
                 <strong>{row.name}</strong>
                 <small>Rebrickable {row.id}{brickLinkIds.length ? ` · BrickLink ${brickLinkIds.join(", ")}` : " · BrickLink-Zuordnung nicht bestätigt"}</small>
@@ -67,15 +77,18 @@ export default function CatalogPartSearch({ query, category, installedIds, color
                 {ids.map(id => <option key={id} value={id}>{id}{installedIds.has(id) ? " · offline installiert" : ""}</option>)}
               </select>
             </label>}
-            {!ids.length && <small>Keine verwendbare LDraw-Zuordnung im Datenstand; nicht platzierbar.</small>}
-            <button type="button" disabled={loading || !chosen} data-testid={`button-catalog-build-${row.id}`}
-              onClick={() => onSelect({
+            <button type="button" disabled={loading || !chosen || Boolean(selection?.id === row.id && selection.pending)} data-testid={`button-catalog-build-${row.id}`}
+              onClick={() => void select({
                 id: `catalog:${row.id}:${chosen}`, packageId: "catalog", ldrawId: chosen,
                 file: `parts/${chosen}.dat`, name: row.name, category: category || "Gesamtkatalog", keywords: [],
                 ...(brickLinkIds.length === 1 ? { brickLinkId: brickLinkIds[0] } : {}),
-              })}>
+              }, row.id)}>
               {!local && <Download size={15} />}{local ? "Damit bauen" : "Geometrie prüfen / damit bauen"}
             </button>
+            {selection?.id === row.id && selection.pending && <p role="status">LDraw {chosen}: Geometrie wird geladen und geprüft …</p>}
+            {selection?.id === row.id && selection.error && <p role="alert" className="plib-error">
+              LDraw {chosen}: {selectionError || selection.error}
+            </p>}
           </li>;
         })}
       </ul>

@@ -2,6 +2,7 @@ import { importLDraw } from "../../formats/ldraw/import";
 import { requireGeometryPermission } from "../../privacy/geometry-consent";
 import { ThumbnailQueue } from "./queue";
 import { cachedThumbnailSource } from "./snapshot-source";
+import { getImportPartFailures } from "../../formats/import-failures";
 
 // Share one acquisition lane across visible catalog rows, independently of color.
 // Results live in IndexedDB, not a second in-memory success cache.
@@ -20,7 +21,9 @@ const acquisitions = new ThumbnailQueue<string>(async (ldrawId, signal) => {
     });
     controller.signal.throwIfAborted();
     if (document.imported?.instances[0]?.part.status !== "resolved") {
-      throw new Error(`Vorschaugeometrie für LDraw ${ldrawId} konnte nicht vollständig geladen werden.`);
+      const reasons = document.imported
+        ? [...new Set(getImportPartFailures(document.imported).flatMap(failure => failure.reasons))].slice(0, 3).join(" ") : "";
+      throw new Error(`Vorschaugeometrie für LDraw ${ldrawId} konnte nicht vollständig geladen werden. ${reasons}`.trim());
     }
     if (!await cachedThumbnailSource(ldrawId)) {
       throw new Error("Vorschaugeometrie konnte nicht offline gespeichert werden. Speicherplatz prüfen und erneut versuchen.");
