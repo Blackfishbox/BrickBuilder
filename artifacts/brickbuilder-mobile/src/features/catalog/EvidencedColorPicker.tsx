@@ -20,7 +20,7 @@ export default function EvidencedColorPicker({ palette, current, references, loc
   const selected = (code: string) => current.some(c => c.ldrawCode === code);
   return <>
     <p className="color-evidence-status" role="status" data-testid="color-evidence-status">
-      {locked ? "Teilelistenfarbe fest vorgegeben. Sie bleibt unverändert." : result.known
+      {locked ? "Farbe ist für diese Auswahl festgelegt." : result.known
         ? `${result.known > 1 ? "Gemeinsam nachgewiesene" : "Nachgewiesene"} Farben · Stand ${manifest.snapshotDate}.`
         : "Farbverfügbarkeit unbekannt – freie Palette."}
       {!locked && result.known > 0 && result.codes?.length === 0 && " Keine gemeinsam eindeutig zugeordneten Farben im Snapshot."}
