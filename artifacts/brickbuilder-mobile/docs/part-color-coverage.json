@@ -1,8 +1,341 @@
 {
-  "version": "2026-11-16.1",
+  "version": "2026-11-16.2",
   "snapshotDate": "2026-11-16",
-  "sha256": "dc044211d89d4a137b35adfb2f16a55b8f600a8cca592a7fc0a1dfb4916903ed",
+  "sha256": "2ccc4a16c1672dcbf7a3621f1b1b1b0ae8ff449bea1b6ac1cd1d8fbb6ce3e2e0",
   "defaultLibrary": {
+    "entries": 312,
+    "distinctIds": 312,
+    "counts": {
+      "known": 293,
+      "knownWithoutDisplayColors": 0,
+      "ambiguous": 0,
+      "noObservations": 7,
+      "noMapping": 12
+    },
+    "ids": {
+      "known": [
+        "10202",
+        "10313",
+        "11211",
+        "112174",
+        "11291",
+        "11477",
+        "13971",
+        "14769",
+        "15068",
+        "1748",
+        "18972",
+        "18974",
+        "18977",
+        "2229",
+        "22385",
+        "2340",
+        "2357",
+        "2362a",
+        "24116",
+        "2412b",
+        "2420",
+        "24201",
+        "24246",
+        "24299",
+        "24307",
+        "24308a",
+        "24309",
+        "2431",
+        "2440",
+        "2445",
+        "2456",
+        "2476c",
+        "2494",
+        "2496",
+        "2513",
+        "25269",
+        "2540",
+        "2555",
+        "2573b",
+        "2582",
+        "2635",
+        "2655",
+        "26601",
+        "26603",
+        "27263",
+        "2752",
+        "2873",
+        "29119",
+        "29120",
+        "2937",
+        "2994b",
+        "3001",
+        "3002",
+        "3003",
+        "3004",
+        "3005",
+        "3006",
+        "3008",
+        "3009",
+        "3010",
+        "30155",
+        "3020",
+        "3021",
+        "3022",
+        "3023a",
+        "3024",
+        "30285",
+        "30350b",
+        "30355",
+        "3037",
+        "30391",
+        "30407",
+        "3040b",
+        "30566",
+        "30567",
+        "30602",
+        "30648",
+        "3065",
+        "30663",
+        "3068a",
+        "3068b",
+        "3069a",
+        "3069b",
+        "3070a",
+        "3070b",
+        "3096-f1",
+        "3194",
+        "3195",
+        "32009",
+        "32028",
+        "3220",
+        "3224",
+        "32306-f1",
+        "32306-f2",
+        "32306-f3",
+        "32306-f4",
+        "3245c",
+        "32523",
+        "32524",
+        "32803",
+        "3297",
+        "33243",
+        "33909",
+        "34103",
+        "3455",
+        "3460",
+        "3479",
+        "3482",
+        "35287",
+        "35480",
+        "3569",
+        "35787",
+        "35789",
+        "36",
+        "3622",
+        "3623",
+        "3660c",
+        "3660d",
+        "3660e",
+        "3666",
+        "3678b",
+        "36840",
+        "36841",
+        "3710",
+        "3739b",
+        "3749",
+        "3794b",
+        "3795",
+        "3821",
+        "3822",
+        "3832",
+        "38320",
+        "3855b",
+        "3937",
+        "3938",
+        "40145",
+        "4032a",
+        "40490",
+        "4084b",
+        "41239",
+        "4150",
+        "4151b",
+        "4162",
+        "41740",
+        "4175b",
+        "4192",
+        "42023",
+        "4215a",
+        "422",
+        "4286",
+        "4365",
+        "4369",
+        "4472",
+        "4477",
+        "4515",
+        "4533",
+        "45403",
+        "4592",
+        "4593",
+        "47758",
+        "47847",
+        "48336",
+        "4855",
+        "4864a",
+        "4865a",
+        "4867",
+        "48729a",
+        "48933",
+        "50950",
+        "50951",
+        "5121",
+        "5174",
+        "52031",
+        "52501",
+        "5251",
+        "5252",
+        "5253",
+        "5256",
+        "5257",
+        "5404",
+        "5414",
+        "5415",
+        "54200",
+        "5429",
+        "5443",
+        "5466",
+        "5630",
+        "5741",
+        "5742",
+        "57783",
+        "5794",
+        "5801",
+        "5805",
+        "5806",
+        "5807",
+        "5809",
+        "58380",
+        "58381",
+        "5844",
+        "5853",
+        "5924",
+        "5995",
+        "60481a",
+        "60483",
+        "60581",
+        "60593",
+        "60616a",
+        "6079",
+        "6081",
+        "60897",
+        "6091",
+        "6141",
+        "6143",
+        "61484",
+        "61678",
+        "6179",
+        "6180",
+        "6191",
+        "6239",
+        "62531",
+        "6331",
+        "63864",
+        "64392",
+        "64682",
+        "64782",
+        "65635",
+        "6564",
+        "6565",
+        "6578",
+        "6618",
+        "66237",
+        "6636",
+        "66727",
+        "66897",
+        "67095",
+        "67688",
+        "6801",
+        "6826",
+        "69271",
+        "6929",
+        "6930",
+        "69729",
+        "6991",
+        "70495",
+        "70681",
+        "7101",
+        "7211",
+        "7217",
+        "7236",
+        "7241",
+        "7302",
+        "73825",
+        "7512",
+        "7519",
+        "7520",
+        "7530",
+        "7532",
+        "7654",
+        "7665",
+        "76795",
+        "7796",
+        "7798",
+        "7813",
+        "7853",
+        "7871",
+        "7961",
+        "8083",
+        "8131",
+        "8241",
+        "8411",
+        "8491",
+        "85080",
+        "85984",
+        "87079",
+        "87087",
+        "87552",
+        "87948-f1",
+        "87948-f2",
+        "87994",
+        "88930",
+        "911a",
+        "911b",
+        "92593",
+        "92946",
+        "93095",
+        "93273",
+        "93348",
+        "93606",
+        "98138",
+        "98834",
+        "99206",
+        "99780",
+        "u9651"
+      ],
+      "knownWithoutDisplayColors": [],
+      "ambiguous": [],
+      "noObservations": [
+        "5787",
+        "7246",
+        "7435",
+        "7523",
+        "7526",
+        "7880",
+        "7894"
+      ],
+      "noMapping": [
+        "2346b",
+        "3023",
+        "30843",
+        "3137c",
+        "3660f",
+        "5811",
+        "5812",
+        "5874-f1",
+        "7135",
+        "7136",
+        "7138-f1",
+        "799"
+      ]
+    }
+  },
+  "elementOnlyDefaultLibrary": {
     "entries": 312,
     "distinctIds": 312,
     "counts": {
@@ -333,6 +666,793 @@
         "7138-f1",
         "799"
       ]
+    }
+  },
+  "additionalCoverage": {
+    "newlyKnownIds": [
+      "24308a",
+      "3023a",
+      "3068a",
+      "3069a",
+      "3070a",
+      "3096-f1",
+      "36",
+      "3660d",
+      "3660e",
+      "4084b",
+      "422",
+      "911a",
+      "911b",
+      "u9651"
+    ],
+    "newlyKnownCount": 14,
+    "percentagePoints": 4.49,
+    "elementsPlusSource": {
+      "setInventories": {
+        "counts": {
+          "known": 293,
+          "knownWithoutDisplayColors": 0,
+          "ambiguous": 0,
+          "noObservations": 7,
+          "noMapping": 12
+        },
+        "newlyKnownIds": [
+          "24308a",
+          "3023a",
+          "3068a",
+          "3069a",
+          "3070a",
+          "3096-f1",
+          "36",
+          "3660d",
+          "3660e",
+          "4084b",
+          "422",
+          "911a",
+          "911b",
+          "u9651"
+        ]
+      },
+      "minifigInventories": {
+        "counts": {
+          "known": 279,
+          "knownWithoutDisplayColors": 0,
+          "ambiguous": 0,
+          "noObservations": 21,
+          "noMapping": 12
+        },
+        "newlyKnownIds": []
+      }
+    },
+    "evidence": {
+      "24308a": {
+        "rebrickableId": "24308a",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "7592",
+                "owner": "75870-1",
+                "version": "1",
+                "csvRow": 236130,
+                "quantity": 4,
+                "isSpare": true
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "72",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "12518",
+                "owner": "75871-1",
+                "version": "1",
+                "csvRow": 395255,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3023a": {
+        "rebrickableId": "3023a",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "119",
+                "owner": "323-1",
+                "version": "1",
+                "csvRow": 4336,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "119",
+                "owner": "323-1",
+                "version": "1",
+                "csvRow": 4337,
+                "quantity": 8,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "4",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "119",
+                "owner": "323-1",
+                "version": "1",
+                "csvRow": 4338,
+                "quantity": 6,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "119",
+                "owner": "323-1",
+                "version": "1",
+                "csvRow": 4339,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "14",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "7541",
+                "owner": "621-2",
+                "version": "1",
+                "csvRow": 234822,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "15",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "3319",
+                "owner": "321-1",
+                "version": "1",
+                "csvRow": 103221,
+                "quantity": 11,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "47",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "119",
+                "owner": "323-1",
+                "version": "1",
+                "csvRow": 4335,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3068a": {
+        "rebrickableId": "3068a",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "2137",
+                "owner": "294-1",
+                "version": "1",
+                "csvRow": 65946,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1961",
+                "owner": "270-2",
+                "version": "1",
+                "csvRow": 60628,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "4",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "508",
+                "owner": "292-1",
+                "version": "1",
+                "csvRow": 16862,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "903",
+                "owner": "1650-1",
+                "version": "1",
+                "csvRow": 27258,
+                "quantity": 18,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "14",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "2179",
+                "owner": "260-3",
+                "version": "1",
+                "csvRow": 67329,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "15",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "508",
+                "owner": "292-1",
+                "version": "1",
+                "csvRow": 16861,
+                "quantity": 14,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3069a": {
+        "rebrickableId": "3069a",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1158",
+                "owner": "295-1",
+                "version": "1",
+                "csvRow": 34727,
+                "quantity": 5,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "2137",
+                "owner": "294-1",
+                "version": "1",
+                "csvRow": 65950,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "4",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1158",
+                "owner": "295-1",
+                "version": "1",
+                "csvRow": 34726,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "470",
+                "owner": "310-3",
+                "version": "1",
+                "csvRow": 15543,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "14",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1054",
+                "owner": "605-2",
+                "version": "1",
+                "csvRow": 31325,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "15",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1158",
+                "owner": "295-1",
+                "version": "1",
+                "csvRow": 34724,
+                "quantity": 9,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3070a": {
+        "rebrickableId": "3070a",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1973",
+                "owner": "080-1",
+                "version": "1",
+                "csvRow": 61090,
+                "quantity": 3,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "508",
+                "owner": "292-1",
+                "version": "1",
+                "csvRow": 16863,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "4",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "2137",
+                "owner": "294-1",
+                "version": "1",
+                "csvRow": 65954,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1973",
+                "owner": "080-1",
+                "version": "1",
+                "csvRow": 61091,
+                "quantity": 3,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "14",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1318",
+                "owner": "291-1",
+                "version": "1",
+                "csvRow": 40886,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "15",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "3077",
+                "owner": "555-1",
+                "version": "1",
+                "csvRow": 95309,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3096-f1": {
+        "rebrickableId": "498",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1093",
+                "owner": "107-1",
+                "version": "1",
+                "csvRow": 32259,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "36": {
+        "rebrickableId": "36",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1270",
+                "owner": "390-2",
+                "version": "1",
+                "csvRow": 39134,
+                "quantity": 5,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "516",
+                "owner": "329-1",
+                "version": "1",
+                "csvRow": 17038,
+                "quantity": 5,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3660d": {
+        "rebrickableId": "3660b",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "762",
+                "owner": "7838-1",
+                "version": "1",
+                "csvRow": 23319,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "799",
+                "owner": "487-1",
+                "version": "1",
+                "csvRow": 24608,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "4",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "762",
+                "owner": "7838-1",
+                "version": "1",
+                "csvRow": 23318,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "2125",
+                "owner": "918-1",
+                "version": "1",
+                "csvRow": 65208,
+                "quantity": 10,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "14",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "3612",
+                "owner": "7814-1",
+                "version": "1",
+                "csvRow": 112448,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "15",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "2148",
+                "owner": "6392-1",
+                "version": "1",
+                "csvRow": 66243,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "3660e": {
+        "rebrickableId": "3660a",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1890",
+                "owner": "50-1",
+                "version": "1",
+                "csvRow": 58406,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1890",
+                "owner": "50-1",
+                "version": "1",
+                "csvRow": 58404,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "4",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1073",
+                "owner": "WEETABIX2-1",
+                "version": "1",
+                "csvRow": 31675,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "14",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "1073",
+                "owner": "WEETABIX2-1",
+                "version": "1",
+                "csvRow": 31674,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "15",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "5563",
+                "owner": "394-1",
+                "version": "1",
+                "csvRow": 174132,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "4084b": {
+        "rebrickableId": "4084",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "92",
+                "owner": "6386-1",
+                "version": "1",
+                "csvRow": 3236,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "422": {
+        "rebrickableId": "422",
+        "colors": [
+          {
+            "rebrickableColor": "0",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "11245",
+                "owner": "398-1",
+                "version": "1",
+                "csvRow": 354029,
+                "quantity": 4,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "911a": {
+        "rebrickableId": "911",
+        "colors": [
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "14779",
+                "owner": "343-1",
+                "version": "1",
+                "csvRow": 469481,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "911b": {
+        "rebrickableId": "911b",
+        "colors": [
+          {
+            "rebrickableColor": "7",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "24720",
+                "owner": "343-2",
+                "version": "1",
+                "csvRow": 615415,
+                "quantity": 1,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      },
+      "u9651": {
+        "rebrickableId": "upn0006",
+        "colors": [
+          {
+            "rebrickableColor": "1",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "20386",
+                "owner": "5005107-1",
+                "version": "1",
+                "csvRow": 564477,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          },
+          {
+            "rebrickableColor": "2",
+            "observations": [
+              {
+                "source": "setInventories",
+                "inventoryId": "20550",
+                "owner": "5005107-1",
+                "version": "2",
+                "csvRow": 564765,
+                "quantity": 2,
+                "isSpare": false
+              }
+            ]
+          }
+        ]
+      }
     }
   }
 }

@@ -37,6 +37,7 @@ it("defaults to proven colors and shows a retained out-of-snapshot direct color 
   await act(async () => root.render(<EvidencedColorPicker palette={palette} references={["basep01"]} locked={false}
     current={[{ name: "Imported", value: "#abcdef", ldrawCode: "0x2ABCDEF" }]} onChange={onChange} />));
   expect(container.textContent).toContain("Nachgewiesene Farben");
+  expect(container.textContent).toContain("öffentliche Inventare offizieller Sets und Minifiguren");
   expect(container.querySelector('[aria-label="Blue auswählen"]')).not.toBeNull();
   expect(container.querySelector('[aria-label="Red auswählen"]')).toBeNull();
   expect(container.textContent).toContain("0x2ABCDEF");
