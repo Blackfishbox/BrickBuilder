@@ -9,8 +9,10 @@ function withRequestDetails<T>(url: string, request: () => Promise<T>): Promise<
     }
     const target = new URL(url, window.location.href);
     const reason = error instanceof Error ? error.message : "Unbekannter Netzwerkfehler";
+    const frame = window.top === window.self ? "top-level" : "embedded";
+    const serviceWorker = navigator.serviceWorker?.controller?.scriptURL ?? "none";
     throw new TypeError(
-      `${reason}. API-Ziel: ${target.origin}${target.pathname}; App-Origin: ${window.location.origin}`,
+      `${reason}. API-Ziel: ${target.origin}${target.pathname}${target.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
     );
   });
 }
@@ -42,9 +44,9 @@ export async function requestGeometry(path: string): Promise<Response> {
   }
   const url = `${import.meta.env.BASE_URL}api/ldraw/file?path=${encodeURIComponent(path)}`;
   return withRequestDetails(url, () => fetch(url, {
+    mode: "same-origin",
     signal: AbortSignal.timeout(15_000),
     credentials: "omit",
     referrerPolicy: "no-referrer",
-    headers: { Accept: "application/octet-stream" },
   }));
 }

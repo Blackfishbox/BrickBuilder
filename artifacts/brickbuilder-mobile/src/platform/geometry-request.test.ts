@@ -39,20 +39,26 @@ it("requests only the normalized file path on the fixed HTTPS server", async () 
 it("shows the requested target and app origin when a browser fetch is blocked", async () => {
   setRemoteGeometryEnabled(true);
   vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
-  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+  const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+  vi.stubGlobal("fetch", fetchMock);
   const target = new URL("/api/ldraw/file?path=parts%2F18591.dat", window.location.href);
+  const frame = window.top === window.self ? "top-level" : "embedded";
+  const serviceWorker = navigator.serviceWorker?.controller?.scriptURL ?? "none";
 
   await expect(requestGeometry("parts/18591.dat")).rejects.toThrow(
-    `Failed to fetch. API-Ziel: ${target.origin}${target.pathname}; App-Origin: ${window.location.origin}`,
+    `Failed to fetch. API-Ziel: ${target.origin}${target.pathname}${target.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
   );
+  expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: "same-origin" }));
 });
 it("shows the fixed server target when a native request cannot connect", async () => {
   setRemoteGeometryEnabled(true);
   vi.spyOn(CapacitorHttp, "request").mockRejectedValueOnce(new TypeError("Failed to fetch"));
   const target = new URL(`${GEOMETRY_API}/ldraw/file?path=parts%2F18591.dat`);
+  const frame = window.top === window.self ? "top-level" : "embedded";
+  const serviceWorker = navigator.serviceWorker?.controller?.scriptURL ?? "none";
 
   await expect(requestGeometry("parts/18591.dat")).rejects.toThrow(
-    `Failed to fetch. API-Ziel: ${target.origin}${target.pathname}; App-Origin: ${window.location.origin}`,
+    `Failed to fetch. API-Ziel: ${target.origin}${target.pathname}${target.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
   );
 });
 it("rejects redirects, oversized responses and withdrawal during a request", async () => {
