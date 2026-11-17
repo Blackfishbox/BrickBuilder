@@ -101,6 +101,11 @@ export async function searchFullCatalog(query: string, kind: "parts" | "colors")
   await ensureCatalog();
   return (await request({ type: "search", query, kind })).results;
 }
+export async function searchBuildingCatalog(query: string, offset = 0, category = ""): Promise<{ results: CatalogSearchResult[]; total: number }> {
+  await ensureCatalog();
+  const response = await request({ type: "search-page", query, offset, category });
+  return { results: response.results, total: response.total };
+}
 export async function previewInventory(file: File): Promise<InventoryPreview> {
   if (file.size > MAX_LIST_BYTES) throw new Error("Teileliste ist größer als 2 MiB.");
   await ensureCatalog();
