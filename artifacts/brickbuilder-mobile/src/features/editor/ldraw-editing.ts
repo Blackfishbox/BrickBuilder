@@ -104,12 +104,13 @@ export function placePreparedPart(document: BuilderDocument, prepared: PreparedP
 }
 
 /** Availability and allocation are committed together against the latest document. */
-export function placeInventoryPart(document: BuilderDocument, prepared: PreparedPart, position: Position3, choice: InventoryChoice): BuilderDocument {
+export function placeInventoryPart(document: BuilderDocument, prepared: PreparedPart, position: Position3, choice: InventoryChoice, appearance?: { hex: string; code?: string }): BuilderDocument {
   requireAvailable(document, choice);
   if (prepared.part.ldrawId !== choice.ldrawId) throw new Error("Teilelisten-Geometrie stimmt nicht mit der Auswahl überein.");
   const color = resolveColor(choice.colorCode);
   if (!color) throw new Error(`LDraw-Farbe ${choice.colorCode} nicht verfügbar. Teileliste erneut auswählen.`);
-  const next = placePreparedPart(document, prepared, position, color.hex, choice.colorCode);
+  // Appearance may change without returning the original physical unit to stock.
+  const next = placePreparedPart(document, prepared, position, appearance?.hex ?? color.hex, appearance ? appearance.code : choice.colorCode);
   const instances = next.imported!.instances;
   return { ...next, imported: { ...next.imported!, instances: instances.map((instance, index) =>
     index === instances.length - 1 ? { ...instance, allocation: { listId: choice.listId, rowId: choice.rowId } } : instance) } };

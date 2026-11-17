@@ -163,7 +163,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
       </section>
 
       {inventory && <>
-        <p className="inv-note">Die Farbe der Listenzeile bleibt an künftige Platzierungen gebunden. Spätere Farbänderungen an verbauten Teilen füllen den Bestand nicht auf.</p>
+        <p className="inv-note">Die Listenfarbe ist der Ausgangswert. Du kannst Teile vor und nach dem Platzieren umfärben; der Listenbestand bleibt dabei unverändert.</p>
         <p className="inv-note">Vollständig verbaute Positionen werden ausgeblendet. Löschen gibt sie wieder frei. Zusätzliche Steine kannst du jederzeit ohne Listenbegrenzung im Tab „LDraw-Katalog“ auswählen.</p>
         <div className="inv-search">
           <Search size={15} />

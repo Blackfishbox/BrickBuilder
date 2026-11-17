@@ -78,15 +78,13 @@ function App() {
   const colorReferences = colorInstances.length ? colorInstances.map(instance => instance.part.ldrawId)
     : [selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId
       : editor.selectedPart?.ldrawId].filter((id): id is string => Boolean(id));
-  const colorLocked = Boolean(colorInstances.some(instance => instance.allocation) ||
-    (!editor.selectedId && editor.selectedInventory));
   const currentColors = colorInstances.length ? colorInstances.map(instance => ({
     ldrawCode: instance.colorCode, name: instance.color?.name ?? resolveColor(instance.colorCode)?.name ?? `LDraw ${instance.colorCode}`,
     value: instance.color?.hex ?? resolveColor(instance.colorCode)?.hex ?? "#ff00ff",
   })) : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? "Eigene Farbe",
     value: editor.selectedColor, ldrawCode: editor.selectedColorCode ?? "" }];
   const colorPicker = (mobile = false) => <EvidencedColorPicker palette={COLORS} current={currentColors}
-    references={colorReferences} locked={colorLocked} mobile={mobile}
+    references={colorReferences} locked={false} mobile={mobile}
     onChange={color => { editor.setSelectedColor(color.value, color.ldrawCode, additionalColorIds); if (mobile) setColorsOpen(false); }} />;
   const activeInventoryRow = editor.selectedInventory && editor.document.inventory?.id === editor.selectedInventory.listId
     ? editor.document.inventory.rows.find(row => row.id === editor.selectedInventory!.rowId) : undefined;

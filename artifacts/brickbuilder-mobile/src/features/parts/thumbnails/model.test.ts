@@ -5,6 +5,7 @@ import { thumbnailModel } from "./model";
 import { compilePart } from "../../engine/ldraw-geometry";
 import { createImportedGroup, disposeImportedScene } from "../../engine/imported-scene";
 import type { InstalledPackage, LibraryFile, LibraryPart } from "../types";
+import { cachedThumbnailSource } from "./snapshot-source";
 
 afterEach(async () => { vi.unstubAllGlobals(); await builderDatabase.delete(); });
 const file = (path: string, content: string): LibraryFile => ({
@@ -49,4 +50,27 @@ it("rejects missing local dependencies and changed package revisions", async () 
   const part = await install("missing-thumb", [file("parts/test.dat", "1 16 0 0 0 1 0 0 0 1 0 0 0 1 absent.dat")]);
   await expect(thumbnailModel(part, "1:fixture", new AbortController().signal)).rejects.toThrow("Vorschaugeometrie fehlt");
   await expect(thumbnailModel(part, "outdated", new AbortController().signal)).rejects.toThrow("erneut öffnen");
+});
+
+it("rejects corrupted acquired geometry and never downloads missing dependencies", async () => {
+  vi.stubGlobal("Worker", undefined);
+  const fetch = vi.fn(() => { throw new Error("Unexpected network"); });
+  vi.stubGlobal("fetch", fetch);
+  await builderDatabase.open();
+  const root = file("parts/cached-corrupt.dat", "3 16 0 0 0 20 0 0 0 -20 0");
+  await builderDatabase.geometrySnapshots.put({
+    version: 1, id: "corrupt-thumbnail", createdAt: "2026-11-17", roots: ["cached-corrupt.dat"],
+    graph: {}, legalDocuments: [], files: [{ ...root, sha256: "0".repeat(64), byteLength: root.content.length }],
+  });
+  const source = (await cachedThumbnailSource("cached-corrupt"))!;
+  await expect(thumbnailModel(source.part, source.revision, new AbortController().signal)).rejects.toThrow("Beschädigte");
+  await builderDatabase.geometrySnapshots.put({
+    version: 1, id: "incomplete-thumbnail", createdAt: "2026-11-18", roots: ["cached-missing.dat"],
+    graph: {}, legalDocuments: [], files: [file("parts/cached-missing.dat", "1 16 0 0 0 1 0 0 0 1 0 0 0 1 missing.dat")],
+  });
+  const missing = (await cachedThumbnailSource("cached-missing"))!;
+  await expect(thumbnailModel(missing.part, missing.revision, new AbortController().signal)).rejects.toThrow("Vorschaugeometrie fehlt");
+  await builderDatabase.geometrySnapshots.delete("incomplete-thumbnail");
+  await expect(thumbnailModel(missing.part, missing.revision, new AbortController().signal)).rejects.toThrow("nicht mehr verfügbar");
+  expect(fetch).not.toHaveBeenCalled();
 });
