@@ -12,6 +12,8 @@ it("verifies the actual offline worker payload and rejects tampering without loa
   await scope.onmessage({ data: { id: 1, type: "load-evidence", bytes, sha256: manifest.sha256 } });
   expect(postMessage.mock.calls[0][0]).toMatchObject({ id: 1, index: { version: manifest.version } });
   expect(postMessage.mock.calls[0][0].index.parts["3001"]).toHaveLength(1);
+  expect(postMessage.mock.calls[0][0].index.pairsBySource.setInventories["3023a"]).toContain("4");
+  expect(postMessage.mock.calls[0][0].index.pairsBySource.elements["3023a"]).toBeUndefined();
   bytes[20] ^= 1;
   await scope.onmessage({ data: { id: 2, type: "load-evidence", bytes, sha256: manifest.sha256 } });
   expect(postMessage.mock.calls[1][0]).toMatchObject({ id: 2, error: "Farbnachweis-Prüfsumme stimmt nicht." });

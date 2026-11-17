@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "version": "2026-11-16.1",
+  "version": "2026-11-16.2",
   "snapshotDate": "2026-11-16",
-  "sha256": "dc044211d89d4a137b35adfb2f16a55b8f600a8cca592a7fc0a1dfb4916903ed",
-  "bytes": 286661,
-  "url": "catalog/part-colors-dc044211d89d4a137b35adfb2f16a55b8f600a8cca592a7fc0a1dfb4916903ed.bin",
+  "sha256": "2ccc4a16c1672dcbf7a3621f1b1b1b0ae8ff449bea1b6ac1cd1d8fbb6ce3e2e0",
+  "bytes": 816631,
+  "url": "catalog/part-colors-2ccc4a16c1672dcbf7a3621f1b1b1b0ae8ff449bea1b6ac1cd1d8fbb6ce3e2e0.bin",
   "sources": {
     "elements": {
       "url": "https://cdn.rebrickable.com/media/downloads/elements.csv.gz",
@@ -77,11 +77,66 @@
         "is_export_id",
         "is_import_id"
       ]
+    },
+    "sets": {
+      "url": "https://cdn.rebrickable.com/media/downloads/sets.csv.gz",
+      "sha256": "90b0e595f956317694e07e0f28d39c9ed62c8c383dcde2df0af1eaa34210bd0e",
+      "decodedSha256": "29343de04464aa25becb76aaf7b431155aa0f167159bdb81f5f811452fbcba5a",
+      "rows": 28616,
+      "bytes": 523583,
+      "columns": [
+        "set_num",
+        "name",
+        "year",
+        "theme_id",
+        "num_parts",
+        "img_url"
+      ]
+    },
+    "minifigs": {
+      "url": "https://cdn.rebrickable.com/media/downloads/minifigs.csv.gz",
+      "sha256": "27afd9a0e96e2f9704c057975eaad0df5761a8582ace7e7e8c7c304d4db07bea",
+      "decodedSha256": "94cf9603124d48c56e409af61801525f8ad7c187b95dfa872bf949dfa32c7d3a",
+      "rows": 17367,
+      "bytes": 304620,
+      "columns": [
+        "fig_num",
+        "name",
+        "num_parts",
+        "img_url"
+      ]
+    },
+    "inventories": {
+      "url": "https://cdn.rebrickable.com/media/downloads/inventories.csv.gz",
+      "sha256": "7f8aa66dbc6197faed3ec5886c34431a99a99cd98b054583dd63e3d7f27e4ad1",
+      "decodedSha256": "8b739ca2827c7626b76dc01abf73c565d3ef5ad90599cd951a229be585619fba",
+      "rows": 47938,
+      "bytes": 267796,
+      "columns": [
+        "id",
+        "version",
+        "set_num"
+      ]
+    },
+    "inventory_parts": {
+      "url": "https://cdn.rebrickable.com/media/downloads/inventory_parts.csv.gz",
+      "sha256": "4adf5c1406c66abfab1a0ed4d5cfd9e5ba9f71ccfefb6a8439a1ca89167a9511",
+      "decodedSha256": "19b96e2956c2f53438f7dd3058a0c82c2db877c133681b87b01704087507e949",
+      "rows": 1573672,
+      "bytes": 14258632,
+      "columns": [
+        "inventory_id",
+        "part_num",
+        "color_id",
+        "quantity",
+        "is_spare",
+        "img_url"
+      ]
     }
   },
   "coverage": {
-    "parts": 47883,
-    "pairs": 89136,
+    "parts": 63599,
+    "pairs": 110281,
     "excludedUnknownColorRows": 0,
     "excludedMissingPartRows": [
       [
@@ -89,11 +144,45 @@
         "21921pr0001",
         "19"
       ]
-    ]
+    ],
+    "bySource": {
+      "elements": {
+        "parts": 47883,
+        "pairs": 89136,
+        "additionalPairsBeyondElements": 0
+      },
+      "setInventories": {
+        "parts": 43058,
+        "pairs": 82324,
+        "additionalPairsBeyondElements": 19750
+      },
+      "minifigInventories": {
+        "parts": 22694,
+        "pairs": 27598,
+        "additionalPairsBeyondElements": 1605
+      }
+    },
+    "acceptedInventoryRows": {
+      "setInventories": 1490589,
+      "minifigInventories": 83029
+    },
+    "excludedInventoryRows": {
+      "unknownColorRows": 2,
+      "missingPartRows": 0,
+      "missingOwnerRows": 52
+    },
+    "inventoriesWithoutOfficialOwner": [
+      {
+        "inventoryId": "242240",
+        "owner": "5008864-1",
+        "version": "1"
+      }
+    ],
+    "additionalPairsBeyondElements": 21145
   },
-  "attribution": "Element and mapping data sourced from Rebrickable and its community (https://rebrickable.com/downloads/).",
+  "attribution": "Catalog element, official set/minifigure inventory and mapping data sourced from Rebrickable and its community (https://rebrickable.com/downloads/).",
   "termsUrl": "https://rebrickable.com/terms/",
   "termsReviewed": "2026-11-16",
   "license": "Rebrickable catalog use permission, terms sections 5.1 and 5.3; not a Creative Commons license.",
-  "scope": "Observed element part-color pairs only; not BrickLink stock, prices, or exhaustive historical availability. No MOCs, images, geometry or Studio resources."
+  "scope": "Observed element and official set/minifigure inventory part-color pairs only; includes positive-quantity spare rows and all published inventory versions. Not BrickLink stock, prices, or exhaustive historical availability. No MOCs, images, geometry or Studio resources."
 }
