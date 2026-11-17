@@ -13,6 +13,9 @@ import { importInternal, exportInternal } from "./internal/adapter";
 import { getImportPartFailures } from "./import-failures";
 import manifest from "./geometry-manifest.json";
 import { prepareLibraryPart } from "../editor/ldraw-editing";
+import { acquireThumbnailGeometry } from "../parts/thumbnails/acquire";
+import { cachedThumbnailSource } from "../parts/thumbnails/snapshot-source";
+import { thumbnailModel } from "../parts/thumbnails/model";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const licensed = (body = "3 16 0 0 0 20 0 0 0 20 0") =>
@@ -41,6 +44,23 @@ beforeEach(async () => { await builderDatabase.open(); });
 afterEach(async () => { vi.unstubAllGlobals(); vi.restoreAllMocks(); await builderDatabase.delete(); });
 
 describe("approved recursive acquisition", () => {
+  it("loads a catalog preview with validated dependencies and renders its stored geometry offline", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", serve({
+      "parts/catalog-preview.dat": licensed("1 16 0 0 0 1 0 0 0 1 0 0 0 1 preview-child.dat"),
+      "p/preview-child.dat": licensed(),
+    }, calls));
+    await acquireThumbnailGeometry("catalog-preview", new AbortController().signal);
+    expect(calls).toContain("parts/catalog-preview.dat");
+    expect(calls).toContain("p/preview-child.dat");
+    const cached = await cachedThumbnailSource("catalog-preview");
+    expect(cached).toBeDefined();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Offline")));
+    const model = await thumbnailModel(cached!.part, cached!.revision, new AbortController().signal);
+    expect(compilePart(model, cached!.part.file, "4").length).toBeGreaterThan(0);
+    await acquireThumbnailGeometry("catalog-preview", new AbortController().signal);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   const inventoryPart = (ldrawId: string) => ({
     id: `inventory:${ldrawId}`, packageId: "catalog", ldrawId, name: ldrawId,
     category: "Teileliste", keywords: [], file: `parts/${ldrawId}.dat`,
