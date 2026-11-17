@@ -28,6 +28,12 @@ it("automatically shows offline parts, bounds rendered results, filters categori
     await vi.waitFor(async () => {
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
       expect(host.querySelectorAll(".plib-part")).toHaveLength(40);
+    const searchInput = host.querySelector('[data-testid="input-search-library"]')!;
+    const detailsHeading = host.querySelector("#plib-title")!;
+    const catalogResults = host.querySelector('[aria-label="Gesamtkatalog-Treffer"]') ??
+      host.querySelector(".plib-catalog-note")!;
+    expect(Boolean(searchInput.compareDocumentPosition(detailsHeading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(catalogResults.compareDocumentPosition(detailsHeading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     }, { timeout: 15_000 });
     const more = Array.from(host.querySelectorAll("button")).find(button => button.textContent?.includes("Weitere Teile"))!;
     await act(async () => more.click());

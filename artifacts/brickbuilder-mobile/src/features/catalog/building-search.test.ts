@@ -41,3 +41,23 @@ it("matches touch-friendly dimension searches with or without spaces and multipl
   expect(searchCatalogPage(dimensions, "cone 1x1", "parts").total).toBe(1);
   expect(searchCatalogPage(dimensions, "cone 1×1", "parts").total).toBe(1);
 });
+
+it("filters unbuildable identities before building pagination without changing the metadata inspector", () => {
+  const filtered = {
+    ...data, parts: [
+      ...Array.from({ length: 45 }, (_, i) => [`unsupported${i}`, `Cone unsupported ${i}`, "20", "Plastic"]),
+      ...data.parts,
+    ],
+    part_mappings: [
+      ...data.part_mappings,
+      ["unsupported0", "LD", "3001", "True", "False"],
+      ["unsupported1", "LD", "../unsafe", "True", "True"],
+    ],
+  };
+  const pages = [0, 40, 80].map(offset => searchCatalogPage(filtered, "cone", "parts", offset, 40, "", true));
+  expect(pages.map(page => page.total)).toEqual([85, 85, 85]);
+  expect(pages.map(page => page.results.length)).toEqual([40, 40, 5]);
+  expect(new Set(pages.flatMap(page => page.results.map(row => row.id))).size).toBe(85);
+  expect(pages.flatMap(page => page.results).every(row => row.id.startsWith("rb"))).toBe(true);
+  expect(searchCatalogPage(filtered, "cone", "parts").total).toBe(131);
+});

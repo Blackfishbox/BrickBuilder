@@ -8,7 +8,8 @@ import type { CatalogSearchResult } from "../catalog/client";
 const search = vi.hoisted(() => vi.fn());
 vi.mock("../catalog/client", () => ({ searchBuildingCatalog: search }));
 vi.mock("../inventory/InventoryThumbnail", () => ({
-  default: ({ ldrawId }: { ldrawId: string }) => <span data-testid={`cached-preview-${ldrawId}`} />,
+  default: ({ ldrawId, acquireMissing }: { ldrawId: string; acquireMissing: boolean }) =>
+    <span data-testid={`cached-preview-${ldrawId}`} data-acquire={String(acquireMissing)} />,
 }));
 let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement;
@@ -49,7 +50,7 @@ it("finds nonbundled parts and hands their exact LDraw identity to the existing 
   expect(fetch).not.toHaveBeenCalled();
 });
 
-it("retains unknown records, rejects output-only IDs and requires an explicit ambiguous choice", async () => {
+it("hides unusable records, rejects output-only IDs and requires an explicit ambiguous choice", async () => {
   const ambiguous = { ...mapped, id: "ambiguous", mappings: [
     ["ambiguous", "LD", "3001", "True", "True"], ["ambiguous", "LD", "3002", "True", "True"],
     ["ambiguous", "LD", "output-only", "True", "False"], ["ambiguous", "LD", "../bad", "True", "True"],
@@ -58,10 +59,11 @@ it("retains unknown records, rejects output-only IDs and requires an explicit am
   search.mockResolvedValue({ results: [ambiguous, { id: "unknown", name: "Cone without mapping", mappings: [] }], total: 2 });
   const select = vi.fn();
   await render("cone", select);
-  await settle(() => expect(host.querySelectorAll(".plib-catalog-row")).toHaveLength(2));
+  await settle(() => expect(host.querySelectorAll(".plib-catalog-row")).toHaveLength(1));
   const button = host.querySelector<HTMLButtonElement>('[data-testid="button-catalog-build-ambiguous"]')!;
   expect(button.disabled).toBe(true);
-  expect(host.querySelector<HTMLButtonElement>('[data-testid="button-catalog-build-unknown"]')!.disabled).toBe(true);
+  expect(host.querySelector('[data-testid="button-catalog-build-unknown"]')).toBeNull();
+  expect(host.textContent).not.toContain("Cone without mapping");
   await act(async () => {
     const input = host.querySelector("select")!;
     input.value = "3001"; input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -70,6 +72,37 @@ it("retains unknown records, rejects output-only IDs and requires an explicit am
   expect(host.textContent).toContain("Offline installiert");
   await act(async () => button.click());
   expect(select).toHaveBeenCalledWith(expect.objectContaining({ ldrawId: "3001" }));
+});
+
+it("shows pending placement and retryable errors directly on the clicked row", async () => {
+  let reject!: (error: Error) => void;
+  const select = vi.fn().mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }))
+    .mockResolvedValueOnce(true);
+  search.mockResolvedValue({ results: [mapped], total: 1 });
+  await render("cone", select);
+  await settle(() => expect(host.querySelector('[data-testid="button-catalog-build-rb-cone"]')).not.toBeNull());
+  const button = host.querySelector<HTMLButtonElement>('[data-testid="button-catalog-build-rb-cone"]')!;
+  await act(async () => button.click());
+  expect(button.disabled).toBe(true);
+  expect(host.querySelector<HTMLElement>('[data-testid="cached-preview-99999"]')?.dataset.acquire).toBe("false");
+  expect(button.closest("li")?.querySelector('[role="status"]')?.textContent).toContain("geladen und geprüft");
+  await act(async () => reject(new Error("Online-Nachladen ist deaktiviert.")));
+  expect(button.closest("li")?.querySelector('[role="alert"]')?.textContent).toContain("deaktiviert");
+  expect(button.disabled).toBe(false);
+  expect(host.querySelector<HTMLElement>('[data-testid="cached-preview-99999"]')?.dataset.acquire).toBe("true");
+  await act(async () => button.click());
+  expect(select).toHaveBeenCalledTimes(2);
+  expect(button.closest("li")?.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("shows the editor's specific error when placement returns false", async () => {
+  search.mockResolvedValue({ results: [mapped], total: 1 });
+  await act(async () => root!.render(<CatalogPartSearch query="cone" category="" installedIds={new Set()}
+    color="#B40000" colorCode="4" loading={false} selectionError="Quelle: HTTP 403"
+    onSelect={async () => false} />));
+  await settle(() => expect(host.querySelector('[data-testid="button-catalog-build-rb-cone"]')).not.toBeNull());
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="button-catalog-build-rb-cone"]')!.click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("LDraw 99999: Quelle: HTTP 403");
 });
 
 it("paginates metadata, rejects late old results and recovers from catalog errors", async () => {

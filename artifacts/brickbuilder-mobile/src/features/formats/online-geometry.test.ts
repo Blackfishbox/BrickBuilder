@@ -44,6 +44,11 @@ beforeEach(async () => { await builderDatabase.open(); });
 afterEach(async () => { vi.unstubAllGlobals(); vi.restoreAllMocks(); await builderDatabase.delete(); });
 
 describe("approved recursive acquisition", () => {
+  it("preserves the actual source failure in the visible preview error", async () => {
+    vi.stubGlobal("fetch", serve({ "parts/catalog-blocked.dat": 403 }));
+    await expect(acquireThumbnailGeometry("catalog-blocked", new AbortController().signal))
+      .rejects.toThrow("HTTP 403");
+  });
   it("loads a catalog preview with validated dependencies and renders its stored geometry offline", async () => {
     const calls: string[] = [];
     vi.stubGlobal("fetch", serve({

@@ -14,8 +14,9 @@ name prefixes as the curated category packages; without a filter, all matching
 catalog records, including minifigure patterns and unmapped records, remain
 discoverable.
 
-Only explicit incoming LDraw mappings become selectable geometries. Multiple
-LDraw references require a manual choice; absent mappings are shown but not
+Only records with explicit incoming, path-safe LDraw mappings are shown in building
+search. Filtering happens before pagination and counts. Multiple
+LDraw references require a manual choice; absent mappings are hidden and never
 guessed from similar Rebrickable or BrickLink numbers. Source identities stay
 separately labelled. Parts unavailable in the installed packages use the
 existing preparation/import path, which checks local geometry and resolves
@@ -38,7 +39,25 @@ library or silently expand project inventory quantities. Building from this gene
 with the existing free LDraw tab; inventory-list quantities apply only to parts
 placed from the inventory tab.
 
-In the pinned catalog used during implementation, `cone` matches 165 source
-records and 58 incoming LDraw mapping rows. Those figures are metadata coverage,
-not a promise of 165 distinct buildable parts, current BrickLink availability,
-prices, or successful rendering of all mapped geometries.
+In the pinned catalog, `cone` matches 165 source records, of which 57 have
+usable incoming LDraw identities (58 mapping rows). Building search shows those
+57 records; the separate mapping inspector still includes all metadata.
+Mappings do not guarantee current source availability or successful rendering.
+Network/permission errors remain visible with retry rather than hiding otherwise
+valid parts. Placement errors appear beside the clicked result; preview errors
+are readable text, not only hover tooltips.
+Background preview acquisition pauses while a part is explicitly being prepared
+for building, cancelling queued preview work instead of competing with that action.
+
+The real `3942a` file and its recursive closure can be checked through the
+operator's pinned archive API with the optional integration test:
+
+```sh
+BRICKBUILDER_REPRO_API=https://blackfishbox.de/BrickBuilder/api \
+  pnpm --filter @workspace/brickbuilder-mobile exec vitest run \
+  src/features/formats/catalog-source-repro.test.ts
+```
+
+This is an explicit network check, skipped in ordinary offline test runs.
+Package, catalog, connection and license information follows the building search
+and all its result pages instead of preceding them.
