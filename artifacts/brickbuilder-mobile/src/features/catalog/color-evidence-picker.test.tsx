@@ -64,5 +64,5 @@ it("offers an intersection for mixed selections and locks all inventory recolori
   expect(red.disabled).toBe(true);
   await act(async () => red.click());
   expect(onChange).not.toHaveBeenCalled();
-  expect(container.textContent).toContain("Teilelistenfarbe fest vorgegeben");
+  expect(container.textContent).toContain("Farbe ist für diese Auswahl festgelegt");
 });
