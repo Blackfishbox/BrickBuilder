@@ -499,7 +499,12 @@ function App() {
                   selectedColorCode={editor.selectedColorCode}
                   paletteRevision={catalog.status}
                   loading={editor.partLoading}
-                  onSelect={part => { void editor.selectLibraryPart(part).then(success => { if (success) setPartsOpen(false); }); }}
+                  selectionError={editor.partError}
+                  onSelect={async part => {
+                    const success = await editor.selectLibraryPart(part);
+                    if (success) setPartsOpen(false);
+                    return success;
+                  }}
                 />
               </div>
             )}
