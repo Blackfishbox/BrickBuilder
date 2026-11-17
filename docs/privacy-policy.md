@@ -26,7 +26,7 @@ Before store publication:
 Geometry downloads are off by default. The Android privacy dialog records a
 device-local opt-in; withdrawal stops subsequent requests, not packets already
 sent. Missing geometry and dependency/legal file paths are requested from
-`https://blackfishbox.de/BrickBuilder/api/ldraw/file`. No project upload, local
+`https://brickbuilder.blackfishbox.de/api/ldraw/file`. No project upload, local
 filename, quantity, color or model name is sent. Part requests can nevertheless
 reveal model interests. Downloaded geometry stays in the existing verified local
 cache; bundled geometry and offline editing remain available without consent.
