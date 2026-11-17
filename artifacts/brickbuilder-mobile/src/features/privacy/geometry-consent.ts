@@ -1,4 +1,4 @@
-export const GEOMETRY_API = "https://blackfishbox.de/BrickBuilder/api";
+export const GEOMETRY_API = "https://brickbuilder.blackfishbox.de/api";
 const KEY = "brickbuilder.remote-geometry.v1";
 export const isAndroidBuild = () => import.meta.env.VITE_NATIVE_ANDROID === "true";
 /** Fail closed when device storage is unavailable; no network on first launch. */
