@@ -26,7 +26,7 @@ Before store publication:
 Geometry downloads are off by default. The Android privacy dialog records a
 device-local opt-in; withdrawal stops subsequent requests, not packets already
 sent. Missing geometry and dependency/legal file paths are requested from
-`https://blackfishbox.de/BrickBuilder/api/ldraw/file`. No project upload, local
+`https://brickbuilder.blackfishbox.de/api/ldraw/file`. No project upload, local
 filename, quantity, color or model name is sent. Part requests can nevertheless
 reveal model interests. Downloaded geometry stays in the existing verified local
 cache; bundled geometry and offline editing remain available without consent.
@@ -47,7 +47,10 @@ network-enabled release, including IP addresses/technical data.
 
 Replace the HTML served at the existing `/brickbuilder-datenschutz` URL with
 `artifacts/brickbuilder-mobile/public/privacy.html`; updating a Git branch does
-not update the copy already installed on the Ubuntu server.
+not update the copy already installed on the Ubuntu server. The repository
+template contains placeholders for the controller's name and postal address.
+Preserve the completed values when updating the hosted copy; for a URL-only
+change, edit the existing published page instead of copying the raw template.
 
 User-selected cloud document providers and share targets can transfer exported
 files independently. The native exporter leaves files in the app cache until
