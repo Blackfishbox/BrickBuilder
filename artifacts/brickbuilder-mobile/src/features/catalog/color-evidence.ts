@@ -1,25 +1,30 @@
 /** Observations, never claims about stock or physically impossible colors. */
+export const evidenceSources = ["elements", "setInventories", "minifigInventories"] as const;
+export type EvidenceSource = typeof evidenceSources[number];
+type ObservedPairs = Record<string, string[]>;
 export interface ColorEvidenceData {
-  schema: 1;
+  schema: 1 | 2;
   version: string;
   snapshotDate: string;
   ldParts: [string, string][];
   ldColors: [string, string, string, string][];
-  pairs: Record<string, string[]>;
+  pairs: ObservedPairs;
+  pairsBySource?: Record<EvidenceSource, ObservedPairs>;
 }
 export interface ColorEvidenceIndex {
   version: string;
   snapshotDate: string;
   parts: Record<string, string[]>;
   colors: Record<string, string[]>;
-  pairs: Record<string, string[]>;
+  pairs: ObservedPairs;
+  pairsBySource: Record<EvidenceSource, ObservedPairs>;
 }
 const key = (id: string) => id.toLowerCase().replace(/\.dat$/i, "");
 const own = <T>(record: Record<string, T>, id: string): T | undefined =>
   Object.hasOwn(record, id) ? record[id] : undefined;
 
 export function indexColorEvidence(data: ColorEvidenceData): ColorEvidenceIndex {
-  if (data.schema !== 1 || !data.version || !/^\d{4}-\d{2}-\d{2}$/.test(data.snapshotDate) ||
+  if (![1, 2].includes(data.schema) || !data.version || !/^\d{4}-\d{2}-\d{2}$/.test(data.snapshotDate) ||
       !Array.isArray(data.ldParts) || !Array.isArray(data.ldColors) ||
       !data.pairs || Array.isArray(data.pairs) || typeof data.pairs !== "object") {
     throw new Error("Ungültiges Farbnachweisformat.");
@@ -48,13 +53,39 @@ export function indexColorEvidence(data: ColorEvidenceData): ColorEvidenceIndex 
       if (!values.includes(ld)) values.push(ld);
     }
   }
-  for (const [rb, values] of Object.entries(data.pairs)) {
-    if (!rb || !Array.isArray(values) || !values.length || values.some(v => typeof v !== "string" || !/^\d+$/.test(v))) {
-      throw new Error("Ungültige Teil-Farb-Kombination.");
+  const validatePairs = (pairs: ObservedPairs) => {
+    if (!pairs || typeof pairs !== "object" || Array.isArray(pairs)) throw new Error("Ungültige Farbnachweisquelle.");
+    for (const [rb, values] of Object.entries(pairs)) {
+      if (!rb || !Array.isArray(values) || !values.length || new Set(values).size !== values.length ||
+          values.some(v => typeof v !== "string" || !/^\d+$/.test(v))) {
+        throw new Error("Ungültige Teil-Farb-Kombination.");
+      }
+    }
+  };
+  validatePairs(data.pairs);
+  // Old frozen snapshots remain readable; new ones must prove every union pair.
+  const pairsBySource = data.schema === 1
+    ? { elements: data.pairs, setInventories: {}, minifigInventories: {} }
+    : data.pairsBySource;
+  if (!pairsBySource || Object.keys(pairsBySource).length !== evidenceSources.length ||
+      evidenceSources.some(source => !Object.hasOwn(pairsBySource, source))) {
+    throw new Error("Fehlende Farbnachweisquellen.");
+  }
+  const union = new Map<string, Set<string>>();
+  for (const source of evidenceSources) {
+    validatePairs(pairsBySource[source]);
+    for (const [part, colors] of Object.entries(pairsBySource[source])) {
+      const combined = union.get(part) ?? new Set<string>();
+      colors.forEach(color => combined.add(color));
+      union.set(part, combined);
     }
   }
+  if (union.size !== Object.keys(data.pairs).length || Object.entries(data.pairs).some(([part, colors]) =>
+    union.get(part)?.size !== colors.length || colors.some(color => !union.get(part)?.has(color)))) {
+    throw new Error("Widersprüchliche Herkunft der Farbnachweise.");
+  }
   for (const id of Object.keys(parts)) parts[id] = [...new Set(parts[id])];
-  return { version: data.version, snapshotDate: data.snapshotDate, parts, colors, pairs: data.pairs };
+  return { version: data.version, snapshotDate: data.snapshotDate, parts, colors, pairs: data.pairs, pairsBySource };
 }
 
 export type PartColorEvidence =

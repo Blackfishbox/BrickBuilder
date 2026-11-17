@@ -50,7 +50,9 @@ export default function EvidencedColorPicker({ palette, current, references, loc
       </div>)}
     </div>}
     <details className="color-evidence-status"><summary>Herkunft und Grenzen der Farbnachweise</summary>
-      <p>Rebrickable-Elementtabelle · {manifest.snapshotDate}. Beobachtete Kombinationen sind kein BrickLink-Lagerbestand,
+      <p>Rebrickable-Elementtabelle sowie öffentliche Inventare offizieller Sets und Minifiguren · {manifest.snapshotDate}.
+        Die Quellen werden getrennt erfasst; enthalten sind auch Ersatzteile und veröffentlichte Inventarversionen.
+        Beobachtete Kombinationen sind kein BrickLink-Lagerbestand,
         keine Preisangabe und kein vollständiger Nachweis aller jemals hergestellten Farben.
         Fehlender Nachweis bedeutet nicht „unmöglich“. Varianten werden nur über exakte, eindeutige LDraw-Zuordnungen verwendet.</p>
       <p>{manifest.attribution} {manifest.license}</p>
