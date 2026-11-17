@@ -20,7 +20,7 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
         </label>
         <p>Optional und standardmäßig aus. Beim Bauen oder Import werden nur fehlende
           LDraw-Dateipfade und Lizenztexte von {GEOMETRY_API} angefordert.
-          Dein Server erhält dabei deine IP-Adresse, Zeitpunkt und technische
+          Der Server erhält dabei deine IP-Adresse, Zeitpunkt und technische
           Verbindungsdaten; angefragte Teile können Rückschlüsse auf dein Modell erlauben.
           Projekte, Dateinamen und komplette Teilelisten werden nicht hochgeladen.
           Es können Mobilfunkkosten entstehen.</p>
