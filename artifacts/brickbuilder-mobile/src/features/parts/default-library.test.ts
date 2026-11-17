@@ -27,15 +27,15 @@ afterEach(async () => {
   await builderDatabase.delete();
 });
 
-it("initializes 300 additional physical roots offline, compiles every root and persists representative placements", async () => {
+it("initializes 357 additional physical roots offline, compiles every root and persists representative placements", async () => {
   const fetcher = assets();
   await Promise.all([ensureBundledPackages(), ensureBundledPackages()]);
   expect(fetcher).toHaveBeenCalledTimes(PART_PACKAGES.length);
   const parts = await searchLocalParts();
-  expect(parts).toHaveLength(312);
-  expect(new Set(parts.map(part => part.ldrawId)).size).toBe(312);
+  expect(parts).toHaveLength(369);
+  expect(new Set(parts.map(part => part.ldrawId)).size).toBe(369);
   const additions = parts.filter(part => part.packageId.startsWith("ldraw-default-"));
-  expect(additions).toHaveLength(300);
+  expect(additions).toHaveLength(357);
   expect(new Set(additions.map(part => part.category)).size).toBe(6);
   for (const manifest of PART_PACKAGES.filter(pkg => pkg.compression)) {
     const payload = validatePayload(JSON.parse(new TextDecoder().decode(gunzipSync(
@@ -71,7 +71,7 @@ it("initializes 300 additional physical roots offline, compiles every root and p
   fetcher.mockClear();
   await ensureBundledPackages();
   expect(await loadCurrentProject()).toMatchObject({ id: placed.id, imported: { instances: placed.imported!.instances } });
-  expect(await searchLocalParts()).toHaveLength(312);
+  expect(await searchLocalParts()).toHaveLength(369);
   expect(fetcher).not.toHaveBeenCalled();
 }, 120_000);
 
@@ -90,7 +90,7 @@ it("upgrades without deleting projects or separate packages and retries a failed
   expect(await builderDatabase.partPackages.get("independent-package")).toBeDefined();
   expect(await builderDatabase.libraryFiles.get("ldraw-bricks:parts/3001.dat")).toEqual(oldSource);
   expect(await builderDatabase.partPackages.get("ldraw-bricks")).toEqual(old);
-  expect(await searchLocalParts()).toHaveLength(312);
+  expect(await searchLocalParts()).toHaveLength(369);
 }, 60_000);
 
 it("rolls back a failed default-package write and leaves the previous project intact", async () => {
@@ -104,3 +104,31 @@ it("rolls back a failed default-package write and leaves the previous project in
   expect(await builderDatabase.partPackages.count()).toBe(0);
   expect(await loadCurrentProject()).toMatchObject({ id: project.id });
 });
+
+it("upgrades the previous 312-part distribution without replacing saved projects", async () => {
+  assets();
+  for (const manifest of PART_PACKAGES.filter(pkg => pkg.bundled)) {
+    if (manifest.compression !== "gzip") {
+      await installPackage(manifest.id);
+      continue;
+    }
+    const previousUrl = manifest.url.replace("2026-11-17", "2026-11-16");
+    const previous = JSON.parse(new TextDecoder().decode(gunzipSync(readFileSync(resolve("public", previousUrl)))));
+    await builderDatabase.libraryParts.bulkPut(previous.parts);
+    await builderDatabase.libraryFiles.bulkPut(previous.files.map((file: { path: string }) => ({
+      ...file, id: `${manifest.id}:${file.path}`, packageId: manifest.id,
+    })));
+    await builderDatabase.partPackages.put({ ...manifest, version: previous.version, installedAt: "2026-11-16" });
+  }
+  expect(await searchLocalParts()).toHaveLength(312);
+  const project = createEmptyDocument("Preserved during offline library upgrade");
+  await saveProject(project);
+  await ensureBundledPackages();
+  expect(await searchLocalParts()).toHaveLength(369);
+  expect(await loadCurrentProject()).toMatchObject({ id: project.id, name: project.name });
+  for (const manifest of PART_PACKAGES.filter(pkg => pkg.compression === "gzip")) {
+    expect(await builderDatabase.partPackages.get(manifest.id)).toMatchObject({
+      version: "2026-11-17", sha256: manifest.sha256,
+    });
+  }
+}, 60_000);

@@ -71,10 +71,29 @@ export function decodeCatalog(bytes: Uint8Array): CatalogData {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(unpacked));
 }
 export function searchCatalog(data: CatalogData, query: string, kind: "parts" | "colors") {
-  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  return searchCatalogPage(data, query, kind, 0, 60).results;
+}
+
+const buildingPrefixes: Record<string, string[]> = {
+  "Steine": ["Brick"], "Platten": ["Plate", "Baseplate"], "Fliesen": ["Tile"],
+  "Schrägsteine": ["Slope", "Wedge", "Wing", "Arch", "Cone"],
+  "Technik": ["Technic", "Bar", "Hinge", "Bracket"],
+  "Fahrzeug & Details": ["Car", "Wheel", "Tyre", "Door", "Window", "Panel", "Windscreen", "Glass", "Tail", "Container", "Fence", "Support", "Vehicle", "Plant"],
+};
+
+/** Page metadata in the worker; never load geometry while searching. */
+export function searchCatalogPage(data: CatalogData, query: string, kind: "parts" | "colors", offset = 0, limit = 40, category = "") {
+  const normalize = (value: string) => value.toLowerCase().replaceAll("×", "x").replace(/(\d+)\s*x\s*(\d+)/g, "$1x$2");
+  const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
   const rows = data[kind];
   const external = kind === "parts" ? data.part_mappings : data.color_mappings;
-  const matches = new Set(external.filter(row => terms.every(term => row[2].toLowerCase().includes(term))).map(row => row[0]));
-  return rows.filter(row => matches.has(row[0]) || terms.every(term => `${row[0]} ${row[1]}`.toLowerCase().includes(term)))
-    .slice(0, 60).map(row => ({ id: row[0], name: row[1], mappings: external.filter(mapping => mapping[0] === row[0]) }));
+  const matches = new Set(external.filter(row => terms.every(term => normalize(row[2]).includes(term))).map(row => row[0]));
+  const found = rows.filter(row => (!category || buildingPrefixes[category]?.includes(row[1].split(/\s+/)[0])) &&
+    (matches.has(row[0]) || terms.every(term => normalize(`${row[0]} ${row[1]}`).includes(term))));
+  const start = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+  const size = Number.isFinite(limit) ? Math.min(60, Math.max(1, Math.floor(limit))) : 40;
+  const results = found.slice(start, start + size).map(row => ({ id: row[0], name: row[1], mappings: [] as string[][] }));
+  const byId = new Map(results.map(row => [row.id, row]));
+  for (const mapping of external) byId.get(mapping[0])?.mappings.push(mapping);
+  return { results, total: found.length };
 }

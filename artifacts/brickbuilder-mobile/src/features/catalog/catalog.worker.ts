@@ -1,4 +1,4 @@
-import { decodeCatalog, indexCatalog, searchCatalog, type CatalogData } from "./data";
+import { decodeCatalog, indexCatalog, searchCatalog, searchCatalogPage, type CatalogData } from "./data";
 import { parseInventory } from "../inventory/import";
 import { resolveInventory } from "./inventory-resolution";
 import { gunzipSync } from "fflate";
@@ -30,6 +30,8 @@ self.onmessage = async (event: MessageEvent) => {
       if (type === "inventory") {
         const inventory = event.data.inventory ?? parseInventory(event.data.text, event.data.name);
         self.postMessage({ id, preview: resolveInventory(data, inventory) });
+      } else if (type === "search-page") {
+        self.postMessage({ id, ...searchCatalogPage(data, query, "parts", event.data.offset, 40, event.data.category) });
       } else self.postMessage({ id, results: searchCatalog(data, query, kind) });
     }
   } catch (error) { self.postMessage({ id, error: error instanceof Error ? error.message : String(error) }); }
