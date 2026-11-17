@@ -36,19 +36,67 @@ it("requests only the normalized file path on the fixed HTTPS server", async () 
   await expect(requestGeometry("../secret")).rejects.toThrow();
   expect(native).toHaveBeenCalledOnce();
 });
-it("shows the requested target and app origin when a browser fetch is blocked", async () => {
+it("retries a blocked browser fetch through XHR and keeps integrity headers", async () => {
   setRemoteGeometryEnabled(true);
   vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
   const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
   vi.stubGlobal("fetch", fetchMock);
+  class MockXhr {
+    static instance: MockXhr;
+    response = new TextEncoder().encode("geometry").buffer;
+    status = 200;
+    statusText = "OK";
+    responseType = "";
+    timeout = 0;
+    withCredentials = false;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    ontimeout: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    open = vi.fn();
+    send = vi.fn(() => queueMicrotask(() => this.onload?.()));
+    getAllResponseHeaders = vi.fn(() => "X-LDraw-SHA256: abc\r\nX-LDraw-Snapshot: official-live-v1\r\n");
+    constructor() { MockXhr.instance = this; }
+  }
+  vi.stubGlobal("XMLHttpRequest", MockXhr as unknown as typeof XMLHttpRequest);
+  const expected = new URL("/api/ldraw/file?path=parts%2F18591.dat", window.location.href).href;
+
+  const response = await requestGeometry("parts/18591.dat");
+
+  expect(response.status).toBe(200);
+  expect(response.headers.get("x-ldraw-sha256")).toBe("abc");
+  expect(await response.text()).toBe("geometry");
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(MockXhr.instance.open).toHaveBeenCalledWith("GET", expected, true);
+  expect(MockXhr.instance.responseType).toBe("arraybuffer");
+  expect(MockXhr.instance.withCredentials).toBe(false);
+});
+it("reports both browser transports and request context on failure", async () => {
+  setRemoteGeometryEnabled(true);
+  vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+  class FailedXhr {
+    status = 0;
+    statusText = "";
+    responseType = "";
+    timeout = 0;
+    withCredentials = false;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    ontimeout: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    open = vi.fn();
+    send = vi.fn(() => queueMicrotask(() => this.onerror?.()));
+    getAllResponseHeaders = vi.fn(() => "");
+  }
+  vi.stubGlobal("XMLHttpRequest", FailedXhr as unknown as typeof XMLHttpRequest);
   const target = new URL("/api/ldraw/file?path=parts%2F18591.dat", window.location.href);
   const frame = window.top === window.self ? "top-level" : "embedded";
   const serviceWorker = navigator.serviceWorker?.controller?.scriptURL ?? "none";
 
   await expect(requestGeometry("parts/18591.dat")).rejects.toThrow(
-    `Failed to fetch. API-Ziel: ${target.origin}${target.pathname}${target.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
+    `Failed to fetch; XHR: XHR-Netzwerkfehler. API-Ziel: ${target.origin}${target.pathname}${target.search}; App-Origin: ${window.location.origin}; Frame: ${frame}; Service Worker: ${serviceWorker}`,
   );
-  expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: "same-origin" }));
 });
 it("shows the fixed server target when a native request cannot connect", async () => {
   setRemoteGeometryEnabled(true);
