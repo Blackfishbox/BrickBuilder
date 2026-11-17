@@ -33,7 +33,7 @@ afterEach(async () => {
   vi.unstubAllGlobals(); vi.clearAllMocks();
 });
 
-it("handles failed/cancelled loading, fast taps, stale source colors, catalog exit and project switching", async () => {
+it("handles loading, editable inventory colors, fast taps, stock, catalog exit and project switching", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
   await builderDatabase.open();
@@ -78,14 +78,18 @@ it("handles failed/cancelled loading, fast taps, stale source colors, catalog ex
   await act(async () => editor.setSelectedColor("#1E5AA8", "1"));
   await act(async () => { for (let i = 0; i < 10; i++) editor.place({ x: i, y: 0, z: 0 }); });
   expect(editor.brickCount).toBe(1);
-  expect(editor.imported!.instances[0].colorCode).toBe("4");
+  expect(editor.imported!.instances[0].colorCode).toBe("1");
   expect(allocatedCounts(editor.document).get(choice.rowId)).toBe(1);
   expect(visibleRow()).toBeNull();
   expect(container.textContent).toContain("Alle Teile dieser Liste sind verbaut");
   expect(editor.partError).toContain("aufgebraucht");
-  await act(async () => editor.setSelectedColor("#1E5AA8", "1"));
-  // Allocated inventory colors are fixed, not a recolorable palette suggestion.
-  expect(editor.imported!.instances[0].colorCode).toBe("4");
+  await act(async () => editor.setSelectedColor("#FAC80A", "14"));
+  expect(editor.imported!.instances[0].colorCode).toBe("14");
+  await act(async () => editor.undo());
+  expect(editor.imported!.instances[0].colorCode).toBe("1");
+  await act(async () => editor.redo());
+  expect(editor.imported!.instances[0].colorCode).toBe("14");
+  expect(editor.document.inventory!.rows[0].colorId).toBe("5");
   expect(allocatedCounts(editor.document).get(choice.rowId)).toBe(1);
   await act(async () => editor.deleteSelected());
   expect(allocatedCounts(editor.document).size).toBe(0);

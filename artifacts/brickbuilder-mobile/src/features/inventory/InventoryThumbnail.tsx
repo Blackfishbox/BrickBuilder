@@ -4,6 +4,7 @@ import { ImageOff, LoaderCircle } from "lucide-react";
 import { builderDatabase } from "@/storage/database";
 import PartThumbnail from "../parts/PartThumbnail";
 import type { LibraryPart } from "../parts/types";
+import { cachedThumbnailSource } from "../parts/thumbnails/snapshot-source";
 
 type LocalPart = { ldrawId: string; part?: LibraryPart; revision?: string; error?: string };
 
@@ -19,6 +20,8 @@ export default function InventoryThumbnail({ ldrawId, color, colorCode }: {
         const pkg = await builderDatabase.partPackages.get(part.packageId);
         if (pkg) return { ldrawId, part, revision: `${pkg.version}:${pkg.sha256}` };
       }
+      const cached = await cachedThumbnailSource(ldrawId);
+      if (cached) return { ldrawId, ...cached };
       return { ldrawId, error: "Keine lokal installierte Vorschaugeometrie verfügbar." };
     }).subscribe({
       next: setLocal,
