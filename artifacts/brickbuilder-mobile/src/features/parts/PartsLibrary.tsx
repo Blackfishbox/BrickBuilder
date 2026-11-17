@@ -5,6 +5,7 @@ import type { InstalledPackage, LibraryPart } from './types';
 import './parts-library.css';
 import CatalogPanel from "../catalog/CatalogPanel";
 import PartThumbnail from "./PartThumbnail";
+import CatalogPartSearch from "./CatalogPartSearch";
 
 type PkgState = { status: 'idle' | 'pending' | 'error'; error?: string };
 const CATEGORIES = ['', 'Steine', 'Platten', 'Fliesen', 'Schrägsteine', 'Technik', 'Fahrzeug & Details'];
@@ -37,6 +38,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
   const [results, setResults] = useState<LibraryPart[] | null>(null);
   const [searchError, setSearchError] = useState('');
   const [searchNonce, setSearchNonce] = useState(0);
+  const [installedIds, setInstalledIds] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -52,7 +54,11 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
     try {
       await ensureBundledPackages();
       const list = await listInstalledPackages();
-      if (mountedRef.current) setInstalled(list);
+      const parts = await searchLocalParts();
+      if (mountedRef.current) {
+        setInstalled(list);
+        setInstalledIds(new Set(parts.map(part => part.ldrawId)));
+      }
     } catch (error) {
       if (mountedRef.current) {
         setInstalled([]);
@@ -219,10 +225,10 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
           <Search size={16} />
           <input
             type="search"
-            placeholder="Name, LDraw-Nummer oder Kategorie"
+            placeholder="Name, LDraw- oder BrickLink-Nummer"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Lokale LDraw-Teile durchsuchen"
+            aria-label="Lokale Teile und Gesamtkatalog durchsuchen"
             data-testid="input-search-library"
           />
           {query && <button type="button" onClick={() => setQuery('')} aria-label="Suche leeren"><X size={14} /></button>}
@@ -241,6 +247,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
         </div>
       </div>
 
+      <p className="plib-catalog-note">Lokal installierte Teile</p>
       <div className="plib-results" aria-live="polite" aria-busy={results === null}>
         {searchError ? (
           <div className="plib-alert" role="alert">
@@ -289,6 +296,8 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
           Weitere Teile zeigen ({visibleCount} von {results.length})
         </button>
       )}
+      <CatalogPartSearch query={query} category={category} installedIds={installedIds}
+        color={selectedColor} colorCode={selectedColorCode} loading={loading} onSelect={onSelect} />
     </section>
   );
 }
