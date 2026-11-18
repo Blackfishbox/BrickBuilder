@@ -52,6 +52,7 @@ it("commits inventory snapping once and preserves exact height through manual ed
   }
   const base = model("1 4 4.6 -24 3.4 1 0 0 0 1 0 0 0 1 3001.dat");
   await act(async () => { await editor.importProject({ ...createEmptyDocument(), imported: base }); });
+  expect(editor.toolMode).toBe("view");
   const inventory = parseInventory("part_id,color_id,quantity\n3022,5,1", "self-authored.csv");
   await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
   const prepared: PreparedPart = { bottom: -0.4, part: {
@@ -59,6 +60,7 @@ it("commits inventory snapping once and preserves exact height through manual ed
   }, model: model("1 4 0 0 0 1 0 0 0 1 0 0 0 1 3022.dat") };
   vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
   await act(async () => { await editor.selectInventoryPart({ listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3022", colorCode: "4" }); });
+  expect(editor.toolMode).toBe("build");
   await act(async () => editor.place({ x: 0.28, y: 1.4, z: 0.2 }));
   const placed = editor.imported!.instances[1], id = placed.id;
   expect(placed.matrix[3]).toBeCloseTo(4.6);

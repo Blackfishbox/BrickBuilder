@@ -75,7 +75,11 @@ export function useBuilder() {
   const [partError, setPartError] = useState<string | null>(null);
   const partControllerRef = useRef<AbortController | null>(null);
   useEffect(() => () => partControllerRef.current?.abort(), []);
-  const [toolMode, setToolMode] = useState<ToolMode>("build");
+  const [toolMode, setToolModeState] = useState<ToolMode>("view");
+  const setToolMode = useCallback((mode: ToolMode) => {
+    if (mode === "view") setSelectedId(null);
+    setToolModeState(mode);
+  }, []);
   const [isReady, setIsReady] = useState(false);
   useEffect(() => {
     if (!isReady || catalog.status !== "ready" || !historyRef.current.document.imported) return;
@@ -132,7 +136,7 @@ export function useBuilder() {
       if (stored?.imported) await catalogReady;
       if (stored) {
         replaceDocument(stored.imported ? { ...stored, imported: refreshedCatalogModel(stored.imported) } : stored, true);
-        if (stored.imported) setToolMode("select");
+        setToolMode("view");
         setSavedAt(stored.updatedAt);
         restored = true;
       } else {
@@ -522,7 +526,7 @@ export function useBuilder() {
       replaceDocument(refreshed, true);
       setSavedAt(project.updatedAt);
       setSelectedId(null);
-      setToolMode(project.imported ? "select" : "build");
+      setToolMode("view");
       await refreshProjects();
       return true;
     },
@@ -534,7 +538,7 @@ export function useBuilder() {
     const document = createEmptyDocument();
     replaceDocument(document);
     setSelectedId(null);
-    setToolMode("build");
+    setToolMode("view");
     await saveProject(document);
     setSavedAt(document.updatedAt);
     await refreshProjects();
@@ -544,7 +548,7 @@ export function useBuilder() {
     await createImportedProject(historyRef.current.document, imported);
     replaceDocument(imported, true);
     setSelectedId(null);
-    setToolMode("select");
+    setToolMode("view");
     setSavedAt(imported.updatedAt);
     setSaveError(null);
     // The import is committed even if refreshing the project list subsequently fails.
