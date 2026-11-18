@@ -3,9 +3,12 @@ import { crc32, decryptStudioZipEntry } from "./zip-crypto";
 export { crc32 } from "./zip-crypto";
 
 const MAX = 32 * 1024 * 1024;
+export const ZIP_LIMITS = { entries: 4096, declaredBytes: 256 * 1024 * 1024, entryBytes: 32 * 1024 * 1024, decodedBytes: 64 * 1024 * 1024 } as const;
 interface ZipReadOptions {
   /** Only these entries are decompressed; other payloads remain in the original archive. */
   names?: readonly string[];
+  /** Additional project-owned entries to read, after all path/bounds checks. */
+  select?: (name: string) => boolean;
   /** Opt-in for the public, fixed-key Studio ZIP format, never arbitrary passwords. */
   studioEncryption?: boolean;
 }
@@ -22,9 +25,9 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): Record
   const count = view.getUint16(end + 10, true);
   const start = view.getUint32(end + 16, true);
   if (view.getUint16(end + 4, true) || view.getUint16(end + 6, true) ||
-      count !== view.getUint16(end + 8, true) || count > 128 || !count ||
+      count !== view.getUint16(end + 8, true) || count > ZIP_LIMITS.entries || !count ||
       start + view.getUint32(end + 12, true) !== end) throw new Error("ZIP64, mehrteilige oder zu große Archive werden nicht unterstützt.");
-  let offset = start, total = 0;
+  let offset = start, total = 0, decodedTotal = 0;
   const requested = options.names && new Set(options.names.map(name => name.toLowerCase()));
   const entries = new Map<string, { size: number; crc: number; data: number; packed: number; method: number; encrypted: boolean; checkByte: number }>();
   const normalizedNames = new Set<string>();
@@ -37,7 +40,7 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): Record
     const local = view.getUint32(offset + 42, true);
     const next = offset + 46 + length + extra + comment;
     if (next > end || flags & ~0x080f || ((flags & 1) && !options.studioEncryption) || ![0, 8].includes(method) ||
-        size > MAX || (total += size) > MAX || local + 30 > start) throw new Error("ZIP-Eintrag zu groß, verschlüsselt oder nicht unterstützt.");
+        size > ZIP_LIMITS.declaredBytes || (total += size) > ZIP_LIMITS.declaredBytes || local + 30 > start) throw new Error("ZIP-Eintrag zu groß, verschlüsselt oder nicht unterstützt.");
     const nameBytes = bytes.subarray(offset + 46, offset + 46 + length);
     if (!(flags & 0x800) && nameBytes.some(b => b > 127)) throw new Error("ZIP-Dateinamen müssen ASCII oder UTF-8 verwenden.");
     const name = new TextDecoder("utf-8", { fatal: true }).decode(nameBytes);
@@ -52,8 +55,9 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): Record
     if (data + packed > start || new TextDecoder().decode(bytes.subarray(local + 30, local + 30 + localLen)) !== name) throw new Error("Ungültige ZIP-Datengrenzen.");
     if ((flags & 1) && packed < 12) throw new Error("Verschlüsselter ZIP-Kopf fehlt.");
     ranges.push({ start: local, end: data + packed });
-    if (!requested || requested.has(key)) {
-      if (size > 16 * 1024 * 1024) throw new Error("ZIP-Eintrag zu groß (maximal 16 MiB je gelesenem Eintrag).");
+    if ((!requested && !options.select) || requested?.has(key) || options.select?.(name)) {
+      if (size > ZIP_LIMITS.entryBytes) throw new Error("ZIP-Eintrag zu groß (maximal 32 MiB je gelesenem Eintrag).");
+      if ((decodedTotal += size) > ZIP_LIMITS.decodedBytes) throw new Error("Gelesene ZIP-Daten überschreiten das Speicherbudget von 64 MiB.");
       const crc = view.getUint32(offset + 16, true);
       entries.set(name, {
         size, crc, data, packed, method, encrypted: Boolean(flags & 1),
