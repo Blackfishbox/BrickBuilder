@@ -234,7 +234,7 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .canvas-host { border-radius: 14px; }
   .mobile-selection-actions {
     position: relative; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 6px;
-    width: 100%; max-width: none; box-sizing: border-box; overflow-x: auto; padding: 4px;
+    width: 100%; max-width: none; box-sizing: border-box; overflow: visible; flex-wrap: wrap; padding: 4px;
     border: 1px solid #e1ddd0; border-radius: 11px; background: rgba(250,248,240,.97);
     box-shadow: 0 4px 14px rgba(39,57,48,.12); backdrop-filter: blur(10px);
   }
