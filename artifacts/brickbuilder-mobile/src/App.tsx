@@ -69,12 +69,14 @@ function App() {
   const [formatsOpen, setFormatsOpen] = useState(false);
   const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [finePositionOpen, setFinePositionOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
   const [additionalColorIds, setAdditionalColorIds] = useState<string[]>([]);
   const [colorTargetsOpen, setColorTargetsOpen] = useState(false);
   const [colorTargetQuery, setColorTargetQuery] = useState("");
+  useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
@@ -280,6 +282,7 @@ function App() {
           <div className="canvas-host">
             <Suspense fallback={<div className="canvas-loading">3D-Arbeitsfläche wird geladen …</div>}>
               {!instructionsOpen && <BuilderCanvas
+                showConstructionControls={!finePositionOpen}
                 projectId={editor.document.id}
                 bricks={editor.bricks}
                 imported={editor.imported}
@@ -312,7 +315,7 @@ function App() {
               <span className="mobile-selection-label"><Box size={14} /> {editor.selectedInstance ? `LDraw ${editor.selectedInstance.part.ldrawId}` : "Stein ausgewählt"}</span>
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
-              <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} />
+              <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               <button type="button" onClick={editor.rotateSelected} aria-label="Ausgewählten Stein drehen" data-testid="mobile-button-rotate"><RotateCw size={17} /></button>
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
@@ -374,7 +377,7 @@ function App() {
                     <Trash2 size={16} /><span>Entfernen</span>
                   </button>
                 </div>
-                <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} />
+                <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>
             ) : (
               <div className="selection-empty" data-testid="status-no-selection">
