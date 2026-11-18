@@ -19,7 +19,6 @@ import {
   FileUp,
   HardDrive,
   Hammer,
-  Layers3,
   LoaderCircle,
   Menu,
   PackageOpen,
@@ -318,11 +317,6 @@ function App() {
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
           )}
-          <div className="canvas-footline">
-            <button type="button" className="parts-open-button" onClick={() => setPartsOpen(true)} data-testid="button-open-parts">
-              <Layers3 size={16} /><span>Steine</span>
-            </button>
-          </div>
         </div>
 
         <aside className="tool-rail" aria-label="Bauwerkzeuge">
