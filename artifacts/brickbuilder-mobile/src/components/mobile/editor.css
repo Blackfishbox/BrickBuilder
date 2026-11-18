@@ -90,8 +90,8 @@
 .popover-action svg { color: #bd624a; }
 
 .work-area { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 292px; }
-.canvas-stage { display: grid; min-width: 0; min-height: 0; grid-template-rows: 44px minmax(0,1fr) 52px; padding: 0 20px; }
-.canvas-topline,.canvas-footline { display: flex; align-items: center; justify-content: space-between; }
+.canvas-stage { display: grid; min-width: 0; min-height: 0; grid-template-rows: 44px minmax(0,1fr); padding: 0 20px; }
+.canvas-topline { display: flex; align-items: center; justify-content: space-between; }
 .canvas-context { display: flex; align-items: center; gap: 11px; }
 .context-label { font: 500 9px var(--app-font-mono); letter-spacing: .17em; color: #85918a; }
 .context-divider { width: 1px; height: 13px; background: #d4d4c8; }
@@ -110,12 +110,6 @@
 .mobile-selection-actions { display: none; }
 .canvas-hint { pointer-events: none; position: absolute; left: 50%; top: 51%; display: flex; flex-direction: column; align-items: center; gap: 8px; transform: translate(-50%, 62px); color: #88928a; font: 10px var(--app-font-mono); text-align: center; white-space: nowrap; opacity: .8; }
 .hint-cross { display: grid; place-items: center; width: 21px; height: 21px; border: 1px solid #aebbb1; border-radius: 50%; color: #809186; font-size: 16px; }
-.canvas-footline { padding: 0 2px; justify-content: flex-end; }
-.parts-open-button {
-  display: flex; align-items: center; gap: 8px; border: 1px solid #d9ddd1; border-radius: 10px; padding: 8px 11px;
-  background: #f8f7ef; color: #3b5449; cursor: pointer; font-size: 11px; font-weight: 800;
-}
-.parts-open-button:hover { background: #eaf0e8; }
 
 .tool-rail {
   min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 25px; padding: 23px 18px 15px;
@@ -236,7 +230,7 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .save-button { width: 44px; height: 44px; min-height: 44px; justify-content: center; padding: 0; border-radius: 10px; }
   .save-button span { display: none; }
   .work-area { display: block; min-height: 0; position: relative; }
-  .canvas-stage { height: 100%; padding: 0 10px; grid-template-rows: 38px minmax(0,1fr) 43px; }
+  .canvas-stage { height: 100%; padding: 0 10px; grid-template-rows: 38px minmax(0,1fr); }
   .canvas-host { border-radius: 14px; }
   .mobile-selection-actions {
     position: relative; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -249,8 +243,7 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .mobile-selection-actions > button:last-child { color: #ad513c; }
   .mobile-selection-actions > button { flex-shrink: 0; }
   .mobile-selection-label { min-width: 0; }
-  .canvas-stage { grid-template-rows: 38px minmax(0,1fr) 0 43px; }
-  .canvas-stage.has-selection { grid-template-rows: 38px minmax(0,1fr) auto 43px; }
+  .canvas-stage.has-selection { grid-template-rows: 38px minmax(0,1fr) auto; }
   .context-label { font-size: 8px; }
   .brick-count { font-size: 10px; }
   .history-controls { display: none; }
@@ -275,7 +268,7 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .topbar { height: 50px; }
   .work-area { display: grid; grid-template-columns: minmax(0,1fr) 250px; }
   .tool-rail { display: flex; gap: 14px; padding: 12px 14px; }
-  .canvas-stage { padding: 0 12px; grid-template-rows: 32px minmax(0,1fr) 34px; }
+  .canvas-stage { padding: 0 12px; grid-template-rows: 32px minmax(0,1fr); }
   .mobile-dock { display: none; }
   .tool-option { min-height: 48px; }
   .tool-rail { overflow-y: auto; }
