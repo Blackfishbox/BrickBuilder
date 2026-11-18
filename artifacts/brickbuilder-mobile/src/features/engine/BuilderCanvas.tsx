@@ -688,7 +688,9 @@ export function BuilderCanvas({
       setRendererSize(rendererRef.current ?? renderer, width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      if (importedBoundsRef.current) fitImportedView(camera, importedBoundsRef.current, cameraStateRef.current);
+      // The user may have deliberately zoomed the model. UI changes such as
+      // selecting a part resize this canvas; keep the camera distance and
+      // target instead of fitting the model again on every resize.
       invalidate();
     });
     resizeObserver.observe(host);

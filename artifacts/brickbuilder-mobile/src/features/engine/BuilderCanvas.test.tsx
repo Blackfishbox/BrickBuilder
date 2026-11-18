@@ -29,6 +29,7 @@ vi.mock("./software-scene", async importOriginal => {
 });
 let root: Root, element: HTMLDivElement, host: HTMLElement;
 let frames: Map<number, FrameRequestCallback>, nextFrame: number;
+let resizeCallbacks: ResizeObserverCallback[], canvasHeight: number;
 const context = new Proxy({}, { get: () => vi.fn(), set: () => true });
 const contact: Contact = {
   id: "moving:socket|target:stud", movingId: "moving", movingConnectorId: "socket", targetId: "target", targetConnectorId: "stud",
@@ -74,11 +75,18 @@ function catalogProjection() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   frames = new Map(); nextFrame = 0; observed.scene = undefined; observed.preparations = 0;
+  resizeCallbacks = []; canvasHeight = 600;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { resizeCallbacks.push(callback); }
+    observe() {}
+    disconnect() {}
+  });
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) => kind === "2d" ? context : null) as HTMLCanvasElement["getContext"]);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 600, bottom: 600, width: 600, height: 600, toJSON() {} });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({
+    x: 0, y: 0, left: 0, top: 0, right: 600, bottom: canvasHeight, width: 600, height: canvasHeight, toJSON() {},
+  }));
   HTMLElement.prototype.setPointerCapture = vi.fn();
   HTMLElement.prototype.hasPointerCapture = () => false;
   HTMLElement.prototype.releasePointerCapture = vi.fn();
@@ -181,6 +189,27 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene).toBeDefined();
     return { model, onMove, props, point: pickPoint() };
   }
+  it("preserves the user's zoom when the selection controls resize the canvas", async () => {
+    await mount("view");
+    const gesture = vi.spyOn(cameraGestures, "cameraGesture");
+    pointer("pointerdown", 240, 300, 1);
+    pointer("pointerdown", 290, 300, 2);
+    pointer("pointermove", 340, 300, 2);
+    flushFrame();
+    const zoomedDistance = gesture.mock.results.at(-1)!.value.distance;
+    expect(zoomedDistance).toBeLessThan(gesture.mock.calls[0][0].camera.distance);
+    pointer("pointerup", 340, 300, 2);
+    pointer("pointerup", 240, 300, 1);
+
+    // Selecting a part makes the mobile action row reduce the canvas height.
+    canvasHeight = 500;
+    act(() => resizeCallbacks[0]([], {} as ResizeObserver));
+    pointer("pointerdown", 240, 300, 1);
+    pointer("pointerdown", 290, 300, 2);
+    pointer("pointermove", 291, 300, 2);
+    flushFrame();
+    expect(gesture.mock.calls.at(-1)![0].camera.distance).toBeCloseTo(zoomedDistance);
+  });
   for (const toolMode of ["view", "build", "select", "delete"] as const) {
     it(`takes over touches on parts in ${toolMode} without editor transactions`, async () => {
       const { props, point, model } = await mount(toolMode);
