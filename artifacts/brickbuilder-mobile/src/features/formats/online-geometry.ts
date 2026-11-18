@@ -87,7 +87,8 @@ async function transport(path: string) {
     } finally { active--; queue.shift()?.(); }
   })().catch(error => {
     const failure = error instanceof DownloadError ? error : new DownloadError(
-      error instanceof Error ? error.message : "Geometriequelle nicht verfügbar.", 502, Date.now() + 30_000);
+      error instanceof Error || (typeof DOMException !== "undefined" && error instanceof DOMException)
+        ? error.message : "Geometriequelle nicht verfügbar.", 502, Date.now() + 30_000);
     if (negative.size > 3000) negative.clear();
     negative.set(path, failure); throw failure;
   }).finally(() => inflight.delete(path));

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { OnlineGeometry } from "./online-geometry";
 afterEach(() => vi.unstubAllGlobals());

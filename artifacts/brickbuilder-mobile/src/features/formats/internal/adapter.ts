@@ -4,6 +4,7 @@ import { compilePart } from "@/features/engine/ldraw-geometry";
 import { mappingResultSchema } from "@/features/parts/mapping-schema";
 import { inventorySchema, allocationSchema } from "@/features/inventory/types";
 import { validateInventory } from "@/features/inventory/accounting";
+import { instructionPlanSchema } from "@/features/instructions/types";
 
 const finite = z.number().finite().min(-1e9).max(1e9);
 const legalDocument = z.object({
@@ -22,6 +23,7 @@ const color = z.object({
   studioId: z.string().optional(), source: z.string(),
 }).passthrough();
 const schema = z.object({
+  instructions: instructionPlanSchema.optional(),
   inventory: inventorySchema.optional(),
   schemaVersion: z.literal(1), id: z.string().min(1), name: z.string().max(256),
   createdAt: z.string(), updatedAt: z.string(), metadata: z.record(z.string(), z.unknown()),
@@ -61,7 +63,14 @@ const schema = z.object({
 export function importInternal(bytes: Uint8Array): BuilderDocument {
   const parsed = schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
   validateInventory(parsed as BuilderDocument);
+  if (parsed.instructions) {
+    const steps = parsed.instructions.steps, partIds = steps.flatMap(step => step.partIds);
+    if (new Set(steps.map(step => step.id)).size !== steps.length || new Set(partIds).size !== partIds.length) {
+      throw new Error("Doppelte Schritte oder Teilezuordnungen in der Bauanleitung.");
+    }
+  }
   if (new Set(parsed.bricks.map(b => b.id)).size !== parsed.bricks.length) throw new Error("Doppelte Stein-IDs.");
+  const remappedIds = new Map<string, string>();
   if (parsed.imported) {
     if (Object.keys(parsed.imported.resources).length > 4096) throw new Error("Zu viele Geometriedateien.");
     if (Object.values(parsed.imported.resources).reduce((n, f) => n + f.content.length, 0) > 24 * 1024 * 1024) throw new Error("Geometriedaten zu groß.");
@@ -72,13 +81,20 @@ export function importInternal(bytes: Uint8Array): BuilderDocument {
         mapping.candidates.some(e => `${e.ldrawId}.dat` !== instance.reference.toLowerCase()) ||
         instance.part.brickLinkId !== (mapping.status === "confirmed" ? mapping.candidates[0].brickLinkId : undefined)
       )) throw new Error("Teilenummer und gespeicherte Nachweise widersprechen sich.");
-      instance.id = crypto.randomUUID();
+      const newId = crypto.randomUUID();
+      remappedIds.set(instance.id, newId);
+      instance.id = newId;
     }
     // An internal JSON import must be just as safe as an IO import before storage.
     const model = parsed.imported as NonNullable<BuilderDocument["imported"]>;
     for (const instance of model.instances) {
       if (instance.part.status === "resolved") compilePart(model, instance.reference, instance.colorCode);
     }
+  }
+  if (parsed.instructions) {
+    parsed.instructions.steps = parsed.instructions.steps.map(step => ({
+      ...step, partIds: step.partIds.map(id => remappedIds.get(id) ?? id),
+    }));
   }
   return normalizeDocument({ ...parsed, id: crypto.randomUUID() } as BuilderDocument);
 }

@@ -30,6 +30,8 @@ documents all published source rows, directional mappings, coverage and offline 
 ## Features
 
 - Touch-oriented 3D editing with camera controls, snapping and connection indicators.
+- Editable building steps, cumulative assembly previews and local PDF instructions;
+  see [instruction editing and IO export limits](docs/building-instructions.md).
 - Individual part selection, movement, rotation, colors, deletion and undo/redo.
 - LDraw parts library with downloadable packages and verified geometry caching.
 - BrickLink XML/CSV inventories with quantity limits when building from a list.

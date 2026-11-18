@@ -2,6 +2,7 @@ import type { ImportedModel } from "../formats/types";
 import { refreshedCatalogModel } from "../catalog/refresh-model";
 import type { Inventory } from "../inventory/types";
 import { validateInventory } from "../inventory/accounting";
+import type { InstructionPlan } from "../instructions/types";
 
 export type BrickType = "brick-2x4" | "brick-2x2" | "brick-1x2";
 export type ToolMode = "build" | "select" | "delete";
@@ -32,6 +33,7 @@ export interface BuilderDocument {
   metadata: Record<string, unknown>;
   imported?: ImportedModel;
   inventory?: Inventory;
+  instructions?: InstructionPlan;
 }
 
 export interface BrickDefinition {
@@ -111,5 +113,6 @@ export function normalizeDocument(
         : {},
     ...(document.imported ? { imported: document.imported } : {}),
     ...(document.inventory ? { inventory: document.inventory } : {}),
+    ...(document.instructions ? { instructions: document.instructions } : {}),
   };
 }

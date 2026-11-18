@@ -65,7 +65,7 @@ an invisible surface.
   Use it as the complete application project backup.
 - LDR export writes current instance transforms and colors as a flat list;
   it does not embed custom geometry. An unchanged MPD retains its original text.
-- Edited MPD and minimal IO retain the source hierarchy and all embedded LDraw
+- Edited MPD and IO retain the source hierarchy and all embedded LDraw
   sections (including inline surfaces, custom geometry, comments and licenses).
   Reference-line occurrence paths distinguish repeated submodels. Only changed
   occurrences need new submodel variants; identical variants are shared.
@@ -80,11 +80,14 @@ an invisible surface.
   was edited or deleted. Keep the JSON backup in that case.
 - Unknown LDraw metadata is retained as text, **not semantically rewritten**.
   Commands tied to old indices, submodel names, textures or proprietary extensions
-  may no longer apply after edits. Minimal IO contains generated `model.ldr`
-  and `.info` only; it does not copy instructions, LXFML, textures, Studio geometry
-  or unknown proprietary archive records. Its generated `.info` discloses this.
-  Original bytes, source sections and unknown archive records remain untouched
-  in internal JSON. This is not a lossless Studio round trip; keep both backups.
+  may no longer apply after edits. IO now preserves unknown archive resources;
+  superseded Studio model variants are retained as backups rather than active
+  models. Edited instructions use a flat occurrence-specific assembly and
+  regenerated simple pages. Sources containing inline primitive surfaces are
+  refused for this hierarchy rewrite rather than silently losing geometry.
+  Original bytes remain untouched in internal JSON. This is not a lossless
+  Studio round trip; keep both backups. See
+  [building instructions](../../../docs/building-instructions.md) for exact limits.
 - Section/size limits and invalid occurrence identifiers fail explicitly.
   Synthetic regressions verify the export algorithm, not general Studio
   compatibility. Real-fixture checks only establish the specifically tested

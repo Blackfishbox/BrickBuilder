@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { URL as FileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { candidates, inspectFile, normalizePath, normalizeReference } from "@workspace/ldraw-source";
 import { builderDatabase, loadProject, saveProject } from "@/storage/database";
@@ -22,7 +24,7 @@ const licensed = (body = "3 16 0 0 0 20 0 0 0 20 0") =>
   `0 Synthetic fixture\n0 Author: Test Author\n0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt\n${body}\n`;
 const ref = (name: string) => `1 4 12 24 36 -1 0 0 0 1 0 0 0 1 ${name}`;
 const legal = "Creative Commons Legal Code\n" + "Original legal fixture for standalone tests. ".repeat(10);
-const snapshotBytes = new Uint8Array(await readFile(new URL(`../../../public/${manifest.url}`, import.meta.url)));
+const snapshotBytes = new Uint8Array(await readFile(new FileURL(`../../../public/${manifest.url}`, import.meta.url)));
 async function sourceResponse(bytes: Uint8Array, snapshot = "official-live-v1") {
   return new Response(bytes as BodyInit, { headers: {
     "X-LDraw-SHA256": await hashBytes(bytes), "X-LDraw-Snapshot": snapshot,
@@ -249,17 +251,17 @@ describe("approved recursive acquisition", () => {
   });
 });
 
-const privateModel = new URL("../../../../../attached_assets/40649-size_1793502923137.io", import.meta.url);
-const archiveDir = new URL("../../../../../generated-artifacts/ldraw-approved/", import.meta.url);
-describe.skipIf(!existsSync(privateModel) || !existsSync(new URL("manifest.json", archiveDir)))("private approved-archive coverage", () => {
+const privateModel = new FileURL("../../../../../attached_assets/40649-size_1793502923137.io", import.meta.url);
+const archiveDir = new FileURL("../../../../../generated-artifacts/ldraw-approved/", import.meta.url);
+describe.skipIf(!existsSync(privateModel) || !existsSync(new FileURL("manifest.json", archiveDir)))("private approved-archive coverage", () => {
   it("measures complete compilable closures and preserves all 8,590 external instances", async () => {
     // Use the real approved raw archive bytes, not invented geometry or catalog mappings.
-    const archive = JSON.parse(await readFile(new URL("manifest.json", archiveDir), "utf8"));
+    const archive = JSON.parse(await readFile(new FileURL("manifest.json", archiveDir), "utf8"));
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       if (String(input).includes(manifest.url)) return new Response(snapshotBytes);
       const path = new URL(input, "https://test.invalid").searchParams.get("path")!;
       if (!archive.files[path]) return new Response("", { status: 404 });
-      return sourceResponse(new Uint8Array(await readFile(new URL(path, archiveDir))), `official-archive-sha256:${archive.sha256}`);
+      return sourceResponse(new Uint8Array(await readFile(new FileURL(path, archiveDir))), `official-archive-sha256:${archive.sha256}`);
     }));
     const bytes = new Uint8Array(await readFile(privateModel));
     const doc = await importIO(bytes, "reference.io", { retry: true });
