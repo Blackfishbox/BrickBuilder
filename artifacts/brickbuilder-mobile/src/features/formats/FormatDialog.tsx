@@ -114,10 +114,10 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
       <p className="fmt-muted">LDR exportiert flache Einzelteile ohne eingebettete Geometrie. MPD und IO erhalten die ursprüngliche Untermodellstruktur, solange keine Schrittfolge umgebaut wird. Geänderte Anleitungsschritte werden als flache Baugruppe mit STEP-/ROTSTEP-Befehlen exportiert; IO erhält dazu einfache Anleitungsseiten. Unveränderte IO-Dateien bleiben bytegenau erhalten. Unbekannte Archivdateien werden mitgenommen; überholte Studio-Modellvarianten und Seitenlayouts bleiben gegebenenfalls als Sicherung unter BrickBuilder/original erhalten. Studio-Speziallayouts werden nicht vollständig bearbeitet. Bei eingebetteten Flächen wird ein unsicherer Export geänderter Schritte abgelehnt. JSON bleibt die vollständige Projektsicherung. Kein zugesicherter verlustfreier Studio-Roundtrip.</p>
       <details className="fmt-details">
         <summary>Geometrie-/Zuordnungsherkunft und Lizenzen <ChevronDown size={14} /></summary>
-        <p className="fmt-muted">Originaldateien unverändert; Auswahl und Paketierung durch BrickBuilder. Lizenz pro Datei: CC BY 4.0 oder CC0. Bei dualer Lizenz wird CC BY 4.0 genutzt.</p>
+        <p className="fmt-muted">Öffentliche LDraw-Pakete: Originaldateien unverändert, Lizenz pro Datei CC BY 4.0 oder CC0; bei dualer Lizenz wird CC BY 4.0 genutzt. Eingebettete Projektgeometrien bleiben ausschließlich im Projekt und werden nicht als frei lizenzierte Bibliotheksteile weitergegeben.</p>
         <ul>{Object.values(model.resources).map(file => (
-          <li key={file.path}><a href={file.sourceUrl} target="_blank" rel="noreferrer">{file.path}</a>
-            <span>{file.author} · {file.license}</span>
+          <li key={file.path}>{file.license === "Project-source" ? <code>{file.sourceArchivePath}</code> : <a href={file.sourceUrl} target="_blank" rel="noreferrer">{file.path}</a>}
+            <span>{file.author} · {file.license === "Project-source" ? "Projektdatei – keine Weitergabelizenz hinterlegt" : file.license}</span>
             {file.sha256 && <small style={{ overflowWrap: 'anywhere' }}>Quell-SHA-256: {file.sha256}<br />{file.retrievalSource}</small>}
           </li>
         ))}</ul>

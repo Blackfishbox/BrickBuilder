@@ -84,7 +84,7 @@ export function compilePart(model: ImportedModel, reference: string, color: stri
       } else if (["2", "3", "4"].includes(type)) {
         const expected = type === "2" ? 6 : type === "3" ? 9 : 12;
         const values = tokens.slice(2).map(Number);
-        if (values.length !== expected || values.some(v => !Number.isFinite(v))) throw new Error(`Ungültige Geometriezeile: ${path}`);
+        if (values.length !== expected || values.some(v => !Number.isFinite(v) || Math.abs(v) > 1e7)) throw new Error(`Ungültige Geometriezeile: ${path}`);
         const code = tokens[1] === "16" || tokens[1] === "24" ? currentColor : tokens[1];
         let surface = surfaces.get(code);
         if (!surface) { surface = { colorCode: code, positions: [], edges: [] }; surfaces.set(code, surface); }
