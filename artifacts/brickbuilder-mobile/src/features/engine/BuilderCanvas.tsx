@@ -1333,7 +1333,7 @@ export function BuilderCanvas({
       <strong>{floatingCount} {floatingCount === 1 ? "Teil schwebt möglicherweise" : "Teile schweben möglicherweise"} · rot markiert</strong>
       <p>Keine geometrische Verbindung zum Boden gefunden. Kontaktprüfung anhand der Geometriegrenzen, keine Statikprüfung.</p>
     </div>}
-    {showConstructionControls && <div className="absolute bottom-2 left-2 right-2 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
+    {showConstructionControls && <div data-testid="construction-controls" className="absolute bottom-2 left-2 right-2 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showConnections} aria-label="Verbindungen anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
