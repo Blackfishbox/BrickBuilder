@@ -319,9 +319,8 @@ function App() {
             </div>
           )}
           <div className="canvas-footline">
-            <span className="grid-caption" title="Noppen-Snapping für unterstützte Standardsteine und Platten; sonst Raster"><span className="grid-indicator" /> NOPPEN + RASTER</span>
             <button type="button" className="parts-open-button" onClick={() => setPartsOpen(true)} data-testid="button-open-parts">
-              <Layers3 size={16} /><span>Steine</span><span className="parts-count">{activeInventoryRow ? 'Teileliste' : 'LDraw frei'}</span>
+              <Layers3 size={16} /><span>Steine</span>
             </button>
           </div>
         </div>
