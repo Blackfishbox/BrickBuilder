@@ -1,9 +1,11 @@
 import { jsPDF } from "jspdf";
-import { BRICK_DEFINITIONS, type BuilderDocument } from "../editor/model";
-import { resolveColor } from "../formats/colors";
+import type { BuilderDocument } from "../editor/model";
 import { effectiveInstructions } from "./model";
 import type { InstructionPlan } from "./types";
 import { createInstructionRenderer, type InstructionImageRenderer } from "./render";
+import { instructionPartGroups } from "./parts";
+import { instructionPartImage } from "./part-images";
+import { drawInstructionPartBox } from "./pdf-parts";
 
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
@@ -11,19 +13,7 @@ export interface InstructionPdfOptions {
 }
 
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
-  const selected = new Set(ids), rows = new Map<string, number>();
-  for (const part of document.imported?.instances ?? []) {
-    if (!selected.has(part.id)) continue;
-    const color = part.color?.name ?? resolveColor(part.colorCode)?.name ?? `LDraw ${part.colorCode}`;
-    const label = `${part.part.brickLinkId ?? `LDraw ${part.part.ldrawId}`} · ${color}`;
-    rows.set(label, (rows.get(label) ?? 0) + 1);
-  }
-  for (const part of document.bricks) {
-    if (!selected.has(part.id)) continue;
-    const label = `LDraw ${BRICK_DEFINITIONS[part.type].ldrawId} · ${part.color}`;
-    rows.set(label, (rows.get(label) ?? 0) + 1);
-  }
-  return [...rows.entries()].map(([label, count]) => `${count} × ${label}`);
+  return instructionPartGroups(document, ids).map(entry => `${entry.count} × ${entry.number} · ${entry.colorName}`);
 }
 
 export async function exportInstructionPDF(
@@ -31,6 +21,7 @@ export async function exportInstructionPDF(
   input: InstructionPlan,
   options: InstructionPdfOptions = {},
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
+  renderPart = instructionPartImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   options.signal?.throwIfAborted();
@@ -46,7 +37,9 @@ export async function exportInstructionPDF(
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
       const title = pdf.splitTextToSize(`${index + 1}. ${step.title}`, 178) as string[];
       pdf.text(title, 16, 20);
-      const imageY = 24 + (title.length - 1) * 7;
+      let imageY = 24 + (title.length - 1) * 7;
+      const groups = instructionPartGroups(document, step.partIds);
+      imageY += await drawInstructionPartBox(pdf, document, groups.slice(0, 12), imageY, options.signal, renderPart) + 4;
       step.partIds.forEach(id => visible.add(id));
       pdf.addImage(renderer.image(visible, step), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
@@ -67,7 +60,16 @@ export async function exportInstructionPDF(
         text(`Hinweis: ${missing.length} Teile ohne geladene Geometrie sind in der Abbildung nicht dargestellt. Die Teileliste bleibt vollständig.`);
         pdf.setTextColor(0);
       }
-      y += 4; text("Teile in diesem Schritt", true);
+      for (let offset = 12; offset < groups.length; offset += 36) {
+        if (offset === 12) text("Weitere Teile für diesen Schritt auf den folgenden Seiten.");
+        pdf.addPage();
+        pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
+        const continued = pdf.splitTextToSize(`${index + 1}. ${step.title} – Teile (Fortsetzung)`, 178) as string[];
+        pdf.text(continued, 16, 20);
+        y = 24 + (continued.length - 1) * 6;
+        y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal, renderPart) + 4;
+      }
+      y += 4; text("Teile in diesem Schritt · vollständige Angaben", true);
       for (const row of instructionParts(document, step.partIds)) text(row);
       options.onProgress?.(index + 1, plan.steps.length);
       // Give Android a chance to repaint progress and deliver cancellation.
