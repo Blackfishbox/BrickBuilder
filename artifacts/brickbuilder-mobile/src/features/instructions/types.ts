@@ -15,7 +15,16 @@ export const instructionPlanSchema = z.object({
   source: z.enum(["ldraw", "studio", "manual"]),
   steps: z.array(instructionStepSchema).min(1).max(10000),
   warnings: z.array(z.string().max(1000)).max(100),
+  studioLayout: z.object({
+    sourceXml: z.string().max(8 * 1024 * 1024),
+    edits: z.array(z.object({
+      nodeId: z.number().int().nonnegative(),
+      attribute: z.string().min(1).max(80),
+      value: z.string().max(200),
+    })).max(10000),
+  }).optional(),
 });
 
 export type InstructionStep = z.infer<typeof instructionStepSchema>;
 export type InstructionPlan = z.infer<typeof instructionPlanSchema>;
+export type StudioLayout = NonNullable<InstructionPlan["studioLayout"]>;

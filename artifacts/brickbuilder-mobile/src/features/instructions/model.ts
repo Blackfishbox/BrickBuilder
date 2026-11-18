@@ -1,6 +1,7 @@
 import type { BuilderDocument } from "../editor/model";
 import type { ImportedModel } from "../formats/types";
 import type { InstructionPlan, InstructionStep } from "./types";
+import { readStudioInstructions } from "./studio";
 
 const boundary = /^\s*0\s+(?:STEP|ROTSTEP)(?:\s|$)/i;
 
@@ -9,10 +10,18 @@ export function instructionPartIds(document: BuilderDocument): string[] {
 }
 
 export function instructionExportNeeded(document: BuilderDocument): boolean {
-  if (document.instructions?.edited) return true;
+  if (document.instructions?.edited && !instructionStepsUnchanged(document)) return true;
   if (!document.instructions) return false;
   const assigned = new Set(document.instructions.steps.flatMap(step => step.partIds));
   return instructionPartIds(document).some(id => !assigned.has(id));
+}
+
+/** Layout-only changes must not flatten the source model or invalidate native indices. */
+export function instructionStepsUnchanged(document: BuilderDocument): boolean {
+  const layout = document.instructions?.studioLayout, model = document.imported;
+  if (!layout || !model || model.format !== "io") return false;
+  const original = readStudioInstructions(layout.sourceXml, sourceInstructionPlan(model));
+  return JSON.stringify(original.steps) === JSON.stringify(document.instructions!.steps);
 }
 
 /** Resolve by occurrence, never by part number: identical parts may belong to different steps. */
