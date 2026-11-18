@@ -11,9 +11,11 @@ interface Face { id: string; points: Float32Array; color: string; alpha: number 
  * Exact source triangles, not the interactive renderer's sampled fallback.
  * Refuse the export above a bounded CPU budget instead of omitting surfaces.
  */
-export async function createSoftwareInstructionRenderer(document: BuilderDocument, signal?: AbortSignal): Promise<InstructionImageRenderer> {
+export async function createSoftwareInstructionRenderer(document: BuilderDocument, signal?: AbortSignal,
+  size = { width: 1000, height: 760, minRadius: 1 }): Promise<InstructionImageRenderer> {
   const canvas = globalThis.document.createElement("canvas");
-  canvas.width = 1000; canvas.height = 760;
+  canvas.width = size.width; canvas.height = size.height;
+  const width = canvas.width, height = canvas.height, aspect = width / height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("PDF-Abbildungen sind nicht verfügbar: Weder WebGL noch die 2D-Ausgabe konnten gestartet werden.");
   const faces: Face[] = [], bounds = new Box3(), vertex = new Vector3();
@@ -59,8 +61,8 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     }
   }
   const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
-  const radius = bounds.isEmpty() ? 2 : Math.max(1, bounds.getSize(new Vector3()).length() / 2);
-  const camera = new OrthographicCamera(-radius * 1.12 * 1000 / 760, radius * 1.12 * 1000 / 760,
+  const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius, bounds.getSize(new Vector3()).length() / 2);
+  const camera = new OrthographicCamera(-radius * 1.12 * aspect, radius * 1.12 * aspect,
     radius * 1.12, -radius * 1.12, 0.01, Math.max(100, radius * 12));
   camera.position.set(1.1, 0.85, 1.3).normalize().multiplyScalar(radius * 4);
   camera.lookAt(0, 0, 0); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
@@ -82,13 +84,13 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         const shade = 0.58 + 0.42 * Math.abs(normal.dot(light));
         a.project(camera); b.project(camera); c.project(camera);
         projected.push({
-          points: [(a.x + 1) * 500, (1 - a.y) * 380, (b.x + 1) * 500, (1 - b.y) * 380, (c.x + 1) * 500, (1 - c.y) * 380],
+          points: [(a.x + 1) * width / 2, (1 - a.y) * height / 2, (b.x + 1) * width / 2, (1 - b.y) * height / 2, (c.x + 1) * width / 2, (1 - c.y) * height / 2],
           depth: (a.z + b.z + c.z) / 3,
           color: color.set(face.color).multiplyScalar(shade).getStyle(), alpha: face.alpha,
         });
       }
       projected.sort((left, right) => right.depth - left.depth);
-      context.fillStyle = "#ffffff"; context.globalAlpha = 1; context.fillRect(0, 0, 1000, 760);
+      context.fillStyle = "#ffffff"; context.globalAlpha = 1; context.fillRect(0, 0, width, height);
       for (const face of projected) {
         context.globalAlpha = face.alpha; context.fillStyle = face.color; context.beginPath();
         context.moveTo(face.points[0], face.points[1]); context.lineTo(face.points[2], face.points[3]);

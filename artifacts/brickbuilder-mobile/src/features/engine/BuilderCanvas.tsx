@@ -55,6 +55,7 @@ import {
 } from "@/features/editor/model";
 
 interface BuilderCanvasProps {
+  showConstructionControls?: boolean;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
   projectId?: string;
@@ -407,6 +408,7 @@ function softwareWarning(scene: SoftwareScene): string {
 }
 
 export function BuilderCanvas({
+  showConstructionControls = true,
   viewRotation,
   projectId,
   bricks,
@@ -1306,7 +1308,7 @@ export function BuilderCanvas({
       <strong>{floatingCount} {floatingCount === 1 ? "Teil schwebt möglicherweise" : "Teile schweben möglicherweise"} · rot markiert</strong>
       <p>Keine geometrische Verbindung zum Boden gefunden. Kontaktprüfung anhand der Geometriegrenzen, keine Statikprüfung.</p>
     </div>}
-    <div className="absolute bottom-2 left-2 right-2 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
+    {showConstructionControls && <div className="absolute bottom-2 left-2 right-2 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showConnections} aria-label="Verbindungen anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
@@ -1320,7 +1322,7 @@ export function BuilderCanvas({
         Schwebewarnung {showFloating ? "an" : "aus"}
       </button>
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
-    </div>
+    </div>}
     {(sceneStatus || renderWarning || compatibilityHint) && <div
       role="status"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg bg-white/95 p-3 text-xs text-stone-700 shadow"

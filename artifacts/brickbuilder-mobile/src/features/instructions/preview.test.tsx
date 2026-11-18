@@ -9,6 +9,7 @@ import { updateInstructions } from "./model";
 const { preview } = vi.hoisted(() => ({ preview: vi.fn() }));
 vi.mock("../engine/BuilderCanvas", () => ({ default: (props: unknown) => { preview(props); return null; } }));
 vi.mock("./StudioLayoutEditor", () => ({ default: () => null }));
+vi.mock("./StepPartsBox", () => ({ default: () => null }));
 
 let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement;
