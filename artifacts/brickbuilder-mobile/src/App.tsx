@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
-import { importDiagnostics } from '@/features/formats/import-diagnostics';
 import { useBuilder } from '@/features/editor/useBuilder';
 import FinePositionControls from '@/features/editor/FinePositionControls';
 import {
@@ -263,7 +262,7 @@ function App() {
       </header>
 
       <section className="work-area">
-        <div className="canvas-stage" aria-label="3D model workspace">
+        <div className={`canvas-stage${editor.selectedId && editor.toolMode !== 'view' ? ' has-selection' : ''}`} aria-label="3D model workspace">
           <div className="canvas-topline">
             <div className="canvas-context">
               <span className="context-label">{editor.toolMode === 'view' ? 'ANSICHT' : 'BAUBEREICH'}</span>
@@ -296,11 +295,6 @@ function App() {
             </Suspense>
             {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">Vollständiger Zuordnungskatalog nicht verfügbar. Vorhandene Nachweise bleiben erhalten. <button type="button" onClick={() => setPartsOpen(true)}>Katalog unter „Steine“ erneut laden</button></div>}
             {editor.partError && !partsOpen && <p role="alert" className="canvas-part-error" data-testid="status-part-error">{editor.partError}</p>}
-            {editor.imported && (
-              <button type="button" className="import-report-button" onClick={() => setFormatsOpen(true)} data-testid="button-import-report">
-                LDraw: {editor.imported.instances.length} Teile · {importDiagnostics(editor.imported).warnings.length} Importwarnungen
-              </button>
-            )}
             {activeInventoryRow && (
               <div className="inventory-mode-banner" role="status" data-testid="status-inventory-mode">
                 <span>Meine Teileliste: BL {activeInventoryRow.partId} · Farbe {activeInventoryRow.colorId} · LDraw {editor.selectedInventory!.ldrawId}</span>

@@ -6,6 +6,6 @@
 .fine-position-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .fine-position-grid button { min-width: 44px; min-height: 44px; border: 0; border-radius: 8px; background: #e8ecdf; color: #365346; font-size: 12px; touch-action: manipulation; cursor: pointer; }
 @media (max-width: 900px) {
-  .mobile-selection-actions .fine-position-panel { position: absolute; top: calc(100% + 8px); right: 0; width: min(240px, calc(100vw - 48px)); max-height: calc(100dvh - 220px); overflow-y: auto; box-shadow: 0 4px 14px #27393024; }
+  .mobile-selection-actions .fine-position-panel { position: fixed; z-index: 50; top: auto; right: 12px; bottom: calc(80px + env(safe-area-inset-bottom)); width: min(240px, calc(100vw - 48px)); max-height: calc(100dvh - 180px); overflow-y: auto; box-shadow: 0 4px 14px #27393024; }
   .mobile-selection-actions .fine-position-grid button { width: 100%; height: auto; min-height: 44px; }
 }
