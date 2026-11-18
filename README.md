@@ -81,6 +81,7 @@ optional API services and troubleshooting.
 - [Editing guide](artifacts/brickbuilder-mobile/docs/editing.md)
 - [Catalog, part IDs and colors](artifacts/brickbuilder-mobile/docs/complete-catalog.md)
 - [Large-model performance](artifacts/brickbuilder-mobile/docs/performance.md)
+- [Studio IO import and archive limits](docs/io-import.md)
 - [Setup and hosting](docs/setup-and-hosting.md)
 - [Automated server installation](docs/self-host-installer.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
