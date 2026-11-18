@@ -13,8 +13,6 @@ import {
   Box,
   Check,
   ChevronDown,
-  Cloud,
-  CloudOff,
   Command,
   FilePlus2,
   FileDown,
@@ -33,6 +31,8 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  Wifi,
+  WifiOff,
   X,
   MousePointer2,
 } from 'lucide-react';
@@ -234,9 +234,19 @@ function App() {
         </div>
 
         <div className="topbar-end">
-          <div className={`connectivity ${online ? 'is-online' : 'is-offline'}`} role="status" data-testid="status-connectivity">
-            {online ? <Cloud size={15} /> : <CloudOff size={15} />}
-              <span>{online ? 'Offline verfügbar' : 'Offline'}</span>
+          <div
+            className={`connectivity ${online ? 'is-online' : 'is-offline'}`}
+            role="status"
+            aria-label={online
+              ? 'Das Gerät meldet eine Netzwerkverbindung; Internetzugriff wird nicht geprüft.'
+              : 'Das Gerät meldet keine Netzwerkverbindung. Lokale Projekte bleiben verfügbar.'}
+            title={online
+              ? 'Netzwerk erkannt – die App prüft damit nicht, ob Internetzugriff besteht.'
+              : 'Offline – lokale Projekte bleiben verfügbar.'}
+            data-testid="status-connectivity"
+          >
+            {online ? <Wifi size={15} /> : <WifiOff size={15} />}
+            <span>{online ? 'Netzwerk erkannt' : 'Offline'}</span>
           </div>
           <button
             type="button"
