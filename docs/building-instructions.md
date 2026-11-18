@@ -21,6 +21,17 @@ No model or instruction image is uploaded to a PDF service.
   resetting rotation refresh the view without changing any part transforms.
   The touch camera remains usable in addition to the stored step orientation;
   the non-WebGL compatibility view also supports camera roll.
+- A parts box above the live model shows the **new parts for the selected step**:
+  canonical shape previews in their actual colors, quantities and part numbers.
+  Swipe the box horizontally when there are many different parts. Geometry is
+  read from the project, including embedded IO resources, without network access
+  or installing private files in a shared library. Missing previews are labeled.
+  Preview jobs are serialized through one shared thumbnail renderer, with a
+  software fallback. The global image cache is bounded to 4 MiB/128 images.
+- The PDF includes the same illustrated box above each construction image.
+  Overflow groups receive continuation pages; full textual identifiers and color
+  names remain available. Thumbnails use complete source triangles, with the
+  same explicit per-render software budget rather than sampled or invented shapes.
 - Internal JSON backups include the editable instruction plan and original
   model archive. Instance IDs are remapped together with assignments on import.
 
