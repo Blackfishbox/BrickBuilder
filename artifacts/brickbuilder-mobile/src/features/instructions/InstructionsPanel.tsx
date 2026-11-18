@@ -5,6 +5,7 @@ import BuilderCanvas from "@/features/engine/BuilderCanvas";
 import { effectiveInstructions, instructionView } from "./model";
 import type { InstructionPlan, InstructionStep } from "./types";
 import StudioLayoutEditor from "./StudioLayoutEditor";
+import StepPartsBox from "./StepPartsBox";
 import "./instructions.css";
 
 interface Props {
@@ -151,6 +152,8 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
 
       <div className="ins-body">
         <section className="ins-preview" aria-label={`Vorschau bis ${step.title || `Schritt ${current + 1}`}`}>
+          <StepPartsBox document={document} partIds={step.partIds} paused={Boolean(exporting)} />
+          <div className="ins-model">
           {exporting ? (
             <div className="ins-empty" role="status">PDF wird erzeugt. Die 3D-Vorschau wird dafür kurz pausiert.</div>
           ) : total === 0 ? (
@@ -160,6 +163,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             </div>
           ) : (
             <BuilderCanvas
+              showConstructionControls={false}
               viewRotation={step.rotation}
               projectId={`${document.id}-instructions`}
               bricks={view.bricks}
@@ -183,6 +187,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               <span>/ {plan.steps.length}</span>
             </label>
             <button className="ins-icon" onClick={() => go(current + 1)} disabled={current === plan.steps.length - 1} aria-label="Nächster Schritt" data-testid="button-instructions-next"><ChevronRight size={20} /></button>
+          </div>
           </div>
         </section>
 
