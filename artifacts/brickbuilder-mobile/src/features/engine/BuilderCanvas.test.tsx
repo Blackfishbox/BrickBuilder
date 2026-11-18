@@ -173,7 +173,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene).toBeDefined();
     return { model, onMove, props, point: pickPoint() };
   }
-  for (const toolMode of ["build", "select", "delete"] as const) {
+  for (const toolMode of ["view", "build", "select", "delete"] as const) {
     it(`takes over touches on parts in ${toolMode} without editor transactions`, async () => {
       const { props, point, model } = await mount(toolMode);
       const original = observed.scene!.positions.slice();

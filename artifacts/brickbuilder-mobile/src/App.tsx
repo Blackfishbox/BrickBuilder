@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
-import { importDiagnostics } from '@/features/formats/import-diagnostics';
 import { useBuilder } from '@/features/editor/useBuilder';
 import FinePositionControls from '@/features/editor/FinePositionControls';
 import {
@@ -14,6 +13,7 @@ import {
   Check,
   ChevronDown,
   Command,
+  Eye,
   FilePlus2,
   FileDown,
   FileUp,
@@ -262,18 +262,18 @@ function App() {
       </header>
 
       <section className="work-area">
-        <div className="canvas-stage" aria-label="3D model workspace">
+        <div className={`canvas-stage${editor.selectedId && editor.toolMode !== 'view' ? ' has-selection' : ''}`} aria-label="3D model workspace">
           <div className="canvas-topline">
             <div className="canvas-context">
-              <span className="context-label">BAUBEREICH</span>
+              <span className="context-label">{editor.toolMode === 'view' ? 'ANSICHT' : 'BAUBEREICH'}</span>
               <span className="context-divider" />
               <span className="brick-count" data-testid="text-brick-count">{editor.brickCount} {editor.brickCount === 1 ? 'Stein' : 'Steine'}</span>
             </div>
             <div className="history-controls">
-              <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo} aria-label="Undo" data-testid="button-undo">
+              <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label="Undo" data-testid="button-undo">
                 <Undo2 size={17} />
               </button>
-              <button type="button" className="icon-button compact" onClick={editor.redo} disabled={!editor.canRedo} aria-label="Redo" data-testid="button-redo">
+              <button type="button" className="icon-button compact" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label="Redo" data-testid="button-redo">
                 <Redo2 size={17} />
               </button>
             </div>
@@ -295,11 +295,6 @@ function App() {
             </Suspense>
             {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">Vollständiger Zuordnungskatalog nicht verfügbar. Vorhandene Nachweise bleiben erhalten. <button type="button" onClick={() => setPartsOpen(true)}>Katalog unter „Steine“ erneut laden</button></div>}
             {editor.partError && !partsOpen && <p role="alert" className="canvas-part-error" data-testid="status-part-error">{editor.partError}</p>}
-            {editor.imported && (
-              <button type="button" className="import-report-button" onClick={() => setFormatsOpen(true)} data-testid="button-import-report">
-                LDraw: {editor.imported.instances.length} Teile · {importDiagnostics(editor.imported).warnings.length} Importwarnungen
-              </button>
-            )}
             {activeInventoryRow && (
               <div className="inventory-mode-banner" role="status" data-testid="status-inventory-mode">
                 <span>Meine Teileliste: BL {activeInventoryRow.partId} · Farbe {activeInventoryRow.colorId} · LDraw {editor.selectedInventory!.ldrawId}</span>
@@ -309,11 +304,11 @@ function App() {
             {editor.brickCount === 0 && (
               <div className="canvas-hint" aria-hidden="true">
                 <span className="hint-cross">+</span>
-                <span>Raster antippen, um den ersten Stein zu setzen</span>
+                <span>{editor.toolMode === 'view' ? 'Nur ansehen · zum Platzieren „Bauen“ wählen' : 'Raster antippen, um den ersten Stein zu setzen'}</span>
               </div>
             )}
           </div>
-          {editor.selectedId && (
+          {editor.selectedId && editor.toolMode !== 'view' && (
             <div className="mobile-selection-actions" data-testid="mobile-selection-actions">
               <span className="mobile-selection-label"><Box size={14} /> {editor.selectedInstance ? `LDraw ${editor.selectedInstance.part.ldrawId}` : "Stein ausgewählt"}</span>
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
@@ -336,6 +331,7 @@ function App() {
             <div className="section-heading"><span>01</span><h2>Werkzeug</h2></div>
             <div className="tool-segment">
               {([
+                { mode: 'view' as const, icon: Eye, label: 'Ansicht' },
                 { mode: 'build' as const, icon: Hammer, label: 'Bauen' },
                 { mode: 'select' as const, icon: MousePointer2, label: 'Auswahl' },
                 { mode: 'delete' as const, icon: Trash2, label: 'Löschen' },
@@ -369,7 +365,7 @@ function App() {
 
           <div className="rail-section selection-section">
             <div className="section-heading"><span>03</span><h2>Ausgewählt</h2></div>
-            {editor.selectedId ? (
+            {editor.selectedId && editor.toolMode !== 'view' ? (
               <>
                 <div className="selection-detail" role="status" data-testid="status-selected-brick">
                   <span className="selection-mark"><Box size={16} /></span>
@@ -409,7 +405,8 @@ function App() {
       </section>
 
       <nav className="mobile-dock" aria-label="Editor tools">
-        <button type="button" className="dock-history" onClick={editor.undo} disabled={!editor.canUndo} aria-label="Undo" data-testid="mobile-button-undo"><Undo2 size={19} /></button>
+        <button type="button" className="dock-history" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label="Undo" data-testid="mobile-button-undo"><Undo2 size={19} /></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'view' ? 'active' : ''}`} onClick={() => setMode('view')} aria-pressed={editor.toolMode === 'view'} data-testid="mobile-button-view"><Eye size={18} /><span>Ansicht</span></button>
         <button type="button" className={`dock-tool ${editor.toolMode === 'build' ? 'active' : ''}`} onClick={() => setMode('build')} aria-pressed={editor.toolMode === 'build'} data-testid="mobile-button-build"><Hammer size={18} /><span>Bauen</span></button>
         <button type="button" className={`dock-tool ${editor.toolMode === 'select' ? 'active' : ''}`} onClick={() => setMode('select')} aria-pressed={editor.toolMode === 'select'} data-testid="mobile-button-select"><MousePointer2 size={18} /><span>Auswahl</span></button>
         <button type="button" className={`dock-tool dock-delete ${editor.toolMode === 'delete' ? 'active' : ''}`} onClick={() => setMode('delete')} aria-pressed={editor.toolMode === 'delete'} data-testid="mobile-button-delete"><Trash2 size={17} /><span>Löschen</span></button>
@@ -424,7 +421,7 @@ function App() {
           <span>Farbe</span>
         </button>
         <button type="button" className="dock-parts" onClick={() => setPartsOpen(true)} data-testid="mobile-button-parts"><Plus size={19} /><span>Steine</span></button>
-        <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo} aria-label="Redo" data-testid="mobile-button-redo"><Redo2 size={19} /></button>
+        <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label="Redo" data-testid="mobile-button-redo"><Redo2 size={19} /></button>
       </nav>
 
       {colorsOpen && (
