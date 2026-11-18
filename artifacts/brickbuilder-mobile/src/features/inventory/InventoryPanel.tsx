@@ -6,7 +6,6 @@ import { allocatedCounts } from './accounting';
 import InventoryThumbnail from './InventoryThumbnail';
 import { MAX_LIST_BYTES, MAX_ROWS, type Inventory, type InventoryChoice, type InventoryPreview, type InventoryRow } from './types';
 import './inventory.css';
-import { importFileAccept } from '@/platform/import-file';
 
 const PAGE = 30;
 export const CSV_TEMPLATE = `part_id,color_id,quantity
@@ -149,7 +148,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
           </div>
           <label className={`inv-file ${hasAllocations ? 'disabled' : ''}`}>
             <FileUp size={15} /> {inventory ? 'Ersetzen' : 'Importieren'}
-            <input ref={fileRef} type="file" accept={importFileAccept('inventory')} disabled={hasAllocations || importing}
+            <input ref={fileRef} type="file" accept=".xml,.csv,text/xml,text/csv" disabled={hasAllocations || importing}
               onChange={e => void pickFile(e.target.files?.[0])} data-testid="input-inventory-file" />
           </label>
         </div>

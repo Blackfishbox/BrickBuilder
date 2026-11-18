@@ -28,11 +28,12 @@ import {
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { applyInstructionCameraRotation } from "./instruction-camera";
+import { applyInstructionFocus, installInstructionFocus, instructionDisplayColor } from "./instruction-focus";
 import { createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
 import { reuseGeometryCache } from "./ldraw-geometry";
 import { importedSelectionBounds, pickSoftwareInstance } from "./imported-selection";
-import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftware, INTERACTIVE_TRIANGLE_BUDGET, type SoftwareScene } from "./software-scene";
+import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftware, applySoftwareInstructionFocus, INTERACTIVE_TRIANGLE_BUDGET, type SoftwareScene } from "./software-scene";
 import { InstanceIndex, instanceIndex } from "./instance-index";
 import { activeConnections, magneticConstructionTransform, hasUsableConnections } from "../connections/engine";
 import type { MagneticLatch } from "../connections/engine";
@@ -58,6 +59,8 @@ interface BuilderCanvasProps {
   showConstructionControls?: boolean;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
+  /** Occurrence IDs for the current instruction step; undefined restores normal colors. */
+  instructionFocusIds?: ReadonlySet<string>;
   projectId?: string;
   bricks: Brick[];
   imported?: ImportedModel;
@@ -123,6 +126,7 @@ class FallbackRenderer {
     imported?: SoftwareScene,
     importOffset = 0,
     interactive = false,
+    instructionFocusIds?: ReadonlySet<string>,
   ): void {
     const context = this.context;
     if (!context) return;
@@ -193,7 +197,9 @@ class FallbackRenderer {
             if (points.some(p => p.depth < 0.1)) continue;
             const area = (points[1].x - points[0].x) * (points[2].y - points[0].y) - (points[1].y - points[0].y) * (points[2].x - points[0].x);
             if (Math.abs(area) < 0.08) continue;
-            faces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color: imported.colors[triangle], alpha: imported.alpha[triangle], selected: imported.triangleIds[triangle] === selectedId });
+            const id = imported.triangleIds[triangle];
+            const color = imported.instructionColors?.[triangle] ?? imported.colors[triangle];
+            faces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color, alpha: imported.alpha[triangle], selected: id === selectedId });
       }
       faces.sort((a, b) => b.depth - a.depth);
       for (const face of faces) {
@@ -234,6 +240,7 @@ class FallbackRenderer {
       const topY = brick.y + BRICK_HEIGHT - 0.08;
       const top = corners.map(({ x, z }) => project(x, topY, z));
       const color = new Color(brick.color);
+      if (instructionFocusIds !== undefined) instructionDisplayColor(color, instructionFocusIds.has(brick.id));
       const cameraDirection = new Vector2(
         camera.position.x - brick.x,
         camera.position.z - brick.z,
@@ -410,6 +417,7 @@ function softwareWarning(scene: SoftwareScene): string {
 export function BuilderCanvas({
   showConstructionControls = true,
   viewRotation,
+  instructionFocusIds,
   projectId,
   bricks,
   imported,
@@ -499,9 +507,16 @@ export function BuilderCanvas({
     invalidatorRef.current?.();
   };
   const invalidatorRef = useRef<(() => void) | null>(null);
+  const refreshInstructionFocus = () => {
+    applyInstructionFocus(importedRootRef.current, propsRef.current.instructionFocusIds);
+    applyInstructionFocus(brickRootRef.current, propsRef.current.instructionFocusIds);
+    if (softwareSceneRef.current) applySoftwareInstructionFocus(softwareSceneRef.current, propsRef.current.instructionFocusIds);
+    invalidatorRef.current?.();
+  };
   const raycasterRef = useRef(new Raycaster());
   const propsRef = useRef({
     viewRotation,
+    instructionFocusIds,
     projectId,
     bricks,
     imported,
@@ -531,6 +546,7 @@ export function BuilderCanvas({
 
   propsRef.current = {
     viewRotation,
+    instructionFocusIds,
     projectId,
     bricks,
     imported,
@@ -651,6 +667,7 @@ export function BuilderCanvas({
             softwareSceneRef.current,
             importedOffsetRef.current,
             interactive,
+            propsRef.current.instructionFocusIds,
           );
         }
         overlay.draw(camera, importedOffsetRef.current, id => {
@@ -713,6 +730,8 @@ export function BuilderCanvas({
     invalidatorRef.current?.();
   }, [viewRotation?.[0], viewRotation?.[1], viewRotation?.[2]]);
 
+  useEffect(() => { refreshInstructionFocus(); }, [instructionFocusIds]);
+
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -730,6 +749,7 @@ export function BuilderCanvas({
         const index = previous && instanceIndex(previous);
         const software = softwareSceneRef.current;
         if ((index && index.update(imported)) || (software && updateSoftwareScene(software, imported))) {
+          refreshInstructionFocus();
           sceneModelRef.current = imported;
           setSceneStatus(null);
           if (software) setRenderWarning(softwareWarning(software));
@@ -746,6 +766,7 @@ export function BuilderCanvas({
     if (imported && sameModel && !retry && softwareSceneRef.current && forceCompatibility) {
       try {
         if (updateSoftwareScene(softwareSceneRef.current, imported)) {
+          refreshInstructionFocus();
           sceneModelRef.current = imported; setSceneStatus(null);
           refreshConnections();
           setRenderWarning(softwareWarning(softwareSceneRef.current));
@@ -835,6 +856,7 @@ export function BuilderCanvas({
         if (!sameModel) fitImportedView(camera, bounds, cameraStateRef.current);
       }
       if (root) { scene.add(root); importedRootRef.current = root; }
+      refreshInstructionFocus();
       updateImportedSelection();
       refreshConnections();
       setSceneStatus(null);
@@ -896,13 +918,15 @@ export function BuilderCanvas({
       const first = groupBricks[0];
       const material = new MeshLambertMaterial({ color: first.color });
       const instances = new InstancedMesh(
-        brickGeometry(first.type),
+        // Focus is occurrence-specific; never attach its buffer to the shared cache.
+        brickGeometry(first.type)!.clone(),
         material,
         groupBricks.length,
       );
       instances.castShadow = true;
       instances.receiveShadow = true;
       instances.userData.brickIds = groupBricks.map((brick) => brick.id);
+      installInstructionFocus(instances);
       instances.name = `brick-group-${first.type}`;
       groupBricks.forEach((brick, index) => {
         dummy.position.set(brick.x, brick.y, brick.z);
@@ -934,6 +958,7 @@ export function BuilderCanvas({
 
     scene.add(nextRoot);
     brickRootRef.current = nextRoot;
+    refreshInstructionFocus();
     invalidatorRef.current?.();
   }, [bricks, selectedId]);
 
@@ -1120,8 +1145,8 @@ export function BuilderCanvas({
       }
 
       clickRef.current = { id: event.pointerId, start: point, moved: false };
-      const hit = findBrick(point);
       const current = propsRef.current;
+      const hit = current.toolMode === "view" ? null : findBrick(point);
       if (current.toolMode === "select") {
         if (hit) {
           current.onSelect(hit.id);

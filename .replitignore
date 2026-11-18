@@ -17,6 +17,5 @@
 **/android/**/build/
 **/android/local.properties
 *.jks
-*.p12
 *.keystore
 keystore.properties

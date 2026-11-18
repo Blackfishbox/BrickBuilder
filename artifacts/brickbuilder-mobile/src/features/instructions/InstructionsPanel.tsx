@@ -24,8 +24,10 @@ const noop = () => undefined;
 export default function InstructionsPanel({ document, onChange, onClose, onExportPDF }: Props) {
   const plan = useMemo(() => effectiveInstructions(document), [document]);
   const [index, setIndex] = useState(0);
+  const [highlight, setHighlight] = useState(false);
   const current = Math.min(index, plan.steps.length - 1);
   const step = plan.steps[current];
+  const focusIds = useMemo(() => highlight ? new Set(step.partIds) : undefined, [highlight, step.partIds]);
   const [scope, setScope] = useState<"step" | "all">("step");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -165,6 +167,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             <BuilderCanvas
               showConstructionControls={false}
               viewRotation={step.rotation}
+              instructionFocusIds={focusIds}
               projectId={`${document.id}-instructions`}
               bricks={view.bricks}
               imported={view.imported}
@@ -205,6 +208,14 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
           </nav>
 
           <div className="ins-card">
+            <button className="ins-ghost ins-highlight" aria-pressed={highlight}
+              onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
+              Neue Teile hervorheben: {highlight ? "Ein" : "Aus"}
+            </button>
+            {highlight && <p className="ins-hint" data-testid="text-instructions-highlight-legend">
+              Türkis: aktueller Schritt ({step.partIds.length} Teile). Hellgrau: bereits verbaut.
+              Nur die 3D-Vorschau wird markiert; Teile ohne Geometrie bleiben in der Teileliste.
+            </p>}
             <div className="ins-row">
               <label className="ins-field ins-grow">
                 <span>Titel</span>
@@ -227,7 +238,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               ))}
               {step.rotation && <button className="ins-ghost" onClick={() => patchStep({ rotation: undefined })} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>}
             </fieldset>
-            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt. Zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte werden beim IO-Export als flache Baugruppe mit einfachen Anleitungsseiten ausgegeben. Originale Studio-Daten bleiben als Sicherung erhalten.</p>
+            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt; zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte erhalten beim MPD-/IO-Export vorkommensspezifische Untermodelle und eingebettete Flächen. IO-Seiten werden einfach neu erzeugt; originale Studio-Daten bleiben als Sicherung erhalten. Eine verlustfreie Studio-Seitengestaltung ist nicht zugesichert.</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> Schritt danach</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label="Schritt nach vorne verschieben" data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
