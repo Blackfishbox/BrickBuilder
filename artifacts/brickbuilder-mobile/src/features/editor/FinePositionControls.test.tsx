@@ -20,3 +20,16 @@ it("exposes six touch adjustments of exactly one LDU in world coordinates", asyn
     ]);
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });
+
+it("opens the fine-adjustment panel when its summary is tapped", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div"), root = createRoot(container);
+  try {
+    await act(async () => root.render(<FinePositionControls onNudge={vi.fn()} />));
+    const details = container.querySelector("details");
+    expect(details?.open).toBe(false);
+    await act(async () => container.querySelector("summary")?.click());
+    expect(details?.open).toBe(true);
+    expect(container.querySelectorAll(".fine-position-grid button")).toHaveLength(6);
+  } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
+});
