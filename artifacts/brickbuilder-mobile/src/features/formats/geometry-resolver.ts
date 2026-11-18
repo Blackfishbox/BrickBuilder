@@ -1,7 +1,7 @@
 import { gunzipSync } from "fflate";
 import { builderDatabase } from "@/storage/database";
 import type { LibraryFile, PackagePayload } from "../parts/types";
-import type { ImportedModel } from "./types";
+import type { ImportedModel, ModelGeometryFile } from "./types";
 import manifest from "./geometry-manifest.json";
 import { resolveColor } from "./colors";
 import { refreshModelColors } from "./model-colors";
@@ -27,7 +27,7 @@ export async function resolveGeometry(model: ImportedModel, options: ResolveOpti
   const parts = await builderDatabase.libraryParts.toArray();
   const packages = await builderDatabase.partPackages.toArray();
   const cached = await builderDatabase.geometrySnapshots.toArray();
-  const available: Record<string, LibraryFile> = Object.create(null);
+  const available: Record<string, ModelGeometryFile> = Object.create(null);
   for (const file of Object.values(model.resources)) available[file.path] = file;
   for (const file of local) available[file.path] ??= file;
   for (const cache of cached) for (const file of cache.files) {
@@ -176,7 +176,21 @@ export async function resolveGeometry(model: ImportedModel, options: ResolveOpti
   if (downloaded.size || snapshot) {
     // Only complete, compiled root closures enter the reusable cache, in one transaction.
     const valid = new Set<string>();
-    const roots = [...new Set(model.instances.filter(i => i.part.status === "resolved").map(i => key(i.reference)))];
+    const publicClosure = (path: string, seen = new Set<string>()): boolean => {
+      if (seen.has(path)) return true;
+      seen.add(path);
+      const file = available[path];
+      if (!file || file.license === "Project-source") return false;
+      return dependencies(file.content).every(reference => {
+        const child = candidates(reference).find(candidate => available[candidate]);
+        return Boolean(child && publicClosure(child, seen));
+      });
+    };
+    const roots = [...new Set(model.instances.filter(i => i.part.status === "resolved").map(i => key(i.reference)))]
+      .filter(root => {
+        const path = candidates(root).find(path => available[path]);
+        return Boolean(path && publicClosure(path));
+      });
     const add = (path: string) => {
       if (valid.has(path)) return;
       valid.add(path);
@@ -197,7 +211,7 @@ export async function resolveGeometry(model: ImportedModel, options: ResolveOpti
         version: 1, id: crypto.randomUUID(), createdAt: new Date().toISOString(), roots,
         graph: Object.fromEntries([...valid].map(path => [path, graph[path] ?? []])),
         files: await Promise.all([...valid].map(async path => {
-          const file = available[path];
+          const file = available[path] as LibraryFile; // publicClosure excludes all project-source files.
           const bytes = new TextEncoder().encode(file.content);
           return { ...file, sha256: await hashBytes(bytes), byteLength: bytes.length };
         })), legalDocuments: model.legalDocuments,

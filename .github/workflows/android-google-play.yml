@@ -120,7 +120,7 @@ jobs:
           pnpm run typecheck:libs
           pnpm --filter @workspace/brickbuilder-mobile typecheck
           pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/platform src/features/privacy src/features/parts src/features/catalog src/features/editor/catalog-construction.test.tsx src/features/inventory/builder-inventory.test.tsx src/features/engine/camera-gesture.test.ts src/features/connections/standard-plates.test.ts
-          pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/features/instructions src/features/formats/mpd/export.test.ts src/features/formats/backup-roundtrip.test.ts
+          pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/features/instructions src/features/formats/io src/features/formats/mpd/export.test.ts src/features/formats/backup-roundtrip.test.ts
       - name: Build Android assets with private controller details
         env:
           ANDROID_RELEASE_BUILD: "true"
