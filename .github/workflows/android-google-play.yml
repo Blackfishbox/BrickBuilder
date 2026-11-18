@@ -146,7 +146,23 @@ jobs:
           ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
-        run: bash gradlew --no-daemon :app:bundleRelease :app:lintRelease
+        run: |
+          # Maven Central can briefly return HTTP 429 while Gradle resolves
+          # Android plugin dependencies. Limit download concurrency and retry
+          # with backoff so transient rate limits do not fail the release.
+          for attempt in 1 2 3; do
+            echo "Release build attempt ${attempt}/3"
+            if bash gradlew --no-daemon --max-workers=2 :app:bundleRelease :app:lintRelease; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              delay=$((attempt * 30))
+              echo "Build failed; retrying after ${delay}s."
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Release build failed after three attempts."
+          exit 1
       - name: Verify the signature, R8 mapping and packaged privacy policy
         run: |
           AAB="artifacts/brickbuilder-mobile/android/app/build/outputs/bundle/release/app-release.aab"
