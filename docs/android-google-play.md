@@ -1,7 +1,9 @@
 # Standalone Android and Google Play preparation
 
 This work lives on **`android/google-play`**. The GitHub `main` branch remains
-the existing web/PWA application. Nothing uploads an app to Google Play.
+the existing web/PWA application. Pushes to `android/google-play` build signed
+bundles and submit them to the closed **`alpha`** test. `main` never publishes
+and the workflow never targets production.
 
 ## What runs locally
 
@@ -167,10 +169,30 @@ Workflow: `.github/workflows/android-google-play.yml`.
 
 Every push to `android/google-play` starts a **signed release AAB** build.
 There are no path filters, no unsigned fallback, no silently skipped job when
-configuration is missing, and no concurrency rule that cancels queued pushes.
+configuration is missing, and no build concurrency rule that cancels queued pushes.
 A multi-commit push builds its final tree once, as GitHub's push trigger works.
-There is no automatic upload to Google Play. Protect write access to this
-branch: code running there can access release secrets.
+After the build succeeds, a separate job uploads that exact AAB and its R8
+mapping to Google Play's closed **`alpha`** test, with short German release
+notes. Protect write access to this branch: code running there can access
+release secrets and submit releases to testers.
+
+### Set up the Play service account
+
+1. Enable **Google Play Android Developer API** in the service account's Google
+   Cloud project.
+2. Invite the service account's email under Play Console **Users and
+   permissions**. Give it access to `brickbuilder.blackfishbox.de`, permission
+   to view app information and **release apps to testing tracks**. Production
+   permissions are not required and should not be granted for this workflow.
+3. Create/configure the closed test with exact API identifier **`alpha`** and
+   select its testers/countries. The app listing must already exist. If no
+   binary has ever been uploaded, perform the initial signed AAB upload manually
+   in Play Console. Complete required declarations and Play App Signing.
+4. Create repository Actions secret **`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`** at
+   https://github.com/Blackfishbox/BrickBuilder-Mobile/settings/secrets/actions/new
+   and paste the full original service-account JSON directly into GitHub's
+   protected editor. Do not base64-encode it. Never put the JSON in source,
+   a chat message, an attachment or a build artifact.
 
 Configure these repository Actions variables:
 
@@ -193,6 +215,7 @@ required on every push):
 | `PRIVACY_CONTROLLER_STREET` | Street and house number |
 | `PRIVACY_CONTROLLER_POSTAL_CITY` | Postal code and city |
 | `PRIVACY_CONTROLLER_COUNTRY` | Country |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Full service-account JSON for closed test publishing |
 
 Do not put these values in YAML, repository variables, commits, tickets or
 workflow inputs. Use protected secret entry. Missing secrets fail the build
@@ -202,13 +225,43 @@ placeholders: `android:prepare` replaces them only in generated assets when
 The final app necessarily exposes the completed policy to its users; using
 secrets keeps personal data out of Git history, not out of the published app.
 
-Open **Actions → Build signed Google Play AAB → the successful run → Artifacts**.
+Open **Actions → Build and publish closed Google Play test → the run → Artifacts**.
 Download `brickbuilder-play-aab-<versionCode>-<attempt>`, extract its ZIP, and
-manually upload **`app-release.aab`** in Google Play Console (for example to
-internal testing). The only other download is the matching ProGuard/R8
+keep **`app-release.aab`** as a backup or for manual recovery. The only other download is the matching ProGuard/R8
 `mapping.txt`. No release JSON, emulator reports or screenshots are uploaded.
 Use the Actions run and its commit to identify each release. Artifacts expire
-after **14 days**; archive the releases you need privately.
+after **14 days**; archive the releases you need privately. They remain
+downloadable if the subsequent Play upload fails.
+
+The pinned publishing action submits the AAB, mapping and notes with
+`tracks: alpha`, `status: completed`, and `changesNotSentForReview: false`.
+This requests rollout to eligible closed testers, not production users.
+Google review, managed publishing, incomplete declarations or account
+restrictions can still delay/prevent availability. The workflow cannot bypass
+them and does not change the tester list. A rejected submission fails the job;
+it is not silently retried as a draft or with review disabled.
+
+### German release notes
+
+The publish job automatically summarizes changed functional areas in **German**
+(locale `de-DE`, maximum 500 characters), comparing against the last successful
+automated release. Changes from intervening failed runs are included. Before
+the first successful automated release, the baseline is the current push;
+manual runs without a prior automated release use the latest commit.
+
+This is a deterministic file-based summary with no paid AI service, not a
+translation of English commits or a claim that all changes are verified fixes.
+For more specific wording, choose **Run workflow**, select
+`android/google-play`, and enter `release_notes_de`. The optional `version_name`
+input overrides the display version. The GitHub Actions summary also shows the
+actual notes sent to Play.
+
+Publish jobs are serialized to avoid concurrent Google Play edits; an active
+upload is never cancelled. GitHub can replace an older waiting publish job with
+a newer waiting one during rapid pushes. Independent builds and their
+downloadable artifacts are not cancelled by this publish-job concurrency.
+An older run is refused if a newer automated release has already succeeded.
+Avoid editing the same release manually while an automated submission runs.
 
 `MainActivity` now fits the entire WebView inside actual system-bar, cutout
 and keyboard insets. Capacitor's competing inset listener is disabled.
@@ -241,9 +294,9 @@ This mapping does not decode JavaScript/TypeScript stack traces.
 `versionCode` is `ANDROID_VERSION_CODE_OFFSET + github.run_number`. Each new
 push/run increases the number; rerunning the same run preserves it. **Every
 Play upload must have a strictly higher code than the previous upload.**
-Parallel runs may finish out of order, so check the version code in the artifact
-name and its Actions run before uploading. A new commit is required for a new code after a previously uploaded
-run. Manual dispatch optionally overrides only the display version name.
+If earlier manual uploads used higher codes, increase the offset before
+enabling automation. Re-running an already uploaded run reuses its version code
+and will be rejected by Play: start a new manual run or push a new commit.
 GitHub normally exposes manual dispatch only when the workflow also exists
 on the default branch; automatic Android-branch pushes work without that.
 
