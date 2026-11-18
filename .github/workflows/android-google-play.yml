@@ -1,4 +1,4 @@
-name: Build signed Google Play AAB
+name: Build and publish closed Google Play test
 
 on:
   push:
@@ -9,16 +9,23 @@ on:
         description: "Displayed version; defaults to ANDROID_VERSION_NAME"
         required: false
         type: string
+      release_notes_de:
+        description: "Optional German release notes (maximum 500 characters); otherwise summarized from changed files"
+        required: false
+        type: string
 
-# Build downloadable artifacts only. No Play API credentials or store upload.
+# Only the Android release branch can publish, and only to closed testing alpha.
 permissions:
   contents: read
 
-# Do not cancel pending runs: every push must receive its own build.
+# Builds remain independent so every push receives its own downloadable artifacts.
 jobs:
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    outputs:
+      version_code: ${{ steps.release.outputs.version_code }}
+      version_name: ${{ env.BRICKBUILDER_VERSION_NAME }}
     env:
       BRICKBUILDER_VERSION_NAME: ${{ inputs.version_name || vars.ANDROID_VERSION_NAME || '0.1.0' }}
       VERSION_CODE_OFFSET: ${{ vars.ANDROID_VERSION_CODE_OFFSET || '0' }}
@@ -38,8 +45,10 @@ jobs:
           PRIVACY_CONTROLLER_STREET: ${{ secrets.PRIVACY_CONTROLLER_STREET }}
           PRIVACY_CONTROLLER_POSTAL_CITY: ${{ secrets.PRIVACY_CONTROLLER_POSTAL_CITY }}
           PRIVACY_CONTROLLER_COUNTRY: ${{ secrets.PRIVACY_CONTROLLER_COUNTRY }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           python3 - <<'PY'
+          import json
           import os
           if os.environ["GITHUB_REF"] != "refs/heads/android/google-play":
               raise SystemExit("Run this workflow only on android/google-play.")
@@ -48,10 +57,21 @@ jobs:
               "ANDROID_UPLOAD_KEY_ALIAS", "ANDROID_UPLOAD_KEY_PASSWORD",
               "PRIVACY_CONTROLLER_NAME", "PRIVACY_CONTROLLER_STREET",
               "PRIVACY_CONTROLLER_POSTAL_CITY", "PRIVACY_CONTROLLER_COUNTRY",
+              "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON",
           ]
           missing = [key for key in keys if not os.environ.get(key, "").strip()]
           if missing:
               raise SystemExit("Missing GitHub Actions secrets: " + ", ".join(missing))
+          try:
+              account = json.loads(os.environ["GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"])
+              valid = account.get("type") == "service_account" and all(
+                  isinstance(account.get(key), str) and account[key].strip()
+                  for key in ("client_email", "private_key", "token_uri")
+              )
+          except (ValueError, AttributeError):
+              valid = False
+          if not valid:
+              raise SystemExit("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON must contain the complete service-account JSON, not base64 or a filename.")
           PY
       - uses: pnpm/action-setup@v4
         with:
@@ -61,6 +81,7 @@ jobs:
           node-version: "24"
           cache: pnpm
       - name: Validate release settings and download the reviewed catalog
+        id: release
         run: |
           node --input-type=module <<'JS'
           import { appendFileSync } from "node:fs";
@@ -75,6 +96,7 @@ jobs:
           const url = new URL(process.env.CATALOG_URL);
           if (url.protocol !== "https:" || url.username || url.password) throw Error("Use a public HTTPS catalog URL without credentials");
           appendFileSync(process.env.GITHUB_ENV, `BRICKBUILDER_VERSION_CODE=${code}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `version_code=${code}\n`);
           JS
           mkdir -p generated-artifacts/android-inputs
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
@@ -171,3 +193,53 @@ jobs:
           rm -f "$RUNNER_TEMP/brickbuilder-upload.p12" "$RUNNER_TEMP/aab-verification.txt"
           rm -f artifacts/brickbuilder-mobile/dist/public/privacy.html
           rm -f artifacts/brickbuilder-mobile/android/app/src/main/assets/public/privacy.html
+
+  publish:
+    name: Publish closed test (alpha)
+    needs: android
+    if: github.ref == 'refs/heads/android/google-play'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    # Never cancel an active Play edit. GitHub may replace an older pending
+    # publish job with a newer one; each build's AAB and mapping remain available.
+    concurrency:
+      group: brickbuilder-google-play-alpha
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Download this run's verified signed AAB
+        uses: actions/download-artifact@v4
+        with:
+          name: brickbuilder-play-aab-${{ needs.android.outputs.version_code }}-${{ github.run_attempt }}
+          path: generated-artifacts/google-play/aab
+      - name: Download this run's matching ProGuard mapping
+        uses: actions/download-artifact@v4
+        with:
+          name: brickbuilder-proguard-${{ needs.android.outputs.version_code }}-${{ github.run_attempt }}
+          path: generated-artifacts/google-play/mapping
+      - name: Summarize changes in German
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAY_RELEASE_NOTES_DE: ${{ inputs.release_notes_de }}
+        run: node scripts/android/play-release-notes.mjs
+      - name: Publish the signed bundle to the closed alpha test
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: brickbuilder.blackfishbox.de
+          releaseFiles: generated-artifacts/google-play/aab/app-release.aab
+          mappingFile: generated-artifacts/google-play/mapping/mapping.txt
+          tracks: alpha
+          status: completed
+          changesNotSentForReview: "false"
+          releaseName: ${{ needs.android.outputs.version_name }} (${{ needs.android.outputs.version_code }})
+          whatsNewDirectory: generated-artifacts/google-play/whatsnew
