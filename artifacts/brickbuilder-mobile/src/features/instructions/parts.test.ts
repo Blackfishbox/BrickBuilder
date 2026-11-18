@@ -9,6 +9,19 @@ import { exportInstructionPDF } from "./pdf";
 import { sourceInstructionPlan } from "./model";
 import { readFileSync } from "node:fs";
 
+const { pdfTexts } = vi.hoisted(() => ({ pdfTexts: [] as unknown[] }));
+vi.mock("jspdf", () => ({
+  jsPDF: class {
+    private pages = 1;
+    setProperties() {} setDrawColor() {} setFillColor() {} setFont() {} setFontSize() {}
+    setTextColor() {} roundedRect() {} addImage() {} setPage() {}
+    addPage() { this.pages++; }
+    text(value: unknown) { pdfTexts.push(value); }
+    splitTextToSize(value: string) { return [value]; }
+    getNumberOfPages() { return this.pages; }
+    output() { return new TextEncoder().encode("%PDF-1.4").buffer; }
+  },
+}));
 const { gpu } = vi.hoisted(() => ({ gpu: vi.fn((_model: unknown, _code: string): string => { throw new Error("WebGL unavailable"); }) }));
 vi.mock("../parts/thumbnails/render", () => ({ renderThumbnail: gpu }));
 
@@ -104,12 +117,20 @@ describe("step parts illustrations", () => {
     const png = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
     const render = vi.fn(async () => png), dispose = vi.fn(), order: string[] = [];
     render.mockImplementation(async () => { order.push("part"); return png; });
+    pdfTexts.length = 0;
     const bytes = await exportInstructionPDF(doc, plan, {}, async () => ({
       image: () => { order.push("model"); return png; }, dispose,
     }), render);
+    const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
+      .filter((value): value is string => typeof value === "string");
     expect(render).toHaveBeenCalledTimes(55);
     expect(order.slice(0, 13)).toEqual([...Array(12).fill("part"), "model"]);
     expect(new TextDecoder().decode(bytes)).toContain("%PDF-1.");
+    expect(strings).toContain("Teile in diesem Schritt");
+    expect(strings).toContain("1×");
+    expect(strings).toContain("LDraw 3004");
+    expect(strings).not.toContain("Teile in diesem Schritt · vollständige Angaben");
+    expect(strings.every(value => !/^\\d+ × LDraw \\d+ · /.test(value))).toBe(true);
     expect(dispose).toHaveBeenCalledOnce();
   });
 });
