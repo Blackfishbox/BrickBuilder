@@ -101,21 +101,41 @@ provided. Native callout creation must not be inferred from global style XML.
 The PDF exporter remains a separate simple step document and does not reproduce
 these source-page edits.
 
-When instruction order/assignment is changed, the exporter writes an
-instance-specific **flat assembly root** with standard LDraw `STEP`/`ROTSTEP`
-boundaries. Original LDraw sections remain present as unreferenced source
-records. IO additionally receives a regenerated `model.ins` using one step per
-page. Titles and notes also use BrickBuilder LDraw comments so that the
-application can recover them after reimport.
+When instruction order/assignment is changed, the occurrence-aware MPD exporter
+partitions the active hierarchy into the requested root `STEP`/`ROTSTEP` sequence.
+Only the selected occurrences enter each step's submodel variants. Shared
+definitions are not globally reordered, and identical variants can be reused.
+Nested local transforms, effective colors and BFC state remain in their original
+frames. An edited leaf that cannot be represented under a singular/unsafe parent
+is lifted into its assigned root step with its world matrix and inherited BFC
+inversion. Unedited leaves under singular parents need no inverse.
+
+Inline type-2/3/4/5 geometry remains active **once per original occurrence**.
+Because those primitives have no editable part IDs, they follow the earliest
+surviving descendant's assigned step. Geometry-only submodels follow their
+parent's geometry owner; without surviving descendants they use that owner (the
+final step at root). They are not deleted along with catalog parts. Explicit
+empty steps, titles, notes and rotations survive BrickBuilder reimport. A
+BrickBuilder root marker distinguishes these explicit boundaries from ordinary
+source-subassembly construction steps.
+
+Original LDraw sections remain as source records; the active root has a
+collision-safe name. Unknown metadata is preserved, not semantically rewritten
+for third-party extensions. IO additionally receives a regenerated `model.ins`
+using one step per page. This is not proof of Studio's interpretation of those
+pages or nested subassembly steps.
 
 Superseded Studio `modelv2.ldr`, `model2.ldr` and `model.lxfml` files are moved to
 `BrickBuilder/original/` instead of leaving stale active models in the archive.
-A replaced `model.ins` is retained there too. These backups are not editable
-features and do not automatically migrate to the flattened model.
+A replaced `model.ldr` and `model.ins` are retained there too; an existing backup
+is never overwritten. Other archive entries keep their decompressed bytes.
+These backups are not active editable features and their native page indices do
+not automatically migrate to the changed construction sequence.
 
-If the source has inline primitive surfaces, rewriting its instruction
-hierarchy is refused explicitly rather than silently dropping those surfaces.
-Keep the original IO and the full JSON backup.
+The existing 1,024-section and 16-MiB MPD budgets still apply. Splitting many
+occurrences across thousands of steps can exceed them; export then fails
+explicitly, leaving the source archive and JSON backup untouched. No geometry is
+silently dropped and safety limits are not raised to make an export pass.
 
 Studio's proprietary page designer, placed callouts, buffer exchanges, native
 arrows and camera-target/zoom controls are **not fully supported**.
@@ -132,6 +152,38 @@ reconciliation, JSON ID remapping, PDF generation/cancellation and IO/MPD
 reimport. The locally supplied shield and vehicle IO files verify source
 archive preservation and effective part counts after instruction export.
 Private models are not committed or used as public fixtures.
+See the separate [hierarchical export evidence](instruction-export-evidence.md)
+for executed checks and the still-blocked actual-Studio acceptance.
+
+Hierarchical-export regressions additionally compare effective world-space leaf
+multisets, complete reachable type-2/3/4/5 geometry, BFC winding/clipping/inversion,
+repeated occurrences, singular transforms, geometry-only sections, repeated
+exports, deliberate empty steps and original archive members. Private checks
+cover the shield, vehicle, 40649 and raised-base source IOs. The 8,590-leaf 40649
+source resolves to 4,340 source steps: its geometry roundtrip uses three explicit
+construction groups followed by reordering, **not** a successful reversal of
+all 4,340 steps (that exceeds the unchanged section budget).
+
+#### Reproducible Studio acceptance handoff
+
+Generate synthetic IO/MPD files, hashes, expected counts and a manual checklist:
+
+```sh
+pnpm --filter @workspace/scripts exec tsx \
+  --tsconfig ../artifacts/brickbuilder-mobile/tsconfig.json \
+  ../artifacts/brickbuilder-mobile/scripts/export-instruction-evidence.mjs
+```
+
+Optional trailing arguments are paths to private IOs (relative to `scripts/`,
+or absolute). They are opt-in and never fetched. All outputs, including
+`studio-acceptance.zip`, go under the ignored
+`generated-artifacts/instruction-export-evidence/` directory. The manifest marks
+Studio opening **not performed**; generating the bundle does not change that.
+Record actual Studio version, file hash, model/step checks, screenshots, warnings
+and a Studio-saved copy separately. Both synthetic models have six leaf parts,
+three embedded triangles, repeated, reflected/sheared and singular assemblies.
+The second model intentionally moves one leaf out of its singular parent; the
+manifest records that expected world matrix.
 
 Source-layout tests also cover exact attribute-only XML changes, unknown
 content/CDATA/comment preservation, archive resource equality, unchanged MPD

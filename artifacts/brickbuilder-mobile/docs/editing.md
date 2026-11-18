@@ -82,9 +82,12 @@ an invisible surface.
   Commands tied to old indices, submodel names, textures or proprietary extensions
   may no longer apply after edits. IO now preserves unknown archive resources;
   superseded Studio model variants are retained as backups rather than active
-  models. Edited instructions use a flat occurrence-specific assembly and
-  regenerated simple pages. Sources containing inline primitive surfaces are
-  refused for this hierarchy rewrite rather than silently losing geometry.
+  models. Edited instructions partition occurrence-specific submodel variants
+  into explicit root steps, retaining world transforms, BFC and inline geometry
+  once per source occurrence. Geometry without editable part IDs follows the
+  earliest surviving descendant's step (or its parent's geometry owner).
+  Singular-parent edits lift only affected leaves into their assigned root step.
+  IO pages are regenerated, not a reproduction of Studio's original layout.
   Original bytes remain untouched in internal JSON. This is not a lossless
   Studio round trip; keep both backups. See
   [building instructions](../../../docs/building-instructions.md) for exact limits.
