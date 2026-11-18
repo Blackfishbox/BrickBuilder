@@ -6,7 +6,6 @@ import type { Affine, ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
 import { compilePart, installCompiledPart, reuseGeometryCache, sameSceneSources, worldMatrix } from "./ldraw-geometry";
 import { createImportedGroup, disposeImportedScene, measureImportedScene, DEFAULT_GEOMETRY_BUDGET, SceneBudgetExceeded } from "./imported-scene";
-import { FOCUS_ATTRIBUTE } from "./instruction-focus";
 
 type Draw = InstancedMesh | LineSegments<InstancedBufferGeometry>;
 interface Slot { draw: Draw; index: number }
@@ -116,7 +115,7 @@ export class InstanceIndex {
   private grow(draw: Draw, required: number): Draw {
     let nextCapacity = capacity(draw);
     while (nextCapacity < required) nextCapacity = Math.max(4, Math.ceil(nextCapacity * 1.5));
-    const bytes = (nextCapacity - capacity(draw)) * (draw instanceof InstancedMesh ? (draw.instanceColor ? 80 : 68) : 52);
+    const bytes = (nextCapacity - capacity(draw)) * (draw instanceof InstancedMesh ? (draw.instanceColor ? 76 : 64) : 48);
     if (measureImportedScene(this.root).bufferBytes + bytes > this.maxBytes) throw new SceneBudgetExceeded();
     let next: Draw;
     if (draw instanceof InstancedMesh) {
@@ -129,9 +128,6 @@ export class InstanceIndex {
         next.setColorAt(0, new Color());
         next.instanceColor!.array.set(draw.instanceColor.array);
       }
-      const focus = new Float32Array(nextCapacity);
-      focus.set(draw.geometry.getAttribute(FOCUS_ATTRIBUTE).array);
-      next.geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(focus, 1));
       draw.dispose(); // Only the replaced instancing buffers, not shared geometry/material.
     } else {
       const geometry = new InstancedBufferGeometry();
@@ -142,7 +138,6 @@ export class InstanceIndex {
         geometry.setAttribute(`instanceRow${row}`, new InstancedBufferAttribute(array, 4));
       }
       geometry.instanceCount = draw.geometry.instanceCount;
-      geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(nextCapacity), 1));
       next = new LineSegments(geometry, draw.material);
       draw.geometry.dispose();
     }
@@ -224,7 +219,7 @@ export class InstanceIndex {
         for (const [draw, count] of additions) {
           let size = capacity(draw);
           while (size < ids(draw).length + count) size = Math.max(4, Math.ceil(size * 1.5));
-          reservedBytes += (size - capacity(draw)) * (draw instanceof InstancedMesh ? (draw.instanceColor ? 80 : 68) : 52);
+          reservedBytes += (size - capacity(draw)) * (draw instanceof InstancedMesh ? (draw.instanceColor ? 76 : 64) : 48);
         }
         if (reservedBytes > this.maxBytes) throw new SceneBudgetExceeded();
         // Budget rejection happens before touching a single live batch.

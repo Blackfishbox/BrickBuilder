@@ -14,7 +14,6 @@
 .ins-icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #ddd8c9; border-radius: 10px; background: #fbf9f1; color: #30443e; }
 .ins-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; padding: 0 11px; border: 1px solid #ddd8c9; border-radius: 9px; background: #fbf9f1; color: #30443e; font-size: 12px; font-weight: 600; }
 .ins-ghost.is-danger { color: #a3412c; }
-.ins-highlight[aria-pressed="true"] { border-color: #007b6c; background: #d9f6ed; color: #005c50; }
 .ins-danger { min-height: 44px; padding: 0 12px; border: 0; border-radius: 9px; background: #a3412c; color: #fff8ed; font-weight: 700; font-size: 12px; }
 .ins-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 14px; background: #fffdf0; border-bottom: 1px solid #e3dfd2; font-size: 12px; }
 .ins-banner.is-error { color: #8e3a27; background: #fbefe8; }

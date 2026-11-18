@@ -100,23 +100,3 @@ constructing new dependency closures.
 These automated checks are not a physical Android device/WebView performance
 or GPU acceptance test. Before store submission, exercise first-run offline
 selection, placement, save/reopen, low storage and app upgrades on target phones.
-
-### Verified signed Android build
-
-The [successful Android build](https://github.com/Blackfishbox/BrickBuilder-Mobile/actions/runs/43933802833)
-produced signed version code **22**, version name **0.1.0**, from the current
-Android release history with its native-inset and document-picker fixes intact.
-Both Android 15/API 35 and Android 16/API 36 native checks passed.
-
-The downloaded AAB was independently checked with `jarsigner -verify`.
-All eight bundled package byte lengths and hashes match the catalog, with
-312 selectable entries and no bundled PWA worker. The separately downloaded
-R8 mapping is byte-identical to the mapping embedded in the signed AAB.
-
-| Output | Bytes | SHA-256 |
-| --- | ---: | --- |
-| `app-release.aab` | 14,412,920 | `e6ec6a1d0997b91fb1115593599eb18f1f37b6e3d7af3d41328a5de2bdd96d5f` |
-| `mapping.txt` | 6,939,971 | `d02c0ca307a645ccf0e6e609720b26cffbbbfebb74c81c657533b43600eae044` |
-
-The signed build was generated for manual distribution/testing; nothing was
-uploaded to Google Play or published to production.

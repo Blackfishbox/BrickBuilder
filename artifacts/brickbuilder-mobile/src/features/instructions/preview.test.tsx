@@ -49,35 +49,3 @@ it("passes each saved step rotation to the live view and updates on edit/reset w
   expect(rotation()).toEqual([0, 90, 0]);
   expect(source).toEqual(original);
 });
-
-it("toggles occurrence highlighting across cumulative, empty and previous steps without editing the document", () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const source = createEmptyDocument();
-  source.bricks = ["old", "new"].map(id => ({ id, type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }));
-  source.instructions = { version: 1, source: "manual", edited: true, warnings: [], steps: [
-    { id: "one", title: "One", notes: "", partIds: ["old"] },
-    { id: "two", title: "Two", notes: "", partIds: ["new"] },
-    { id: "empty", title: "Empty", notes: "", partIds: [] },
-  ] };
-  const original = structuredClone(source), onChange = vi.fn();
-  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
-  act(() => root!.render(<InstructionsPanel document={source} onChange={onChange} onClose={() => {}} onExportPDF={async () => {}} />));
-  const props = () => preview.mock.lastCall![0];
-  const click = (id: string) => act(() => host.querySelector<HTMLButtonElement>(`[data-testid="button-instructions-${id}"]`)!.click());
-  expect(props().instructionFocusIds).toBeUndefined();
-  click("highlight");
-  expect(host.querySelector('[data-testid="button-instructions-highlight"]')!.getAttribute("aria-pressed")).toBe("true");
-  expect(props().instructionFocusIds).toEqual(new Set(["old"]));
-  click("next");
-  expect(props().bricks.map((b: { id: string }) => b.id)).toEqual(["old", "new"]);
-  expect(props().instructionFocusIds).toEqual(new Set(["new"]));
-  click("next");
-  expect(props().instructionFocusIds).toEqual(new Set());
-  expect(props().bricks).toHaveLength(2);
-  click("prev");
-  expect(props().instructionFocusIds).toEqual(new Set(["new"]));
-  click("highlight");
-  expect(props().instructionFocusIds).toBeUndefined();
-  expect(onChange).not.toHaveBeenCalled();
-  expect(source).toEqual(original);
-});

@@ -2,7 +2,6 @@ import type { BuilderDocument } from "../editor/model";
 import type { ImportedModel } from "../formats/types";
 import type { InstructionPlan, InstructionStep } from "./types";
 import { readStudioInstructions } from "./studio";
-import { INSTRUCTION_ROOT } from "../formats/mpd/instruction-partition";
 
 const boundary = /^\s*0\s+(?:STEP|ROTSTEP)(?:\s|$)/i;
 
@@ -28,9 +27,6 @@ export function instructionStepsUnchanged(document: BuilderDocument): boolean {
 /** Resolve by occurrence, never by part number: identical parts may belong to different steps. */
 export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
   const steps: InstructionStep[] = [];
-  // Generated slices retain assembly nesting, but only the explicit root
-  // boundaries define construction steps, including deliberately empty ones.
-  const explicitRoot = model.sections[model.root]?.includes(INSTRUCTION_ROOT);
   const available = new Map(model.instances.map(part => [part.sourceOccurrence?.join("/"), part.id]));
   let serializedIndex = 0;
   function visit(name: string, occurrence: number[], ancestors: string[]) {
@@ -47,7 +43,6 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
       });
       parts = [];
       title = undefined; notes = "";
-      if (explicitRoot) rotation = undefined;
     };
     for (const [index, line] of (model.sections[name] ?? []).entries()) {
       const own = line.match(/^\s*0\s+!BRICKBUILDER\s+(TITLE|NOTE)\s+(.+)$/);
@@ -61,7 +56,7 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
         } catch { /* Preserve an unknown comment without interpreting it. */ }
         continue;
       }
-      if (boundary.test(line) && (!explicitRoot || !occurrence.length)) {
+      if (boundary.test(line)) {
         const match = line.match(/^\s*0\s+ROTSTEP\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/i);
         if (match) {
           const values = match.slice(1).map(Number);
@@ -76,23 +71,11 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
       const target = line.trim().split(/\s+/).slice(14).join(" ").replaceAll("\\", "/").toLowerCase();
       if (Object.hasOwn(model.sections, target)) {
         // Build each subassembly before it is used by its parent occurrence.
-        if (!explicitRoot && parts.length) finish();
-        if (explicitRoot) {
-          collect(target, path, [...ancestors, name], parts);
-        } else visit(target, path, [...ancestors, name]);
+        if (parts.length) finish();
+        visit(target, path, [...ancestors, name]);
       }
     }
     if (parts.length || !steps.length) finish(true);
-  }
-  function collect(name: string, occurrence: number[], ancestors: string[], parts: string[]) {
-    if (ancestors.includes(name) || ancestors.length > 48) throw new Error("Zyklische Anleitungshierarchie.");
-    for (const [index, line] of (model.sections[name] ?? []).entries()) {
-      if (!/^\s*1\s/.test(line)) continue;
-      const path = [...occurrence, index], id = available.get(path.join("/"));
-      if (id) { parts.push(id); continue; }
-      const target = line.trim().split(/\s+/).slice(14).join(" ").replaceAll("\\", "/").toLowerCase();
-      if (Object.hasOwn(model.sections, target)) collect(target, path, [...ancestors, name], parts);
-    }
   }
   visit(model.root, [], []);
   const assigned = new Set(steps.flatMap(step => step.partIds));

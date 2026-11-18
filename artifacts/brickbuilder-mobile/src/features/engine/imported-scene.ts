@@ -6,7 +6,6 @@ import {
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
 import { compilePart, worldMatrix, type Surface } from "./ldraw-geometry";
-import { installInstructionFocus, FOCUS_ATTRIBUTE, FOCUS_VERTEX_HEADER, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX } from "./instruction-focus";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
 function sharedAttribute(array: Float32Array): BufferAttribute {
   let attribute = sharedAttributes.get(array);
@@ -92,7 +91,6 @@ function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[
   mesh.userData.brickIds = instances.map(instance => instance.id);
   mesh.userData.batchKey = `${instances[0].reference.toLowerCase()}|faces|${inherited ? "inherited" : "fixed"}|${alpha}`;
   mesh.userData.inherited = inherited;
-  installInstructionFocus(mesh);
   mesh.frustumCulled = false; // Per-ID bounds are maintained by the incremental index.
   root.add(mesh);
 }
@@ -117,32 +115,23 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
     bounds.union(transformed.copy(local).applyMatrix4(matrix));
   });
   rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
-  geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(instances.length), 1));
   geometry.instanceCount = instances.length;
   geometry.boundingBox = bounds;
   geometry.computeBoundingSphere();
   const lines = new LineSegments(geometry, new ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { instructionFocusEnabled: { value: false } },
-    vertexShader: FOCUS_VERTEX_HEADER + `
+    vertexShader: `
       attribute vec4 instanceRow0;
       attribute vec4 instanceRow1;
       attribute vec4 instanceRow2;
       void main() {
-        ${FOCUS_VERTEX}
         vec4 p = vec4(position, 1.0);
         vec3 transformed = vec3(dot(instanceRow0, p), dot(instanceRow1, p), dot(instanceRow2, p));
         gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
       }`,
-    fragmentShader: FOCUS_FRAGMENT_HEADER + `
-      uniform bool instructionFocusEnabled;
+    fragmentShader: `
       void main() {
         gl_FragColor = vec4(vec3(0.03310477), 0.25);
-        if (instructionFocusEnabled) {
-          gl_FragColor = vInstructionFocus > 1.5
-            ? vec4(0.0, 0.3, 0.23, 0.95)
-            : vec4(vec3(0.45), 0.12);
-        }
         #include <colorspace_fragment>
       }`,
   }));

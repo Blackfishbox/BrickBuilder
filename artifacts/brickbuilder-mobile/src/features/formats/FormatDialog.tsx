@@ -11,6 +11,7 @@ import type { GeometryProgress } from './online-geometry';
 import { BrickLinkExportError, type PartsListIssue } from './bricklink/export';
 import './format-dialog.css';
 import { exportFile } from '@/platform/export-file';
+import { importFileAccept } from '@/platform/import-file';
 
 type ExportFormat = 'json' | 'ldr' | 'mpd' | 'io' | 'bricklink';
 type WithImported = BuilderDocument & { imported?: ImportedModel };
@@ -111,7 +112,7 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
         ))}</ul>
       </details>
       <p className="fmt-muted">Quelldaten werden unverändert im Projekt aufbewahrt ({Object.keys(model.resources ?? {}).length} Ressourcen).</p>
-      <p className="fmt-muted">LDR exportiert flache Einzelteile ohne eingebettete Geometrie. MPD und IO erhalten auch bei geänderten Anleitungsschritten vorkommensspezifische Untermodelle, Transformationen und eingebettete Flächen. Flächen ohne eigene Schrittzuordnung folgen dem frühesten zugehörigen Teileschritt. IO erhält einfache, neu erzeugte Anleitungsseiten. Unveränderte IO-Dateien bleiben bytegenau erhalten. Unbekannte Archivdateien werden mitgenommen; ersetzte Modellquellen, Studio-Varianten und Seitenlayouts bleiben als Sicherung unter BrickBuilder/original erhalten. Größen- und Abschnittsgrenzen können einen Export weiterhin verhindern. Studio-Speziallayouts werden nicht vollständig bearbeitet. JSON bleibt die vollständige Projektsicherung. Kein zugesicherter verlustfreier Studio-Roundtrip.</p>
+      <p className="fmt-muted">LDR exportiert flache Einzelteile ohne eingebettete Geometrie. MPD und IO erhalten die ursprüngliche Untermodellstruktur, solange keine Schrittfolge umgebaut wird. Geänderte Anleitungsschritte werden als flache Baugruppe mit STEP-/ROTSTEP-Befehlen exportiert; IO erhält dazu einfache Anleitungsseiten. Unveränderte IO-Dateien bleiben bytegenau erhalten. Unbekannte Archivdateien werden mitgenommen; überholte Studio-Modellvarianten und Seitenlayouts bleiben gegebenenfalls als Sicherung unter BrickBuilder/original erhalten. Studio-Speziallayouts werden nicht vollständig bearbeitet. Bei eingebetteten Flächen wird ein unsicherer Export geänderter Schritte abgelehnt. JSON bleibt die vollständige Projektsicherung. Kein zugesicherter verlustfreier Studio-Roundtrip.</p>
       <details className="fmt-details">
         <summary>Geometrie-/Zuordnungsherkunft und Lizenzen <ChevronDown size={14} /></summary>
         <p className="fmt-muted">Öffentliche LDraw-Pakete: Originaldateien unverändert, Lizenz pro Datei CC BY 4.0 oder CC0; bei dualer Lizenz wird CC BY 4.0 genutzt. Eingebettete Projektgeometrien bleiben ausschließlich im Projekt und werden nicht als frei lizenzierte Bibliotheksteile weitergegeben.</p>
@@ -235,7 +236,7 @@ export default function FormatDialog({ document, initialMode = 'import', onClose
           <label className="fmt-drop">
             <FileUp size={20} />
             <span><b>{fileName || 'Datei auswählen'}</b><small>IO, LDR, MPD bis 32 MiB · JSON-Projektsicherungen auch größer</small></span>
-            <input type="file" accept=".io,.ldr,.mpd,.json" disabled={creating} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} data-testid="input-import-file" />
+            <input type="file" accept={importFileAccept('model')} disabled={creating} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} data-testid="input-import-file" />
           </label>
           {busy && <div className="fmt-loading" role="status" style={{ flexWrap: 'wrap' }}>
             <LoaderCircle className="spin" size={15} />
