@@ -5,7 +5,7 @@ import { validateInventory } from "../inventory/accounting";
 import type { InstructionPlan } from "../instructions/types";
 
 export type BrickType = "brick-2x4" | "brick-2x2" | "brick-1x2";
-export type ToolMode = "build" | "select" | "delete";
+export type ToolMode = "view" | "build" | "select" | "delete";
 
 export interface Position3 {
   x: number;

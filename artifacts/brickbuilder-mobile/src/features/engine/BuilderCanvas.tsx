@@ -1145,8 +1145,8 @@ export function BuilderCanvas({
       }
 
       clickRef.current = { id: event.pointerId, start: point, moved: false };
-      const hit = findBrick(point);
       const current = propsRef.current;
+      const hit = current.toolMode === "view" ? null : findBrick(point);
       if (current.toolMode === "select") {
         if (hit) {
           current.onSelect(hit.id);

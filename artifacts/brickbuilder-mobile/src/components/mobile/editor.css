@@ -134,7 +134,7 @@
 .section-heading { display: flex; align-items: baseline; gap: 8px; }
 .section-heading > span { color: #b26a53; font: 500 9px var(--app-font-mono); }
 .section-heading h2 { margin: 0; color: #30463d; font-size: 13px; letter-spacing: -.2px; font-weight: 800; }
-.tool-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 4px; border-radius: 12px; background: #eae9df; }
+.tool-segment { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 4px; border-radius: 12px; background: #eae9df; }
 .tool-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 58px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; color: #748078; font-size: 10px; font-weight: 700; }
 .tool-option.active { border-color: #e4ddd0; background: #fbf9f2; color: #b34f38; box-shadow: 0 2px 6px rgba(58,69,59,.06); }
 .tool-option:hover:not(.active) { color: #365146; background: rgba(255,255,255,.3); }
@@ -264,14 +264,14 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .canvas-hint { width: 200px; white-space: normal; font-size: 9px; transform: translate(-50%, 56px); }
   .tool-rail { display: none; }
   .mobile-dock {
-    z-index: 30; display: flex; align-items: center; justify-content: space-around; gap: 3px;
-    padding: 7px 11px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid #deddd1;
+    z-index: 30; display: flex; align-items: center; justify-content: space-around; gap: 2px;
+    padding: 7px 6px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid #deddd1;
     background: rgba(248,246,237,.96); backdrop-filter: blur(16px);
   }
   .dock-tool,.dock-parts,.dock-history { display: flex; align-items: center; justify-content: center; border: 0; cursor: pointer; }
-  .dock-history { width: 39px; height: 40px; border-radius: 11px; background: transparent; color: #60756a; }
+  .dock-history { flex: 0 0 34px; width: 34px; height: 40px; border-radius: 11px; background: transparent; color: #60756a; }
   .dock-history:disabled { opacity: .35; cursor: not-allowed; }
-  .dock-tool { flex-direction: column; gap: 3px; width: 47px; height: 45px; border-radius: 11px; background: transparent; color: #79867d; font-size: 8px; font-weight: 700; }
+  .dock-tool { flex: 1 1 0; min-width: 34px; flex-direction: column; gap: 3px; width: auto; height: 45px; border-radius: 11px; background: transparent; color: #79867d; font-size: 8px; font-weight: 700; }
   .dock-tool.active { color: #a84f38; background: #f3e8dd; }
   .dock-parts { gap: 6px; min-width: 74px; height: 42px; padding: 0 13px; border-radius: 12px; background: #d85d41; color: #fff8ed; font-size: 11px; font-weight: 800; box-shadow: 0 2px #b84b33; }
   .parts-drawer { padding-left: 19px; padding-right: 19px; }
