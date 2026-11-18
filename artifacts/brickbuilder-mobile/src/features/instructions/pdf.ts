@@ -69,8 +69,6 @@ export async function exportInstructionPDF(
         y = 24 + (continued.length - 1) * 6;
         y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal, renderPart) + 4;
       }
-      y += 4; text("Teile in diesem Schritt · vollständige Angaben", true);
-      for (const row of instructionParts(document, step.partIds)) text(row);
       options.onProgress?.(index + 1, plan.steps.length);
       // Give Android a chance to repaint progress and deliver cancellation.
       await new Promise(resolve => setTimeout(resolve, 0));

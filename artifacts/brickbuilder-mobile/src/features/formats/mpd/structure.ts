@@ -3,6 +3,8 @@ import type { BuilderDocument } from "@/features/editor/model";
 import type { Affine, ImportedInstance } from "../types";
 import { IDENTITY, multiply, parseLDraw, referenceLine } from "../ldraw/parser";
 import { exportLDR } from "../ldraw/export";
+import type { InstructionPlan } from "@/features/instructions/types";
+import { INSTRUCTION_ROOT, instructionPartition, occurrenceKey } from "./instruction-partition";
 
 function lineFor(instance: Pick<ImportedInstance, "colorCode" | "matrix" | "reference">): string {
   const m = instance.matrix;
@@ -21,13 +23,25 @@ function inverse(m: Affine): Affine | undefined {
   return [e[0], e[4], e[8], e[12], e[1], e[5], e[9], e[13], e[2], e[6], e[10], e[14]];
 }
 
-const occurrenceKey = (path: number[]) => path.join("/");
 const sourceKey = (instance: ImportedInstance) => JSON.stringify(instance.sourcePath);
 
 /** Rebuild occurrence-specific variants without modifying the archived source. */
-export function structuredMPD(document: BuilderDocument): string {
+export function structuredMPD(document: BuilderDocument, instructions?: InstructionPlan): string {
   const model = document.imported;
-  if (!model) return `0 FILE main.ldr\r\n${new TextDecoder().decode(exportLDR(document))}0 NOFILE\r\n`;
+  if (!model) {
+    const text = new TextDecoder().decode(exportLDR(document));
+    if (!instructions) return `0 FILE main.ldr\r\n${text}0 NOFILE\r\n`;
+    const lines = ["0 FILE main.ldr", INSTRUCTION_ROOT];
+    for (const step of instructions.steps) {
+      const ids = new Set(step.partIds);
+      const view = new TextDecoder().decode(exportLDR({ ...document, bricks: document.bricks.filter(i => ids.has(i.id)) }));
+      lines.push(`0 !BRICKBUILDER TITLE ${JSON.stringify(step.title)}`,
+        `0 !BRICKBUILDER NOTE ${JSON.stringify(step.notes)}`,
+        ...view.split(/\r?\n/).filter(line => /^1 /.test(line)),
+        step.rotation ? `0 ROTSTEP ${step.rotation.join(" ")} ABS` : "0 STEP");
+    }
+    return `${lines.join("\r\n")}\r\n0 NOFILE\r\n`;
+  }
   const source = parseLDraw(model.sourceText);
   const originals = new Map(source.instances.map(i => [occurrenceKey(i.sourceOccurrence!), i]));
   const bySource = new Map<string, ImportedInstance[]>();
@@ -55,6 +69,7 @@ export function structuredMPD(document: BuilderDocument): string {
       effective.set(key, instance);
     }
   }
+  const partition = instructions ? instructionPartition(source.sections, source.root, effective, instructions) : undefined;
 
   // Keep even unreferenced original sections: they may contain custom geometry,
   // legal notices or unknown metadata. NOFILE is a container delimiter only.
@@ -70,23 +85,46 @@ export function structuredMPD(document: BuilderDocument): string {
   for (const instance of model.instances) reserved.add(instance.reference.toLowerCase());
   const variants = new Map<string, Map<string, string>>();
   for (const [name, lines] of output) variants.set(name, new Map([[JSON.stringify(lines), name]]));
-  const lifted: string[] = [];
+  let lifted: string[] = [];
+  let stepRootLines: string[] = [];
   let serial = 0;
-  function visit(name: string, parent: Affine, color: string, path: number[], root = false, ancestorInvert = false): string {
+  function allocate(): string {
+    let name: string;
+    do { name = `brickbuilder-${++serial}.ldr`; } while (reserved.has(name));
+    reserved.add(name);
+    return name;
+  }
+  function visit(name: string, parent: Affine, color: string, path: number[], root = false, ancestorInvert = false, step?: number): string {
     const lines: string[] = [];
     let parentInverse: Affine | undefined;
     let invertIndex: number | undefined;
     for (const [index, line] of source.sections[name].entries()) {
       if (/^0\s+NOFILE\s*$/i.test(line)) continue;
       if (!/^\s*1\s/.test(line)) {
+        if (partition && (
+          /^\s*0\s+(?:STEP|ROTSTEP)(?:\s|$)/i.test(line) ||
+          /^\s*0\s+!BRICKBUILDER\s+(?:TITLE|NOTE|INSTRUCTION_ROOT)(?:\s|$)/i.test(line)
+        )) continue;
+        if (partition && /^\s*[2-5]\s/.test(line) && !partition.ownsGeometry(path, step!)) {
+          // A primitive consumes a pending INVERTNEXT even when this slice does
+          // not own that primitive.
+          if (invertIndex !== undefined) lines.splice(invertIndex, 1);
+          invertIndex = undefined;
+          continue;
+        }
         if (/^\s*0\s+BFC\s+INVERTNEXT\s*$/i.test(line)) invertIndex = lines.length;
         else if (/^\s*[2-5]\s/.test(line)) invertIndex = undefined;
         lines.push(line); continue;
       }
+      const occurrence = [...path, index];
+      if (partition && !partition.includes(occurrence, step!)) {
+        if (invertIndex !== undefined) lines.splice(invertIndex, 1);
+        invertIndex = undefined;
+        continue;
+      }
       const ref = referenceLine(line);
       const world = multiply(parent, ref.matrix);
       const inherited = ref.color === "16" ? color : ref.color;
-      const occurrence = [...path, index];
       const target = ref.reference.toLowerCase();
       const inverted = ancestorInvert !== (invertIndex !== undefined);
       const removeInvert = () => { if (invertIndex !== undefined) lines.splice(invertIndex, 1); };
@@ -96,11 +134,11 @@ export function structuredMPD(document: BuilderDocument): string {
         lifted.push(lineFor(instance));
       };
       if (Object.hasOwn(source.sections, target)) {
-        const variant = visit(target, world, inherited, occurrence, false, inverted);
+        const variant = visit(target, world, inherited, occurrence, false, inverted, step);
         lines.push(variant === target ? line : lineFor({ colorCode: ref.color, matrix: ref.matrix, reference: variant }));
       } else {
         const key = occurrenceKey(occurrence), current = effective.get(key);
-        if (!current) {
+        if (!current || (partition && partition.stepById.get(current.id) !== step)) {
           removeInvert();
           invertIndex = undefined;
           continue; // Deleted occurrence, not every use of this section.
@@ -129,27 +167,49 @@ export function structuredMPD(document: BuilderDocument): string {
     }
     if (root) {
       // A dangling source INVERTNEXT must not accidentally apply to an addition.
-      if (invertIndex !== undefined && (additions.length || lifted.length || document.bricks.length)) lines.splice(invertIndex, 1);
-      lines.push(...additions.map(lineFor), ...lifted);
-      const legacy = new TextDecoder().decode(exportLDR({ ...document, imported: undefined }));
+      if (invertIndex !== undefined && (partition || additions.length || lifted.length || document.bricks.length)) lines.splice(invertIndex, 1);
+      lines.push(...additions.filter(i => !partition || partition.stepById.get(i.id) === step).map(lineFor), ...lifted);
+      const legacy = new TextDecoder().decode(exportLDR({ ...document, imported: undefined,
+        bricks: document.bricks.filter(i => !partition || partition.stepById.get(i.id) === step),
+      }));
       lines.push(...legacy.split(/\r?\n/).filter(line => /^1 /.test(line)));
-      output.set(name, lines);
+      if (!partition) {
+        output.set(name, lines);
+        return name;
+      }
+      // Keep the original root's local frame at root. An extra wrapper section
+      // per step wastes section/depth budgets on large instruction sequences.
+      stepRootLines = lines;
       return name;
     }
     const signature = JSON.stringify(lines), known = variants.get(name)!;
     const reused = known.get(signature);
     if (reused) return reused;
-    let variant: string;
-    do { variant = `brickbuilder-${++serial}.ldr`; } while (reserved.has(variant));
-    reserved.add(variant);
+    const variant = allocate();
     known.set(signature, variant);
     output.set(variant, lines);
+    if (output.size + (instructions ? 1 : 0) > 1024) {
+      throw new Error("Export: mehr als 1.024 Abschnitte durch Einzeländerungen. Bitte JSON-Projektsicherung verwenden.");
+    }
     return variant;
   }
-  visit(source.root, IDENTITY, "16", [], true);
+  let activeRoot = source.root;
+  if (instructions) {
+    activeRoot = allocate();
+    const lines = [INSTRUCTION_ROOT];
+    for (const [step, instruction] of instructions.steps.entries()) {
+      lifted = [];
+      visit(source.root, IDENTITY, "16", [], true, false, step);
+      lines.push(`0 !BRICKBUILDER TITLE ${JSON.stringify(instruction.title)}`,
+        `0 !BRICKBUILDER NOTE ${JSON.stringify(instruction.notes)}`,
+        "0 BFC NOCERTIFY", "0 BFC CLIP CCW", ...stepRootLines,
+        instruction.rotation ? `0 ROTSTEP ${instruction.rotation.join(" ")} ABS` : "0 STEP");
+    }
+    output.set(activeRoot, lines);
+  } else visit(source.root, IDENTITY, "16", [], true);
   // Root must be first regardless of source section insertion order.
-  const names = [source.root, ...[...output.keys()].filter(name => name !== source.root)];
-  if (names.length > 1024) throw new Error("Export: mehr als 1.024 Abschnitte durch Einzeländerungen. Bitte JSON-Projektsicherung verwenden.");
+  const names = [activeRoot, ...[...output.keys()].filter(name => name !== activeRoot)];
+  if (names.length > 1024) throw new Error(`Export: ${names.length} Abschnitte durch Einzeländerungen (Grenze: 1.024). Bitte JSON-Projektsicherung verwenden.`);
   const sourceLines = model.sourceText.replace(/^\uFEFF/, "").split(/\r?\n/);
   const firstFile = sourceLines.findIndex(line => /^0\s+FILE\s+.+$/i.test(line));
   const preamble = firstFile > 0 ? sourceLines.slice(0, firstFile).join("\r\n") + "\r\n" : "";
