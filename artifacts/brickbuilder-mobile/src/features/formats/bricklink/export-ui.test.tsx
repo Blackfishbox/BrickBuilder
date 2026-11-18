@@ -14,12 +14,12 @@ afterEach(() => {
   if (root) act(() => root!.unmount());
   root = undefined; host?.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
 });
-function open() {
+function open(initialMode: 'import' | 'export' = 'import') {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const document = createEmptyDocument();
   host = window.document.createElement("div"); window.document.body.appendChild(host);
   root = createRoot(host);
-  act(() => root!.render(<FormatDialog document={document} onClose={vi.fn()} onImport={vi.fn()} />));
+  act(() => root!.render(<FormatDialog document={document} initialMode={initialMode} onClose={vi.fn()} onImport={vi.fn()} />));
   return document;
 }
 it("exports the current document through the existing file download action", async () => {
@@ -28,7 +28,7 @@ it("exports the current document through the existing file download action", asy
   vi.stubGlobal("URL", class extends URL { static createObjectURL = create; static revokeObjectURL = revoke; });
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
   exporter.mockResolvedValue({ bytes: new TextEncoder().encode("<INVENTORY/>"), filename: "model-bricklink.xml", mime: "application/xml" });
-  const document = open();
+  const document = open('export');
   await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="button-export-bricklink"]')!.click());
   expect(exporter).toHaveBeenCalledWith(document, "bricklink");
   expect(create).toHaveBeenCalledOnce(); expect(click).toHaveBeenCalledOnce();
@@ -40,10 +40,25 @@ it("shows blocked part numbers, colors and quantities without downloading a part
     { reference: "unknown.dat", color: "LDraw 4", quantity: 3, reason: "Teilenummer fehlt oder ist mehrdeutig" },
   ]));
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-  open();
+  open('export');
   await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="button-export-bricklink"]')!.click());
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Keine Datei erstellt");
   expect(host.querySelector('[data-testid="bricklink-export-issues"]')?.textContent).toContain("3× unknown.dat");
   expect(host.textContent).toContain("LDraw 4");
   expect(click).not.toHaveBeenCalled();
+});
+
+it("opens on the requested import or export action and switches between separate views", () => {
+  open();
+  const importTab = host.querySelector<HTMLButtonElement>('[data-testid="tab-format-import"]')!;
+  const exportTab = host.querySelector<HTMLButtonElement>('[data-testid="tab-format-export"]')!;
+  expect(importTab.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[data-testid="input-import-file"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="button-export-io"]')).toBeNull();
+  act(() => exportTab.click());
+  expect(exportTab.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[data-testid="input-import-file"]')).toBeNull();
+  expect(host.querySelector('[data-testid="button-export-io"]')).not.toBeNull();
+  act(() => importTab.click());
+  expect(host.querySelector('[data-testid="input-import-file"]')).not.toBeNull();
 });
