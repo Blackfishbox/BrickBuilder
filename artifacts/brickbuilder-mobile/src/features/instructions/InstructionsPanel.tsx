@@ -24,8 +24,10 @@ const noop = () => undefined;
 export default function InstructionsPanel({ document, onChange, onClose, onExportPDF }: Props) {
   const plan = useMemo(() => effectiveInstructions(document), [document]);
   const [index, setIndex] = useState(0);
+  const [highlight, setHighlight] = useState(false);
   const current = Math.min(index, plan.steps.length - 1);
   const step = plan.steps[current];
+  const focusIds = useMemo(() => highlight ? new Set(step.partIds) : undefined, [highlight, step.partIds]);
   const [scope, setScope] = useState<"step" | "all">("step");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -165,6 +167,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             <BuilderCanvas
               showConstructionControls={false}
               viewRotation={step.rotation}
+              instructionFocusIds={focusIds}
               projectId={`${document.id}-instructions`}
               bricks={view.bricks}
               imported={view.imported}
@@ -205,6 +208,14 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
           </nav>
 
           <div className="ins-card">
+            <button className="ins-ghost ins-highlight" aria-pressed={highlight}
+              onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
+              Neue Teile hervorheben: {highlight ? "Ein" : "Aus"}
+            </button>
+            {highlight && <p className="ins-hint" data-testid="text-instructions-highlight-legend">
+              Türkis: aktueller Schritt ({step.partIds.length} Teile). Hellgrau: bereits verbaut.
+              Nur die 3D-Vorschau wird markiert; Teile ohne Geometrie bleiben in der Teileliste.
+            </p>}
             <div className="ins-row">
               <label className="ins-field ins-grow">
                 <span>Titel</span>
