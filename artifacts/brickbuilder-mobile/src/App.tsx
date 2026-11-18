@@ -52,6 +52,7 @@ const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
 }));
 
 const BuilderCanvas = lazy(() => import('@/features/engine/BuilderCanvas'));
+const InstructionsPanel = lazy(() => import('@/features/instructions/InstructionsPanel'));
 
 function App() {
   const catalog = useCatalog();
@@ -65,6 +66,7 @@ function App() {
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [formatsOpen, setFormatsOpen] = useState(false);
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
@@ -219,6 +221,9 @@ function App() {
               <button type="button" className="popover-action" onClick={() => { setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-formats">
                 <PackageOpen size={16} /> Datei importieren / exportieren
               </button>
+              <button type="button" className="popover-action" onClick={() => { setInstructionsOpen(true); setProjectMenu(false); }} data-testid="button-open-instructions">
+                <PackageOpen size={16} /> Bauanleitung bearbeiten / PDF
+              </button>
               <button type="button" className="popover-action" onClick={() => { setStorageOpen(true); setProjectMenu(false); }} data-testid="button-open-storage">
                 <HardDrive size={16} /> Offline-Speicher verwalten
               </button>
@@ -281,7 +286,7 @@ function App() {
           </div>
           <div className="canvas-host">
             <Suspense fallback={<div className="canvas-loading">3D-Arbeitsfläche wird geladen …</div>}>
-              <BuilderCanvas
+              {!instructionsOpen && <BuilderCanvas
                 projectId={editor.document.id}
                 bricks={editor.bricks}
                 imported={editor.imported}
@@ -292,7 +297,7 @@ function App() {
                 onPlace={editor.place}
                 onSelect={editor.select}
                 onMove={editor.move}
-              />
+              />}
             </Suspense>
             {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">Vollständiger Zuordnungskatalog nicht verfügbar. Vorhandene Nachweise bleiben erhalten. <button type="button" onClick={() => setPartsOpen(true)}>Katalog unter „Steine“ erneut laden</button></div>}
             {editor.partError && !partsOpen && <p role="alert" className="canvas-part-error" data-testid="status-part-error">{editor.partError}</p>}
@@ -528,6 +533,18 @@ function App() {
         </div>
       )}
       {formatsOpen && <FormatDialog document={editor.document} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} onResolved={editor.resolveImportedProject} />}
+      {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">Bauanleitung wird geladen …</div>}>
+        <InstructionsPanel document={editor.document} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
+          onExportPDF={async (plan, onProgress, signal) => {
+            const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
+              import('@/features/instructions/pdf'), import('@/platform/export-file'),
+            ]);
+            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal });
+            signal.throwIfAborted();
+            const name = editor.document.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "Modell";
+            await exportFile(bytes, `${name}-Bauanleitung.pdf`, "application/pdf");
+          }} />
+      </Suspense>}
       {storageOpen && <StorageManager currentProjectId={editor.document.id} onClose={() => setStorageOpen(false)} onProjectsChanged={editor.refreshProjects} />}
       {privacyOpen && <PrivacyDialog onClose={() => setPrivacyOpen(false)} />}
       {!formatsOpen && (

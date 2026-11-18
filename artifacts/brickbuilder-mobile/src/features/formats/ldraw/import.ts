@@ -3,6 +3,7 @@ import type { ImportedModel } from "../types";
 import { parseLDraw } from "./parser";
 import { resolveGeometry } from "../geometry-resolver";
 import type { ResolveOptions } from "../online-geometry";
+import { sourceInstructionPlan } from "@/features/instructions/model";
 
 export async function importLDraw(bytes: Uint8Array, filename: string, format: ImportedModel["format"] = "ldr", originalBytes = bytes, options: ResolveOptions = {}) {
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -14,5 +15,6 @@ export async function importLDraw(bytes: Uint8Array, filename: string, format: I
   await resolveGeometry(imported, options);
   const document = createEmptyDocument(filename.replace(/\.[^.]+$/, ""));
   document.imported = imported;
+  document.instructions = sourceInstructionPlan(imported);
   return document;
 }
