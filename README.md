@@ -3,7 +3,9 @@
 Standalone Android preparation is on `android/google-play`.
 See [the Android build and release guide](docs/android-google-play.md) for
 offline coverage, local APK/AAB builds, GitHub Actions and remaining Play
-Console/signing/device-test requirements. This branch does not publish to Play.
+Console/signing/device-test requirements. Pushes to `android/google-play` build
+signed bundles and publish to the closed `alpha` test once the GitHub publishing
+secret and Play Console permissions are configured. `main` does not publish.
 
 # BrickBuilder Mobile
 
