@@ -27,6 +27,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { applyInstructionCameraRotation } from "./instruction-camera";
 import { createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
 import { reuseGeometryCache } from "./ldraw-geometry";
@@ -54,6 +55,8 @@ import {
 } from "@/features/editor/model";
 
 interface BuilderCanvasProps {
+  /** Presentation only: never changes project part transforms. */
+  viewRotation?: readonly [number, number, number];
   projectId?: string;
   bricks: Brick[];
   imported?: ImportedModel;
@@ -124,7 +127,7 @@ class FallbackRenderer {
     if (!context) return;
     camera.updateMatrixWorld(true);
     const forward = target.clone().sub(camera.position).normalize();
-    const right = new Vector3().crossVectors(forward, new Vector3(0, 1, 0)).normalize();
+    const right = new Vector3().crossVectors(forward, camera.up).normalize();
     const up = new Vector3().crossVectors(right, forward).normalize();
     const focalLength = (this.height / 2) / Math.tan((camera.fov * Math.PI) / 360);
     context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
@@ -404,6 +407,7 @@ function softwareWarning(scene: SoftwareScene): string {
 }
 
 export function BuilderCanvas({
+  viewRotation,
   projectId,
   bricks,
   imported,
@@ -495,6 +499,7 @@ export function BuilderCanvas({
   const invalidatorRef = useRef<(() => void) | null>(null);
   const raycasterRef = useRef(new Raycaster());
   const propsRef = useRef({
+    viewRotation,
     projectId,
     bricks,
     imported,
@@ -523,6 +528,7 @@ export function BuilderCanvas({
   });
 
   propsRef.current = {
+    viewRotation,
     projectId,
     bricks,
     imported,
@@ -620,6 +626,11 @@ export function BuilderCanvas({
         pendingPreviewRef.current = null;
         preview?.();
         const interactive = performance.now() - interactionTimeRef.current < 180;
+        // Rebuild from the untouched touch-camera state each time: step changes
+        // must not accumulate rotations or rebuild thousands of model meshes.
+        const state = cameraStateRef.current;
+        makeCameraPosition(camera, state.target, state.theta, state.phi, state.distance);
+        applyInstructionCameraRotation(camera, state.target, propsRef.current.viewRotation);
         const activeRenderer = rendererRef.current ?? renderer;
         if (activeRenderer instanceof WebGLRenderer) {
           const ratio = interactive ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
@@ -695,6 +706,10 @@ export function BuilderCanvas({
       brickRootRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    invalidatorRef.current?.();
+  }, [viewRotation?.[0], viewRotation?.[1], viewRotation?.[2]]);
 
   useEffect(() => {
     const scene = sceneRef.current;
