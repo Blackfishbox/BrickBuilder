@@ -23,13 +23,16 @@ it("exposes six touch adjustments of exactly one LDU in world coordinates", asyn
 
 it("opens the fine-adjustment panel when its summary is tapped", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const container = document.createElement("div"), root = createRoot(container);
+  const container = document.createElement("div"), root = createRoot(container), onOpenChange = vi.fn();
   try {
-    await act(async () => root.render(<FinePositionControls onNudge={vi.fn()} />));
+    await act(async () => root.render(<FinePositionControls onNudge={vi.fn()} onOpenChange={onOpenChange} />));
     const details = container.querySelector("details");
     expect(details?.open).toBe(false);
     await act(async () => container.querySelector("summary")?.click());
     expect(details?.open).toBe(true);
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
     expect(container.querySelectorAll(".fine-position-grid button")).toHaveLength(6);
+    await act(async () => container.querySelector("summary")?.click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });
