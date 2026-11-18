@@ -227,7 +227,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               ))}
               {step.rotation && <button className="ins-ghost" onClick={() => patchStep({ rotation: undefined })} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>}
             </fieldset>
-            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt. Zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte werden beim IO-Export als flache Baugruppe mit einfachen Anleitungsseiten ausgegeben. Originale Studio-Daten bleiben als Sicherung erhalten.</p>
+            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt; zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte erhalten beim MPD-/IO-Export vorkommensspezifische Untermodelle und eingebettete Flächen. IO-Seiten werden einfach neu erzeugt; originale Studio-Daten bleiben als Sicherung erhalten. Eine verlustfreie Studio-Seitengestaltung ist nicht zugesichert.</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> Schritt danach</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label="Schritt nach vorne verschieben" data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
