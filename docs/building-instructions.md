@@ -16,8 +16,11 @@ No model or instruction image is uploaded to a PDF service.
   instruction panel to use the ordinary Undo/Redo controls.
 - Deleted model parts disappear from instruction assignments. Newly added parts
   are placed in the final step until explicitly reassigned.
-- Per-step rotation settings are used in the PDF and generated IO instruction
-  data. The interactive construction preview has its own touch camera.
+- Per-step XYZ rotations are shown immediately in the interactive 3D preview,
+  as well as in the PDF and generated IO instruction data. Step changes and
+  resetting rotation refresh the view without changing any part transforms.
+  The touch camera remains usable in addition to the stored step orientation;
+  the non-WebGL compatibility view also supports camera roll.
 - Internal JSON backups include the editable instruction plan and original
   model archive. Instance IDs are remapped together with assignments on import.
 
