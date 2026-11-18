@@ -48,7 +48,8 @@ const schema = z.object({
     }).passthrough()).max(10000),
     issues: z.array(z.object({ code: z.string(), message: z.string(), reference: z.string().optional(), count: z.number().optional() })),
     resources: z.record(z.string().regex(/^(parts|p)\/[a-z0-9_/-]+\.dat$/), z.object({
-      path: z.string(), sourceUrl: z.string(), author: z.string(), license: z.enum(["CC-BY-4.0", "CC0-1.0"]), content: z.string().max(4 * 1024 * 1024),
+      path: z.string(), sourceUrl: z.string(), author: z.string(), license: z.enum(["CC-BY-4.0", "CC0-1.0", "Project-source"]),
+      sourceArchivePath: z.string().optional(), content: z.string().max(4 * 1024 * 1024),
       sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(), byteLength: z.number().int().nonnegative().optional(),
       retrievedAt: z.string().optional(), retrievalSource: z.string().optional(),
     })),
@@ -74,6 +75,15 @@ export function importInternal(bytes: Uint8Array): BuilderDocument {
   if (parsed.imported) {
     if (Object.keys(parsed.imported.resources).length > 4096) throw new Error("Zu viele Geometriedateien.");
     if (Object.values(parsed.imported.resources).reduce((n, f) => n + f.content.length, 0) > 24 * 1024 * 1024) throw new Error("Geometriedaten zu groß.");
+    for (const [path, file] of Object.entries(parsed.imported.resources)) {
+      if (file.path !== path) throw new Error("Geometriepfad und Quelldatei widersprechen sich.");
+      if (file.license === "Project-source" && (!file.sourceArchivePath ||
+          !/^CustomParts\/.+\.dat$/i.test(file.sourceArchivePath) || file.sourceArchivePath.includes("\\") ||
+          file.sourceArchivePath.split("/").some(segment => segment === ".." || segment === ".") ||
+          file.sourceUrl !== `urn:brickbuilder:io:${encodeURIComponent(file.sourceArchivePath)}`)) {
+        throw new Error("Herkunft eingebetteter Projektgeometrie ungültig.");
+      }
+    }
     for (const instance of parsed.imported.instances) {
       if (instance.reference.split("/").includes("..") || instance.reference.startsWith("/")) throw new Error("Unsicherer Teilpfad.");
       const mapping = instance.part.mapping;

@@ -38,11 +38,11 @@ describe('legacy Studio ZIP compatibility and bounds', () => {
   it('skips large unused Studio resources without raising selected-entry allocation limits', () => {
     const bytes = writeZip({
       'model.ldr': encode(fixtureText),
-      'model2.ldr': new Uint8Array(17 * 1024 * 1024),
+      'model2.ldr': new Uint8Array(33 * 1024 * 1024),
     });
-    expect(() => readZip(bytes)).toThrow(/16 MiB/);
+    expect(() => readZip(bytes)).toThrow(/32 MiB/);
     expect(Object.keys(readZip(bytes, options))).toEqual(['model.ldr']);
-    expect(() => readZip(bytes, { names: ['model2.ldr'] })).toThrow(/16 MiB/);
+    expect(() => readZip(bytes, { names: ['model2.ldr'] })).toThrow(/32 MiB/);
     expect(() => readZip(writeZip({ '../unsafe': encode('x'), 'model.ldr': encode(fixtureText) }), options)).toThrow(/Pfad/);
   });
   it('rejects a DEFLATE stream whose actual output exceeds its declared size', () => {
