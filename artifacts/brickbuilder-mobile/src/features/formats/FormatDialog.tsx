@@ -25,6 +25,7 @@ const EXPORTS: { format: ExportFormat; label: string; note: string }[] = [
 
 interface Props {
   document: BuilderDocument;
+  initialMode?: 'import' | 'export';
   onClose(): void;
   onImport(document: BuilderDocument): Promise<void>;
   onResolved?(id: string, model: ImportedModel): Promise<void>;
@@ -128,7 +129,7 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
   );
 }
 
-export default function FormatDialog({ document, onClose, onImport, onResolved }: Props) {
+export default function FormatDialog({ document, initialMode = 'import', onClose, onImport, onResolved }: Props) {
   const [preview, setPreview] = useState<BuilderDocument | null>(null);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -141,6 +142,7 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
   const token = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const [progress, setProgress] = useState<GeometryProgress | null>(null);
+  const [mode, setMode] = useState<'import' | 'export'>(initialMode);
   useEffect(() => () => { controller.current?.abort(); token.current++; }, []);
 
   useEffect(() => {
@@ -217,11 +219,18 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
       <section className="parts-drawer fmt-drawer rise-in" role="dialog" aria-modal="true" aria-labelledby="fmt-title" data-testid="dialog-formats">
         <div className="drawer-handle" />
         <div className="drawer-heading">
-          <div><p className="popover-eyebrow">DATEIEN</p><h2 id="fmt-title">Import &amp; Export</h2></div>
+          <div><p className="popover-eyebrow">DATEIEN</p><h2 id="fmt-title">{mode === 'import' ? 'Datei importieren' : 'Datei exportieren'}</h2></div>
           <button type="button" className="icon-button" onClick={onClose} disabled={creating} aria-label="Dialog schließen" data-testid="button-close-formats"><X size={18} /></button>
         </div>
 
-        <div className="fmt-section">
+        <div className="fmt-mode-tabs" role="tablist" aria-label="Dateiaktion">
+          <button type="button" role="tab" aria-selected={mode === 'import'} className={mode === 'import' ? 'is-active' : ''}
+            onClick={() => setMode('import')} data-testid="tab-format-import"><FileUp size={16} /> Importieren</button>
+          <button type="button" role="tab" aria-selected={mode === 'export'} className={mode === 'export' ? 'is-active' : ''}
+            onClick={() => setMode('export')} data-testid="tab-format-export"><Download size={16} /> Exportieren</button>
+        </div>
+
+        {mode === 'import' && <div className="fmt-section">
           <h3><span>01</span> Importieren</h3>
           <label className="fmt-drop">
             <FileUp size={20} />
@@ -251,9 +260,9 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
               {creating ? <><LoaderCircle className="spin" size={15} /> Wird angelegt …</> : 'Neues Projekt aus Import anlegen'}
             </button>
           )}
-        </div>
+        </div>}
 
-        <div className="fmt-section">
+        {mode === 'export' && <div className="fmt-section">
           <h3><span>02</span> Exportieren</h3>
           <div className="fmt-exports">
             {EXPORTS.map((x) => (
@@ -274,7 +283,7 @@ export default function FormatDialog({ document, onClose, onImport, onResolved }
           {partsListExported && <p role="status" className="fmt-muted">BrickLink-XML erstellt. Bei BrickLink unter „Want → Upload → Upload BrickLink XML format“ den Dateiinhalt einfügen und vor dem Übernehmen prüfen. Es wurden keine Daten an BrickLink gesendet.</p>}
           <p className="fmt-muted">Die BrickLink-Teileliste zählt alle aktuell verbauten Teile, auch ohne darstellbare Geometrie. Unverbrauchte Teile aus „Meine Teileliste“ werden nicht mitgezählt. Fehlende oder mehrdeutige Zuordnungen verhindern den Export; es werden keine IDs oder ähnlichen Farben geraten.</p>
           <p className="fmt-muted" data-testid="text-inventory-backup-notice">Teileliste: Nur die interne JSON-Sicherung bewahrt „Meine Teileliste“ samt Mengen und Zuordnungen verbauter Teile. LDR, MPD und IO enthalten keine Teilelisten-Zuordnungen.</p>
-        </div>
+        </div>}
       </section>
     </div>
   );

@@ -1,6 +1,9 @@
 .fmt-scrim { z-index: 74; }
 .fmt-drawer { max-height: min(90dvh, 780px); }
 .fmt-section { padding: 14px 0; border-top: 1px solid #e5e1d5; }
+.fmt-mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 0 0 12px; }
+.fmt-mode-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 1px solid #e4e1d5; border-radius: 10px; background: #fbfaf5; color: #64756a; cursor: pointer; font-size: 12px; font-weight: 700; }
+.fmt-mode-tabs button.is-active { border-color: #78927c; background: #eaf0e8; color: #30463d; }
 .fmt-section h3 { display: flex; gap: 8px; align-items: baseline; margin: 0 0 11px; color: #30463d; font-size: 13px; font-weight: 800; }
 .fmt-section h3 span { color: #b26a53; font: 500 9px var(--app-font-mono); }
 .fmt-drop { position: relative; display: flex; align-items: center; gap: 12px; padding: 14px; border: 1.5px dashed #c3c9bc; border-radius: 13px; background: #f3f1e8; color: #5a7263; cursor: pointer; }
