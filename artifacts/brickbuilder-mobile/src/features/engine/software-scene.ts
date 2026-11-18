@@ -3,14 +3,12 @@ import type { Affine, ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
 import { compilePart, reuseGeometryCache, sameSceneSources, worldMatrix } from "./ldraw-geometry";
 import type { SceneBuildOptions } from "./imported-scene";
-import { instructionDisplayColor } from "./instruction-focus";
 
 export const SOFTWARE_TRIANGLE_BUDGET = 32_000;
 export const INTERACTIVE_TRIANGLE_BUDGET = 3_000;
 export interface SoftwareScene {
   positions: Float32Array;
   colors: string[];
-  instructionColors?: string[];
   alpha: Float32Array;
   bounds: Box3;
   sourceTriangles: number;
@@ -23,17 +21,6 @@ export interface SoftwareScene {
   perInstance: number;
   updates: number;
   transformedTriangles: number;
-}
-
-/** Recolor bounded display samples only; never recompile or transform geometry. */
-export function applySoftwareInstructionFocus(scene: SoftwareScene, current?: ReadonlySet<string>): void {
-  if (current === undefined) { scene.instructionColors = undefined; return; }
-  const colors = scene.instructionColors ?? [];
-  const color = new Color();
-  for (let slot = 0; slot < scene.triangleCount; slot++) {
-    colors[slot] = instructionDisplayColor(color.set(scene.colors[slot] ?? "#ff00ff"), current.has(scene.triangleIds[slot])).getStyle();
-  }
-  scene.instructionColors = colors;
 }
 interface SoftwareRecord {
   instance: ImportedInstance;

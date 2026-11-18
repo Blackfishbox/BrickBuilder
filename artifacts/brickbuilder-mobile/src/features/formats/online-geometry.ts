@@ -38,15 +38,6 @@ function retryDelay(value: string | null) {
 /** Same-origin API artifact path; never infer a geometry ID from a catalog ID. */
 async function transport(path: string) {
   normalizePath(path);
-  const nativeAndroid = import.meta.env.VITE_NATIVE_ANDROID === "true";
-  if (nativeAndroid) {
-    try {
-      requireGeometryPermission();
-    } catch {
-      throw new Error(`Online-Nachladen ist deaktiviert. LDraw ${path} ist nicht im lokalen Android-Teilepaket vorhanden; es wird kein externer Modellserver verwendet.`);
-    }
-    throw new DownloadError(`LDraw ${path}: nicht im lokalen Android-Teilepaket vorhanden. Es wird kein externer Modellserver verwendet.`, 404);
-  }
   requireGeometryPermission();
   const cachedError = negative.get(path);
   if (cachedError && cachedError.until > Date.now()) throw cachedError;

@@ -111,12 +111,10 @@ describe("local construction instructions", () => {
     expect(plan.steps.map(step => step.partIds.length)).toEqual([1, 2]);
   });
 
-  it("retains inline surfaces when rewriting instruction steps", () => {
+  it("refuses an instruction hierarchy rewrite that would drop inline surfaces", () => {
     const doc = fixture(`${line()}\n3 4 0 0 0 20 0 0 0 20 0\n`);
     const edited = updateInstructions(doc, doc.instructions!);
-    const text = decode(readZip(exportIO(edited))["model.ldr"]);
-    expect(text).toContain("3 4 0 0 0 20 0 0 0 20 0");
-    expect(parseLDraw(text).instances).toHaveLength(1);
+    expect(() => exportIO(edited)).toThrow(/Flächengeometrie/);
     expect(doc.imported!.originalBytes.length).toBeGreaterThan(0);
   });
 

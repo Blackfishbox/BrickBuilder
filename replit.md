@@ -40,7 +40,8 @@ Do not translate application resources merely to remove German source strings.
 
 ## Authorized code backups
 
-- Always push completed code changes and merged task results, without asking again, to
+- The user authorizes completed code changes and merged task results to be
+  backed up without asking again to
   `https://github.com/Blackfishbox/BrickBuilder-Mobile` on `main`.
 - Run `DANGEROUSLY_ALLOW_GIT=1 bash scripts/backup-github.sh "Describe the actual changes in English"`;
   an optional second argument supplies detailed English change notes.
