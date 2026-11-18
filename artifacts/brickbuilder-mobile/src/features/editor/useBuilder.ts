@@ -20,6 +20,8 @@ import { refreshedCatalogModel } from "../catalog/refresh-model";
 import { resolveColor } from "../formats/colors";
 import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
+import { updateInstructions } from "../instructions/model";
+import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
 import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
@@ -219,6 +221,11 @@ export function useBuilder() {
     documentRef.current = next.document;
     setHistory(next);
   }, []);
+
+  const setInstructionPlan = useCallback((plan: InstructionPlan) => {
+    const checked = instructionPlanSchema.parse(plan);
+    updateDocument(document => updateInstructions(document, checked));
+  }, [updateDocument]);
 
   const setSelectedColor = useCallback(
     (color: string, code?: string, additionalIds: string[] = []) => {
@@ -566,6 +573,7 @@ export function useBuilder() {
   const document = history.document;
   return {
     document,
+    setInstructionPlan,
     imported: document.imported,
     importProject,
     resolveImportedProject,

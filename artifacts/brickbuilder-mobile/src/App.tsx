@@ -17,6 +17,8 @@ import {
   CloudOff,
   Command,
   FilePlus2,
+  FileDown,
+  FileUp,
   HardDrive,
   Hammer,
   Layers3,
@@ -52,6 +54,7 @@ const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
 }));
 
 const BuilderCanvas = lazy(() => import('@/features/engine/BuilderCanvas'));
+const InstructionsPanel = lazy(() => import('@/features/instructions/InstructionsPanel'));
 
 function App() {
   const catalog = useCatalog();
@@ -65,6 +68,8 @@ function App() {
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [formatsOpen, setFormatsOpen] = useState(false);
+  const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
@@ -129,17 +134,6 @@ function App() {
     }
   };
 
-  const restoreProject = async () => {
-    try {
-      const restored = await editor.restoreLastProject();
-      setRestoreMessage(restored ? 'Letztes Projekt geladen' : 'Kein gespeichertes Projekt gefunden');
-    } catch {
-      setRestoreMessage('Projekt konnte nicht geladen werden');
-    }
-    window.setTimeout(() => setRestoreMessage(''), 3000);
-    setProjectMenu(false);
-  };
-
   const startProject = async () => {
     try {
       await editor.startNewProject();
@@ -178,14 +172,6 @@ function App() {
   return (
     <main className="editor-shell workbench-grain" data-testid="editor-workspace">
       <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">
-            <img src={`${import.meta.env.BASE_URL}icons/brickbuilder-512.png`} alt="" width={30} height={30} />
-          </div>
-          <span className="brand-name">brick<span>builder</span></span>
-          <span className="brand-edition">MOBILE</span>
-        </div>
-
         <div className="project-wrap">
           <button
             type="button"
@@ -213,11 +199,14 @@ function App() {
               <button type="button" className="popover-action" onClick={() => setConfirmNew(true)} data-testid="button-new-project">
                 <FilePlus2 size={16} /> Neues Projekt beginnen
               </button>
-              <button type="button" className="popover-action" onClick={restoreProject} data-testid="button-restore-project">
-                <PackageOpen size={16} /> Letztes Projekt laden
+              <button type="button" className="popover-action" onClick={() => { setFormatsMode('import'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-import">
+                <FileUp size={16} /> Datei importieren
               </button>
-              <button type="button" className="popover-action" onClick={() => { setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-formats">
-                <PackageOpen size={16} /> Datei importieren / exportieren
+              <button type="button" className="popover-action" onClick={() => { setFormatsMode('export'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-export">
+                <FileDown size={16} /> Datei exportieren
+              </button>
+              <button type="button" className="popover-action" onClick={() => { setInstructionsOpen(true); setProjectMenu(false); }} data-testid="button-open-instructions">
+                <PackageOpen size={16} /> Bauanleitung bearbeiten / PDF
               </button>
               <button type="button" className="popover-action" onClick={() => { setStorageOpen(true); setProjectMenu(false); }} data-testid="button-open-storage">
                 <HardDrive size={16} /> Offline-Speicher verwalten
@@ -281,7 +270,7 @@ function App() {
           </div>
           <div className="canvas-host">
             <Suspense fallback={<div className="canvas-loading">3D-Arbeitsfläche wird geladen …</div>}>
-              <BuilderCanvas
+              {!instructionsOpen && <BuilderCanvas
                 projectId={editor.document.id}
                 bricks={editor.bricks}
                 imported={editor.imported}
@@ -292,7 +281,7 @@ function App() {
                 onPlace={editor.place}
                 onSelect={editor.select}
                 onMove={editor.move}
-              />
+              />}
             </Suspense>
             {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">Vollständiger Zuordnungskatalog nicht verfügbar. Vorhandene Nachweise bleiben erhalten. <button type="button" onClick={() => setPartsOpen(true)}>Katalog unter „Steine“ erneut laden</button></div>}
             {editor.partError && !partsOpen && <p role="alert" className="canvas-part-error" data-testid="status-part-error">{editor.partError}</p>}
@@ -527,7 +516,19 @@ function App() {
           </section>
         </div>
       )}
-      {formatsOpen && <FormatDialog document={editor.document} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} onResolved={editor.resolveImportedProject} />}
+      {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} onResolved={editor.resolveImportedProject} />}
+      {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">Bauanleitung wird geladen …</div>}>
+        <InstructionsPanel document={editor.document} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
+          onExportPDF={async (plan, onProgress, signal) => {
+            const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
+              import('@/features/instructions/pdf'), import('@/platform/export-file'),
+            ]);
+            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal });
+            signal.throwIfAborted();
+            const name = editor.document.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "Modell";
+            await exportFile(bytes, `${name}-Bauanleitung.pdf`, "application/pdf");
+          }} />
+      </Suspense>}
       {storageOpen && <StorageManager currentProjectId={editor.document.id} onClose={() => setStorageOpen(false)} onProjectsChanged={editor.refreshProjects} />}
       {privacyOpen && <PrivacyDialog onClose={() => setPrivacyOpen(false)} />}
       {!formatsOpen && (
