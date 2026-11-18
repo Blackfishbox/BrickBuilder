@@ -4,6 +4,7 @@ import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
 import { effectiveInstructions, instructionView } from "./model";
 import type { InstructionPlan, InstructionStep } from "./types";
+import StudioLayoutEditor from "./StudioLayoutEditor";
 import "./instructions.css";
 
 interface Props {
@@ -159,6 +160,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             </div>
           ) : (
             <BuilderCanvas
+              viewRotation={step.rotation}
               projectId={`${document.id}-instructions`}
               bricks={view.bricks}
               imported={view.imported}
@@ -220,7 +222,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               ))}
               {step.rotation && <button className="ins-ghost" onClick={() => patchStep({ rotation: undefined })} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>}
             </fieldset>
-            <p className="ins-hint">Die Drehung wird für diesen Schritt gespeichert und im PDF verwendet; die Live-Vorschau lässt sich unabhängig per Touch drehen. Geänderte Schritte werden beim IO-Export als flache Baugruppe mit einfachen Anleitungsseiten ausgegeben. Originale Studio-Daten bleiben als Sicherung erhalten.</p>
+            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt. Zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte werden beim IO-Export als flache Baugruppe mit einfachen Anleitungsseiten ausgegeben. Originale Studio-Daten bleiben als Sicherung erhalten.</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> Schritt danach</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label="Schritt nach vorne verschieben" data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
@@ -280,8 +282,14 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             )}
           </div>
 
+          {plan.studioLayout && (
+            <StudioLayoutEditor layout={plan.studioLayout} originalBytes={document.imported?.originalBytes}
+              onChange={next => onChange({ ...plan, studioLayout: next, edited: true })} />
+          )}
           {(plan.source === "studio" || document.imported?.format === "io") && (
-            <p className="ins-note" data-testid="text-instructions-studio-note"><Info size={14} /> Studio-Seitenlayouts, Callouts und Hilfslinien werden nicht übernommen und sind hier nicht bearbeitbar. Bearbeitet werden nur Schrittfolge, Teilezuordnung, Texte und Drehung.</p>
+            <p className="ins-note" data-testid="text-instructions-studio-note"><Info size={14} /> {plan.studioLayout
+              ? "Studio-Seitenlayouts lassen sich oben über einzelne Attribute anpassen (Sperre, Schrittversatz, Bilder, globale Callout-Stile). Der IO-Export lehnt es ab, Layoutänderungen mit geänderten Schritten oder Modelländerungen zu kombinieren. Speichere als JSON, um beides zu behalten."
+              : "Für dieses Modell liegen keine lesbaren Studio-Seitenlayouts vor. Bearbeitet werden nur Schrittfolge, Teilezuordnung, Texte und Drehung."}</p>
           )}
           {plan.warnings.length > 0 && (
             <ul className="ins-note" data-testid="list-instructions-warnings">{plan.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>

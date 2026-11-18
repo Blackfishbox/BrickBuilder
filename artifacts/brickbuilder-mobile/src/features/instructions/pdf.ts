@@ -15,7 +15,7 @@ export function instructionParts(document: BuilderDocument, ids: string[]): stri
   for (const part of document.imported?.instances ?? []) {
     if (!selected.has(part.id)) continue;
     const color = part.color?.name ?? resolveColor(part.colorCode)?.name ?? `LDraw ${part.colorCode}`;
-    const label = `${part.part.brickLinkId ? `BrickLink ${part.part.brickLinkId}` : `LDraw ${part.part.ldrawId}`} · ${color}`;
+    const label = `${part.part.brickLinkId ?? `LDraw ${part.part.ldrawId}`} · ${color}`;
     rows.set(label, (rows.get(label) ?? 0) + 1);
   }
   for (const part of document.bricks) {

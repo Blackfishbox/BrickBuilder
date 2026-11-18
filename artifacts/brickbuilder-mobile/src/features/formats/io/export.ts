@@ -3,16 +3,36 @@ import { exportMPD } from "../mpd/export";
 import { readZip, writeZip } from "../zip";
 import { effectiveInstructions, instructionExportNeeded } from "@/features/instructions/model";
 import { writeStudioInstructions } from "@/features/instructions/studio";
+import { applyStudioLayout } from "@/features/instructions/studio-layout";
 export function exportIO(document: BuilderDocument): Uint8Array {
   const model = document.imported;
   const rebuildInstructions = instructionExportNeeded(document);
-  if (model?.format === "io" && !model.edited && !rebuildInstructions && !document.bricks.length) {
+  const layout = document.instructions?.studioLayout;
+  const layoutChanged = Boolean(layout?.edits.length);
+  if (layoutChanged && (model?.format !== "io" || model.edited || rebuildInstructions || document.bricks.length)) {
+    throw new Error("Studio-Layoutänderungen können noch nicht mit Modell- oder Bauschrittänderungen als IO kombiniert werden. Bitte als JSON-Projekt sichern oder die Layoutänderungen zurücksetzen. Es wird kein Layout stillschweigend verworfen.");
+  }
+  if (model?.format === "io" && !model.edited && !rebuildInstructions && !document.bricks.length && !layoutChanged) {
     return new Uint8Array(model.originalBytes);
   }
   const entries = model?.format === "io"
     ? readZip(new Uint8Array(model.originalBytes), { studioEncryption: true })
     : Object.create(null) as Record<string, Uint8Array>;
   const encode = (text: string) => new TextEncoder().encode(text);
+  if (layoutChanged && layout) {
+    const instructionName = Object.keys(entries).find(key => key.toLowerCase() === "model.ins");
+    if (!instructionName || new TextDecoder("utf-8", { fatal: true }).decode(entries[instructionName]) !== layout.sourceXml) {
+      throw new Error("Die Studio-Layoutquelle stimmt nicht mit dem Originalarchiv überein. Bitte das ursprüngliche IO erneut importieren; das JSON-Projekt bleibt als Sicherung nutzbar.");
+    }
+    const xml = applyStudioLayout(layout);
+    entries["BrickBuilder/original/model.ins"] ??= entries[instructionName];
+    entries[instructionName] = encode(xml);
+    // Keep every model variant, image and unknown entry byte-identical. Only the
+    // requested attributes in model.ins change; native indices stay meaningful.
+    const bytes = writeZip(entries);
+    readZip(bytes, { names: ["model.ins"] });
+    return bytes;
+  }
   const modified = model?.edited || rebuildInstructions || document.bricks.length;
   // Studio's derived model variants must never silently override the edited model.
   for (const key of Object.keys(entries)) {
