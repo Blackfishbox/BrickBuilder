@@ -7,6 +7,7 @@ const outputDirectory = "generated-artifacts/google-play/whatsnew";
 
 // Summaries describe changed areas, not unverified fixes or translated commit titles.
 const areas = [
+  [/\/instructions\//i, "Bauanleitungen und PDF-Export überarbeitet."],
   [/\/(?:import|export|inventory)\b|\/formats?\//i, "Import, Export und BrickLink-Teilelisten überarbeitet."],
   [/\/(?:catalog|parts|colors?|color-evidence)\b|ldraw|geometry|thumbnail/i, "Teilesuche, Farben und Geometrien überarbeitet."],
   [/\/(?:engine|connections|editor)\b|snapping|camera|gesture/i, "3D-Bauen, Verbindungen und Touch-Bedienung überarbeitet."],
@@ -29,7 +30,12 @@ export function summarizeChangedPaths(paths) {
   }
   if (remaining.size) lines.push("Weitere Wartungsarbeiten und Aktualisierungen.");
   if (!lines.length) lines.push("Erneute Bereitstellung des aktuellen Stands für den geschlossenen Test.");
-  return validateNotes(lines.map((line) => `• ${line}`).join("\n"));
+  const summary = lines.map((line) => `• ${line}`);
+  if ([...summary.join("\n")].length > 500) {
+    while (Array.from([...summary, "• Weitere Funktionsbereiche überarbeitet."].join("\n")).length > 500) summary.pop();
+    summary.push("• Weitere Funktionsbereiche überarbeitet.");
+  }
+  return validateNotes(summary.join("\n"));
 }
 
 export function validateNotes(text) {

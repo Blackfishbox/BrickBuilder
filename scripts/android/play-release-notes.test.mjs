@@ -15,6 +15,7 @@ test("all areas fit Google's limit and unknown or empty changes remain truthful"
     "features/import/a.ts", "features/colors/a.ts", "features/engine/a.ts",
     "features/storage/a.ts", "features/privacy/a.ts", "app/android/a.java",
     ".github/workflows/android-google-play.yml", "other/component.tsx", "pnpm-lock.yaml",
+    "features/instructions/pdf.ts",
   ]);
   assert.ok([...notes].length <= 500);
   assert.match(summarizeChangedPaths([]), /Erneute Bereitstellung/);
