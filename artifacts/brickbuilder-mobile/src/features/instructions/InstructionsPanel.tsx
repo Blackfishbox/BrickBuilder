@@ -4,6 +4,7 @@ import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
 import { effectiveInstructions, instructionView } from "./model";
 import type { InstructionPlan, InstructionStep } from "./types";
+import StudioLayoutEditor from "./StudioLayoutEditor";
 import "./instructions.css";
 
 interface Props {
@@ -280,8 +281,14 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             )}
           </div>
 
+          {plan.studioLayout && (
+            <StudioLayoutEditor layout={plan.studioLayout} originalBytes={document.imported?.originalBytes}
+              onChange={next => onChange({ ...plan, studioLayout: next, edited: true })} />
+          )}
           {(plan.source === "studio" || document.imported?.format === "io") && (
-            <p className="ins-note" data-testid="text-instructions-studio-note"><Info size={14} /> Studio-Seitenlayouts, Callouts und Hilfslinien werden nicht übernommen und sind hier nicht bearbeitbar. Bearbeitet werden nur Schrittfolge, Teilezuordnung, Texte und Drehung.</p>
+            <p className="ins-note" data-testid="text-instructions-studio-note"><Info size={14} /> {plan.studioLayout
+              ? "Studio-Seitenlayouts lassen sich oben über einzelne Attribute anpassen (Sperre, Schrittversatz, Bilder, globale Callout-Stile). Der IO-Export lehnt es ab, Layoutänderungen mit geänderten Schritten oder Modelländerungen zu kombinieren. Speichere als JSON, um beides zu behalten."
+              : "Für dieses Modell liegen keine lesbaren Studio-Seitenlayouts vor. Bearbeitet werden nur Schrittfolge, Teilezuordnung, Texte und Drehung."}</p>
           )}
           {plan.warnings.length > 0 && (
             <ul className="ins-note" data-testid="list-instructions-warnings">{plan.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>

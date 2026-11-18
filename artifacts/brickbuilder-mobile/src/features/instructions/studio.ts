@@ -1,20 +1,23 @@
-import { XMLParser, XMLValidator } from "fast-xml-parser";
+import { XMLParser } from "fast-xml-parser";
 import type { InstructionPlan } from "./types";
+import { studioNodes, validateStudioXml } from "./studio-layout";
 
 /** Only documented-by-fixture display settings are interpreted; all source bytes stay archived. */
 export function readStudioInstructions(xml: string, plan: InstructionPlan): InstructionPlan {
-  if (xml.length > 8 * 1024 * 1024 || /<!DOCTYPE|<!ENTITY/i.test(xml) || XMLValidator.validate(xml) !== true) {
-    throw new Error("Studio-Anleitungsdaten sind ungültig oder zu groß.");
-  }
+  validateStudioXml(xml);
   const parsed = new XMLParser({ ignoreAttributes: false, parseTagValue: false, parseAttributeValue: false }).parse(xml);
   if (!parsed.Instruction) throw new Error("Unbekanntes Studio-Anleitungsformat.");
   const warnings = [...plan.warnings];
-  const indices = [...xml.matchAll(/\bSerializedIndex="(\d+)"/g)].map(match => Number(match[1]));
-  if (indices.length !== plan.steps.length) {
+  const nodes = studioNodes(xml);
+  const indices = nodes.filter(node => node.name === "Step" && nodes[node.parent ?? -1]?.name === "Slot")
+    .map(node => /^\d+$/.test(node.attributes.SerializedIndex ?? "") ? Number(node.attributes.SerializedIndex) : NaN);
+  const matches = indices.length === plan.steps.length && new Set(indices).size === indices.length &&
+    indices.every(index => Number.isInteger(index) && index >= 0 && index < plan.steps.length);
+  if (!matches) {
     warnings.push("Studio-Seiten und aufgelöste Bauschritte sind nicht deckungsgleich. Das originale Seitenlayout bleibt im IO-Archiv erhalten; angezeigt wird die LDraw-Schrittfolge.");
   }
   const steps = plan.steps.map(step => ({ ...step }));
-  if (indices.length === steps.length) {
+  if (matches) {
     const pages = parsed.Instruction.Pages?.Page;
     for (const page of Array.isArray(pages) ? pages : pages ? [pages] : []) {
       const slots = page.Slot;
@@ -37,7 +40,7 @@ export function readStudioInstructions(xml: string, plan: InstructionPlan): Inst
       }
     }
   }
-  return { ...plan, steps, source: "studio", warnings };
+  return { ...plan, steps, source: "studio", warnings, studioLayout: { sourceXml: xml, edits: [] } };
 }
 
 const escape = (value: string) => value.replace(/[&<>"']/g, char => ({
