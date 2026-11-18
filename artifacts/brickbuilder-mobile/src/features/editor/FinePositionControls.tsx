@@ -9,8 +9,11 @@ const directions: { label: string; axis: keyof Position3; sign: number }[] = [
   { label: "Höher · Y+", axis: "y", sign: 1 },
   { label: "Tiefer · Y−", axis: "y", sign: -1 },
 ];
-export default function FinePositionControls({ onNudge }: { onNudge(delta: Position3): void }) {
-  return <details className="fine-position">
+export default function FinePositionControls({ onNudge, onOpenChange }: {
+  onNudge(delta: Position3): void;
+  onOpenChange?(open: boolean): void;
+}) {
+  return <details className="fine-position" onToggle={event => onOpenChange?.(event.currentTarget.open)}>
     <summary aria-label="Feinjustierung öffnen">Fein</summary>
     <div className="fine-position-panel" role="group" aria-label="Feinjustierung in Weltachsen">
       <strong>Feinjustierung</strong>
