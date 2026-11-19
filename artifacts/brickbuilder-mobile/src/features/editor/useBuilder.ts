@@ -13,6 +13,7 @@ import {
   type Position3,
   type ToolMode,
 } from "./model";
+import { clampBrickToGround, normalizeTiltAngle } from "./brick-transform";
 import { commit, createHistory, redo, undo, type HistoryState } from "./history";
 import type { LibraryPart } from "../parts/types";
 import { ensureCatalog, resolveStoredInventory, useCatalog } from "../catalog/client";
@@ -22,7 +23,7 @@ import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
-import { editImported, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, setImportedRotation, type PreparedPart } from "./ldraw-editing";
+import { editImported, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
@@ -363,24 +364,16 @@ export function useBuilder() {
         return;
       }
       const snapped = snapPosition(position);
-      const existing = historyRef.current.document.bricks.find((brick) => brick.id === id);
-      if (
-        existing &&
-        existing.x === snapped.x &&
-        existing.y === snapped.y &&
-        existing.z === snapped.z
-      ) {
-        return;
-      }
-      updateDocument((document) => ({
-        ...document,
-        updatedAt: new Date().toISOString(),
-        bricks: document.bricks.map((brick) =>
-          brick.id === id
-            ? { ...brick, x: snapped.x, y: snapped.y, z: snapped.z }
-            : brick,
-        ),
-      }));
+      updateDocument(document => {
+        const existing = document.bricks.find(brick => brick.id === id);
+        if (!existing) return document;
+        const next = clampBrickToGround({ ...existing, ...snapped });
+        if (next.x === existing.x && next.y === existing.y && next.z === existing.z) return document;
+        return {
+          ...document, updatedAt: new Date().toISOString(),
+          bricks: document.bricks.map(brick => brick.id === id ? next : brick),
+        };
+      });
     },
     [updateDocument, constructionGround],
   );
@@ -419,10 +412,11 @@ export function useBuilder() {
         ...brick, x: Number((brick.x + delta.x).toFixed(10)), y: Math.max(0, Number((brick.y + delta.y).toFixed(10))),
         z: Number((brick.z + delta.z).toFixed(10)),
       };
-      if (next.x === brick.x && next.y === brick.y && next.z === brick.z) return;
+      const grounded = clampBrickToGround(next);
+      if (grounded.x === brick.x && grounded.y === brick.y && grounded.z === brick.z) return;
       updateDocument(current => ({
         ...current, updatedAt: new Date().toISOString(),
-        bricks: current.bricks.map(value => value.id === selectedId ? next : value),
+        bricks: current.bricks.map(value => value.id === selectedId ? grounded : value),
       }));
     }
   }, [selectedId, move, updateDocument]);
@@ -458,7 +452,18 @@ export function useBuilder() {
   const rotateSelected = useCallback(() => {
     if (!selectedId) return;
     if (historyRef.current.document.imported?.instances.some(instance => instance.id === selectedId)) {
-      updateDocument(document => rotateImported(document, selectedId));
+      updateDocument(document => {
+        const rotated = rotateImported(document, selectedId);
+        const model = rotated.imported!;
+        const instance = model.instances.find(value => value.id === selectedId)!;
+        try {
+          const matrix = groundedTransform(model, selectedId,
+            { x: instance.matrix[3] / 20, y: -instance.matrix[7] / 20, z: instance.matrix[11] / 20 },
+            constructionGround(document.imported!), instance.matrix);
+          return moveImported(rotated, selectedId,
+            { x: matrix[3] / 20, y: -matrix[7] / 20, z: matrix[11] / 20 }, false, matrix);
+        } catch { return rotated; }
+      });
       return;
     }
     updateDocument((document) => ({
@@ -466,7 +471,7 @@ export function useBuilder() {
       updatedAt: new Date().toISOString(),
       bricks: document.bricks.map((brick) =>
         brick.id === selectedId
-          ? { ...brick, rotation: rotateQuarterTurn(brick.rotation) }
+          ? clampBrickToGround({ ...brick, rotation: rotateQuarterTurn(brick.rotation) })
           : brick,
       ),
     }));
@@ -488,6 +493,43 @@ export function useBuilder() {
       };
     });
   }, [selectedId, updateDocument]);
+
+  const setSelectedTilt = useCallback((axis: "x" | "z", angle: number) => {
+    if (!selectedId || !Number.isFinite(angle)) return;
+    const normalized = normalizeTiltAngle(angle);
+    updateDocument(document => {
+      const imported = document.imported?.instances.find(instance => instance.id === selectedId);
+      if (imported && document.imported) {
+        const tiltX = axis === "x" ? normalized : imported.tiltX ?? 0;
+        const tiltZ = axis === "z" ? normalized : imported.tiltZ ?? 0;
+        if (tiltX === (imported.tiltX ?? 0) && tiltZ === (imported.tiltZ ?? 0)) return document;
+        const tilted = tiltImported(document, selectedId, tiltX, tiltZ);
+        const model = tilted.imported!;
+        const changed = model.instances.find(instance => instance.id === selectedId)!;
+        try {
+          const floor = constructionGround(document.imported);
+          const grounded = groundedTransform(model, selectedId,
+            { x: changed.matrix[3] / 20, y: -changed.matrix[7] / 20, z: changed.matrix[11] / 20 },
+            floor, changed.matrix);
+          return moveImported(tilted, selectedId,
+            { x: grounded[3] / 20, y: -grounded[7] / 20, z: grounded[11] / 20 }, false, grounded);
+        } catch {
+          return tilted;
+        }
+      }
+      const brick = document.bricks.find(value => value.id === selectedId);
+      if (!brick) return document;
+      const tiltX = axis === "x" ? normalized : brick.tiltX ?? 0;
+      const tiltZ = axis === "z" ? normalized : brick.tiltZ ?? 0;
+      if (tiltX === (brick.tiltX ?? 0) && tiltZ === (brick.tiltZ ?? 0)) return document;
+      const changed = clampBrickToGround({ ...brick, tiltX: tiltX || undefined, tiltZ: tiltZ || undefined });
+      return {
+        ...document,
+        updatedAt: new Date().toISOString(),
+        bricks: document.bricks.map(value => value.id === selectedId ? changed : value),
+      };
+    });
+  }, [constructionGround, selectedId, updateDocument]);
 
   const deleteSelected = useCallback(() => {
     if (selectedId) remove(selectedId);
@@ -604,6 +646,7 @@ export function useBuilder() {
     nudgeSelected,
     rotateSelected,
     setSelectedRotation,
+    setSelectedTilt,
     deleteSelected,
     undo: undoChange,
     redo: redoChange,

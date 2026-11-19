@@ -3,7 +3,7 @@ import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
 import { useBuilder } from '@/features/editor/useBuilder';
 import FinePositionControls from '@/features/editor/FinePositionControls';
-import RotationControls from '@/features/editor/RotationControls';
+import TiltControls from '@/features/editor/TiltControls';
 import {
   BRICK_DEFINITIONS,
   type BrickType,
@@ -74,6 +74,7 @@ function App() {
   const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [finePositionOpen, setFinePositionOpen] = useState(false);
+  const [tiltControlsOpen, setTiltControlsOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
@@ -81,6 +82,7 @@ function App() {
   const [colorTargetsOpen, setColorTargetsOpen] = useState(false);
   const [colorTargetQuery, setColorTargetQuery] = useState("");
   useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
+  useEffect(() => { setTiltControlsOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { applyColorTheme(theme); }, [theme]);
   const colorInstances = editor.imported?.instances.filter(instance =>
@@ -298,7 +300,7 @@ function App() {
           <div className="canvas-host">
             <Suspense fallback={<div className="canvas-loading">3D-Arbeitsfläche wird geladen …</div>}>
               {!instructionsOpen && <BuilderCanvas
-                showConstructionControls={!finePositionOpen}
+                showConstructionControls={!finePositionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                  darkMode={theme === 'dark'}
                 bricks={editor.bricks}
@@ -333,7 +335,12 @@ function App() {
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
               <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
-              <RotationControls rotation={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0} onChange={editor.setSelectedRotation} />
+              <TiltControls key={`tilt-${editor.selectedId}`}
+                rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
+                onRotate={editor.setSelectedRotation}
+                tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
+                tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0} onTilt={editor.setSelectedTilt}
+                onOpenChange={setTiltControlsOpen} />
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
           )}
@@ -391,7 +398,12 @@ function App() {
                     <Trash2 size={16} /><span>Entfernen</span>
                   </button>
                 </div>
-                <RotationControls rotation={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0} onChange={editor.setSelectedRotation} />
+                <TiltControls key={`desktop-tilt-${editor.selectedId}`}
+                  rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
+                  onRotate={editor.setSelectedRotation}
+                  tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
+                  tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0} onTilt={editor.setSelectedTilt}
+                  onOpenChange={setTiltControlsOpen} />
                 <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>
             ) : (

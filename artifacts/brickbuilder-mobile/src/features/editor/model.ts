@@ -21,6 +21,8 @@ export interface Brick {
   y: number;
   z: number;
   rotation: number;
+  tiltX?: number;
+  tiltZ?: number;
 }
 
 export interface BuilderDocument {

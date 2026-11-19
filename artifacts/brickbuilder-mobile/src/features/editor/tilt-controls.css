@@ -1,0 +1,58 @@
+.tilt-controls { position: relative; color: #365346; font-size: 11px; }
+.tilt-controls summary {
+  display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 7px 10px;
+  border: 1px solid #dcded3; border-radius: 9px; background: #f8f7ef; color: #536c5f;
+  cursor: pointer; font-size: 10px; font-weight: 800; list-style: none; touch-action: manipulation;
+}
+.tilt-controls summary::-webkit-details-marker { display: none; }
+.tilt-controls summary:focus-visible, .tilt-panel input:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
+.tilt-panel {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 200px; padding: 10px;
+  border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; box-shadow: 0 4px 14px #27393024;
+}
+.tilt-panel strong, .tilt-panel small, .tilt-panel > label { grid-column: 1 / -1; }
+.tilt-panel small { color: #78867c; font-size: 10px; }
+.tilt-axis-control {
+  display: grid; grid-column: 1 / -1; grid-template-columns: 58px minmax(80px, 1fr) 42px;
+  align-items: center; gap: 8px; min-height: 44px;
+}
+.tilt-axis-control label { color: #536c5f; font-weight: 800; }
+.tilt-axis-control input[type="range"] {
+  width: 100%; min-width: 0; height: 40px; margin: 0; accent-color: #365f4d; touch-action: pan-y; cursor: pointer;
+}
+.tilt-axis-control output { color: #30463d; font-variant-numeric: tabular-nums; text-align: right; }
+.tilt-panel label {
+  display: flex; align-items: center; gap: 5px; min-height: 40px; padding: 4px 8px;
+  border: 1px solid #e1ddd0; border-radius: 8px; background: #fffef9;
+}
+.tilt-panel label span { color: #75867a; font-weight: 800; }
+.tilt-panel label input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #30463d; text-align: right; }
+.tilt-panel input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.tilt-panel input[type="number"]::-webkit-inner-spin-button,
+.tilt-panel input[type="number"]::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+.tilt-panel label b { color: #75867a; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .mobile-selection-actions .tilt-controls { position: relative; }
+  .mobile-selection-actions .tilt-controls summary {
+    width: auto; min-width: 54px; min-height: 40px; border: 0; border-radius: 8px; background: #f0eee4;
+    color: #5a7263;
+  }
+  .mobile-selection-actions .tilt-panel {
+    position: absolute; z-index: 50; right: 0; bottom: calc(100% + 8px); width: min(240px, calc(100vw - 48px));
+    max-height: calc(100dvh - 180px); overflow-y: auto;
+  }
+}
+
+.dark .tilt-controls { color: #d5e4da; }
+.dark .tilt-controls summary, .dark .tilt-panel {
+  border-color: #3a4d43; background: #1b2822; color: #d5e4da;
+}
+.dark .tilt-controls summary:hover { background: #30443a; color: #f0f7f1; }
+.dark .tilt-controls summary:focus-visible, .dark .tilt-panel input:focus-visible { outline-color: #a8d8b2; }
+.dark .tilt-panel small, .dark .tilt-panel label span, .dark .tilt-panel label b { color: #9fb3a5; }
+.dark .tilt-axis-control label, .dark .tilt-axis-control output { color: #d5e4da; }
+.dark .tilt-axis-control input[type="range"] { accent-color: #9fc9aa; }
+.dark .tilt-panel label { border-color: #3a4d43; background: #17211c; }
+.dark .tilt-panel label input { color: #e5eee8; }
+.dark .mobile-selection-actions .tilt-controls summary { background: #26362e; color: #d5e4da; }
