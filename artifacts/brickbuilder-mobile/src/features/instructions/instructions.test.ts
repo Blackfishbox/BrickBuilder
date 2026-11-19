@@ -296,6 +296,70 @@ describe("local construction instructions", () => {
     expect(progress).toHaveBeenLastCalledWith(2, 2);
   });
 
+  it("keeps step labels, every part and callout, and long notes across PDF continuation pages", async () => {
+    const source = Array.from({ length: 50 }, (_, index) =>
+      `1 4 ${index * 40} 0 0 1 0 0 0 1 0 0 0 1 test-part-${String(index).padStart(2, "0")}.dat`,
+    ).join("\n");
+    const doc = fixture(source), step = doc.instructions!.steps[0];
+    step.title = "Long continuation step";
+    step.notes = Array.from({ length: 37 }, (_, index) =>
+      `NOTE-CONTENT-${String(index).padStart(3, "0")} continues beyond the diagram and must remain readable.`,
+    ).join(" ");
+    step.callouts = Array.from({ length: 16 }, (_, index) => ({
+      id: `callout-${index}`, title: `Callout ${String(index).padStart(2, "0")}`, occurrence: [index],
+    }));
+    const png = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    const bytes = await exportInstructionPDF(doc, doc.instructions!, {}, async () => ({
+      image: () => png, dispose: vi.fn(),
+    }), async () => png, async () => png);
+    const output = Buffer.from(bytes).toString("latin1");
+    const objects = new Map([...output.matchAll(/(\d+)\s+0\s+obj([\s\S]*?)endobj/g)]
+      .map(match => [Number(match[1]), match[2]]));
+    const pageContentRefs = [...objects.values()]
+      .filter(body => /\/Type\s*\/Page\b/.test(body))
+      .map(body => body.match(/\/Contents\s+(\d+)\s+0\s+R/)?.[1])
+      .filter((reference): reference is string => !!reference);
+    const pageTexts = pageContentRefs
+      .map(reference => {
+        const body = objects.get(Number(reference)) ?? "";
+        const stream = body.match(/<<([\s\S]*?)>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/);
+        if (!stream) return "";
+        const bytes = Buffer.from(stream[2], "latin1");
+        return Buffer.from(stream[1].includes("/FlateDecode") ? unzlibSync(bytes) : bytes).toString("latin1");
+      });
+
+    expect(decode(bytes.slice(0, 8))).toContain("%PDF-1.");
+    expect(output).toContain("/Count 6");
+    expect(pageTexts).toHaveLength(6);
+    expect(pageTexts[0]).toContain("Long continuation step");
+    expect(pageTexts[1]).toContain("Long continuation step");
+    expect(pageTexts[1]).toContain("Hinweise \\(Fortsetzung\\)");
+    expect(pageTexts[1]).toContain("NOTE-CONTENT-036");
+    expect(pageTexts[2]).toContain("Long continuation step");
+    expect(pageTexts[2]).toContain("Baugruppen \\(Fortsetzung\\)");
+    expect(pageTexts[2]).toContain("Callout 03");
+    expect(pageTexts[2]).toContain("Callout 14");
+    expect(pageTexts[3]).toContain("Long continuation step");
+    expect(pageTexts[3]).toContain("Baugruppen \\(Fortsetzung\\)");
+    expect(pageTexts[3]).toContain("Callout 15");
+    expect(pageTexts[4]).toContain("Long continuation step");
+    expect(pageTexts[4]).toContain("Teile \\(Fortsetzung\\)");
+    expect(pageTexts[4]).toContain("LDraw test-part-06");
+    expect(pageTexts[4]).toContain("LDraw test-part-41");
+    expect(pageTexts[5]).toContain("Long continuation step");
+    expect(pageTexts[5]).toContain("Teile \\(Fortsetzung\\)");
+    expect(pageTexts[5]).toContain("LDraw test-part-42");
+    expect(pageTexts[5]).toContain("LDraw test-part-49");
+    const text = pageTexts.join("\n");
+    expect(text).toContain("NOTE-CONTENT-000");
+    for (let index = 0; index < 50; index++) {
+      expect(text).toContain(`LDraw test-part-${String(index).padStart(2, "0")}`);
+    }
+    for (let index = 0; index < 16; index++) {
+      expect(text).toContain(`Callout ${String(index).padStart(2, "0")}`);
+    }
+  });
+
   it("exports resolved official LDraw geometry as a PDF diagram with readable quantities", async () => {
     const manifest = PART_PACKAGES.find(pkg => pkg.id === "ldraw-bricks")!;
     const bytes = readFileSync(new URL(`../../../public/${manifest.url}`, import.meta.url));
