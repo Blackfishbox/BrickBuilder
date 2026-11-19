@@ -133,6 +133,28 @@ jobs:
         run: pnpm --filter @workspace/brickbuilder-mobile android:prepare
       - name: Install Android build tools
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Capture resolved Android dependency paths
+        working-directory: artifacts/brickbuilder-mobile/android
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/generated-artifacts/android-security"
+          bash gradlew --no-daemon --max-workers=2 \
+            :app:dependencies \
+            :capacitor-cordova-android-plugins:dependencies \
+            :buildEnvironment \
+            > "$GITHUB_WORKSPACE/generated-artifacts/android-security/dependency-paths.txt" 2>&1
+      - name: Check resolved Android dependencies for advisories
+        working-directory: artifacts/brickbuilder-mobile/android
+        run: bash gradlew --no-daemon --max-workers=2 dependencyCheckAggregate
+      - name: Upload Android dependency security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brickbuilder-android-dependency-security-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            generated-artifacts/android-security/dependency-paths.txt
+            artifacts/brickbuilder-mobile/android/**/build/reports/dependency-check/**
       - name: Restore the upload keystore
         env:
           UPLOAD_KEY_BASE64: ${{ secrets.ANDROID_UPLOAD_KEY_BASE64 }}
