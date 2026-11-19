@@ -30,6 +30,8 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  Moon,
+  Sun,
   Wifi,
   WifiOff,
   X,
@@ -44,6 +46,7 @@ import InventoryPanel from '@/features/inventory/InventoryPanel';
 import PrivacyDialog from '@/features/privacy/PrivacyDialog';
 import EvidencedColorPicker from '@/features/catalog/EvidencedColorPicker';
 import { resolveColor } from '@/features/formats/colors';
+import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/color-theme';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -59,6 +62,7 @@ function App() {
   const catalog = useCatalog();
   const COLORS = catalogPalette().map(color => ({ name: color.name, value: color.hex, ldrawCode: color.ldrawCode }));
   const editor = useBuilder();
+  const [theme, setTheme] = useState<ColorTheme>(readColorTheme);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
@@ -78,6 +82,7 @@ function App() {
   const [colorTargetQuery, setColorTargetQuery] = useState("");
   useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
+  useEffect(() => { applyColorTheme(theme); }, [theme]);
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
   const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
@@ -251,6 +256,17 @@ function App() {
           </div>
           <button
             type="button"
+            className="theme-toggle"
+            onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}
+            aria-label={theme === 'dark' ? 'Helles Erscheinungsbild aktivieren' : 'Dunkles Erscheinungsbild aktivieren'}
+            aria-pressed={theme === 'dark'}
+            title={theme === 'dark' ? 'Helles Erscheinungsbild' : 'Dunkles Erscheinungsbild'}
+            data-testid="button-toggle-theme"
+          >
+            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+          <button
+            type="button"
             className={`save-button ${editor.isSaving ? 'saving' : ''}`}
             onClick={saveProject}
             disabled={editor.isSaving}
@@ -284,6 +300,7 @@ function App() {
               {!instructionsOpen && <BuilderCanvas
                 showConstructionControls={!finePositionOpen}
                 projectId={editor.document.id}
+                 darkMode={theme === 'dark'}
                 bricks={editor.bricks}
                 imported={editor.imported}
                 selectedId={editor.selectedId}
@@ -521,7 +538,7 @@ function App() {
       )}
       {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">Bauanleitung wird geladen …</div>}>
-        <InstructionsPanel document={editor.document} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
+        <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal, highlight) => {
             const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
               import('@/features/instructions/pdf'), import('@/platform/export-file'),
