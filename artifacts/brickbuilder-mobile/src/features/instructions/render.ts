@@ -17,7 +17,7 @@ const FOCUS_FRAGMENT_HEADER = "varying float vInstructionFocus;\n";
 const FOCUS_VERTEX = "vInstructionFocus = instructionFocus;";
 const FOCUS_FRAGMENT = `
   if (vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.18);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.1);
   } else if (vInstructionFocus > 1.5) {
     // Red bounds are composited separately; keep the source color.
   }
