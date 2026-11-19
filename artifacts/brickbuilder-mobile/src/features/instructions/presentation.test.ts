@@ -63,6 +63,60 @@ it("converts combined orbit and XYZ rotations to one equivalent instruction rota
   expect(unrotated).toEqual([0, 0, 0]);
 });
 
+it("keeps equivalent multi-turn views stable and bounded at both supported pitch limits", () => {
+  const makeCamera = (theta: number, phi: number, rotation?: [number, number, number]) => {
+    const camera = new PerspectiveCamera();
+    const target = new Vector3();
+    camera.position.set(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta));
+    camera.lookAt(target);
+    applyInstructionCameraRotation(camera, target, rotation);
+    return camera;
+  };
+
+  for (const phi of [0.25, 1.42]) {
+    const baseTheta = DEFAULT_INSTRUCTION_THETA + 0.37;
+    const expected = instructionRotationFromCameraPose(baseTheta, phi, [35, -82, 24]);
+    const expectedCamera = makeCamera(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, expected);
+
+    for (const completeTurns of [-8, -3, 1, 4, 9]) {
+      const theta = baseTheta + completeTurns * Math.PI * 2;
+      const actual = instructionRotationFromCameraPose(theta, phi, [35, -82, 24]);
+      const actualCamera = makeCamera(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, actual);
+
+      expect(actual.every(angle => angle >= -180 && angle < 180)).toBe(true);
+      actual.forEach((angle, index) => expect(angle).toBeCloseTo(expected[index], 5));
+      expect(actualCamera.position.distanceTo(expectedCamera.position)).toBeLessThan(0.00001);
+      expect(actualCamera.quaternion.angleTo(expectedCamera.quaternion)).toBeLessThan(0.00001);
+    }
+  }
+});
+
+it("preserves the camera view through repeated touch-turn conversions", () => {
+  const makeCamera = (theta: number, phi: number, rotation?: [number, number, number]) => {
+    const camera = new PerspectiveCamera();
+    const target = new Vector3();
+    camera.position.set(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta));
+    camera.lookAt(target);
+    applyInstructionCameraRotation(camera, target, rotation);
+    return camera;
+  };
+
+  let rotation: [number, number, number] | undefined;
+  for (let gesture = 0; gesture < 160; gesture++) {
+    const theta = DEFAULT_INSTRUCTION_THETA + 0.08;
+    const phi = gesture % 2 === 0 ? 0.25 : 1.42;
+    const direct = makeCamera(theta, phi, rotation);
+    const next = instructionRotationFromCameraPose(theta, phi, rotation);
+    const canonical = makeCamera(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, next);
+
+    expect(next.every(angle => angle >= -180 && angle < 180)).toBe(true);
+    expect(canonical.position.distanceTo(direct.position)).toBeLessThan(0.00001);
+    expect(canonical.quaternion.angleTo(direct.quaternion)).toBeLessThan(0.00001);
+    rotation = next;
+  }
+
+});
+
 it("draws twelve strong red box edges rather than recoloring surfaces", () => {
   const context = { save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
     strokeStyle: "", lineWidth: 0, globalAlpha: 0 };

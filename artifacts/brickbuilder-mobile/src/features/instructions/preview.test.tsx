@@ -5,7 +5,11 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import InstructionsPanel from "./InstructionsPanel";
 import { updateInstructions } from "./model";
-import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "../engine/instruction-camera";
+import {
+  DEFAULT_INSTRUCTION_PHI,
+  DEFAULT_INSTRUCTION_THETA,
+  instructionRotationFromCameraPose,
+} from "../engine/instruction-camera";
 
 const { preview } = vi.hoisted(() => ({ preview: vi.fn() }));
 vi.mock("../engine/BuilderCanvas", () => ({ default: (props: unknown) => { preview(props); return null; } }));
@@ -74,6 +78,49 @@ it("shows touch rotations in the fields while zoom and pan leave the angles alon
   expect(preview.mock.lastCall![0].viewCamera.phi).toBe(DEFAULT_INSTRUCTION_PHI);
   expect(preview.mock.lastCall![0].viewCamera.distance).toBe(12);
   expect(preview.mock.lastCall![0].viewCamera.target).toEqual([4, 5, 6]);
+});
+
+it("keeps the displayed angles in sync with repeated multi-turn camera updates", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["b"] },
+  ] };
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(d => updateInstructions(d, plan))}
+      onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+
+  let rotation: [number, number, number] | undefined;
+  const camera = {
+    theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI, distance: 12,
+    target: [1, 2, 3] as [number, number, number], referenceDistance: 20, referenceTarget: [0, 0, 0] as [number, number, number],
+  };
+  for (let gesture = 0; gesture < 24; gesture++) {
+    const phi = gesture % 2 === 0 ? 0.25 : 1.42;
+    rotation = instructionRotationFromCameraPose(
+      DEFAULT_INSTRUCTION_THETA + Math.PI * 2 + 0.12,
+      phi,
+      rotation,
+    );
+    act(() => preview.mock.lastCall![0].onViewCameraChange(camera, rotation));
+    const displayedRotation = instructionRotationFromCameraPose(
+      camera.theta,
+      camera.phi,
+      rotation,
+    );
+
+    for (const axis of ["x", "y", "z"] as const) {
+      expect(host.querySelector<HTMLInputElement>(`[data-testid="input-instructions-rotation-${axis}"]`)!.value)
+        .toBe(String(displayedRotation[axis === "x" ? 0 : axis === "y" ? 1 : 2]));
+    }
+    expect(preview.mock.lastCall![0].viewCamera.distance).toBe(12);
+    expect(preview.mock.lastCall![0].viewCamera.target).toEqual([1, 2, 3]);
+  }
 });
 
 it("passes each saved step rotation to the live view and updates on edit/reset without changing model parts", () => {
