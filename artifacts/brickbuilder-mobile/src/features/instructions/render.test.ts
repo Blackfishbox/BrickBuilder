@@ -1,6 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { InstancedMesh, type Camera, type Scene } from "three";
+import { InstancedMesh, Mesh, Vector3, type Camera, type Scene } from "three";
 import { createEmptyDocument } from "../editor/model";
+import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
+import { brickTransformMatrix } from "../editor/brick-transform";
+import { createSoftwareInstructionRenderer } from "./software-render";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { createInstructionRenderer } from "./render";
 
@@ -11,9 +14,74 @@ vi.mock("three", async importOriginal => {
     domElement = { toDataURL: () => "data:image/jpeg;base64,webgl" };
     setPixelRatio() {} setSize() {} setClearColor() {} dispose() {} forceContextLoss() {}
     render(scene: Scene, camera: Camera) {
-      scene.updateMatrixWorld(true); camera.updateMatrixWorld(true); frames(scene);
+      scene.updateMatrixWorld(true); camera.updateMatrixWorld(true); frames(scene, camera);
     }
   } };
+});
+
+it("matches tilted and stacked local geometry and projected triangles in both PDF paths", async () => {
+  const document = createEmptyDocument();
+  document.bricks = [
+    { id: "base", type: "brick-2x4", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 },
+    { id: "stack", type: "brick-2x2", color: "#00ff00", x: 0, y: 1.2, z: 0, rotation: 90 },
+    { id: "tilt", type: "brick-1x2", color: "#0000ff", x: 3, y: 2.4, z: 1, rotation: 35, tiltX: 28, tiltZ: -19 },
+  ];
+  const before = JSON.stringify(document), softwareFaces: number[][] = [];
+  let path: number[] = [];
+  const context = {
+    fillRect() {}, beginPath() { path = []; },
+    moveTo(x: number, y: number) { path.push(x, y); },
+    lineTo(x: number, y: number) { path.push(x, y); },
+    closePath() {}, fill() { softwareFaces.push(path.slice()); },
+  };
+  vi.stubGlobal("document", { createElement: () => ({
+    width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,software",
+  }) });
+  const webgl = await createInstructionRenderer(document);
+  const software = await createSoftwareInstructionRenderer(document);
+  try {
+    for (const rotation of [[0, 0, 0], [20, 65, -15]] as [number, number, number][]) {
+      const ids = new Set(document.bricks.map(brick => brick.id));
+      const step = { id: "s", title: "", notes: "", partIds: [...ids], rotation };
+      webgl.image(ids, step);
+      const [scene, camera] = frames.mock.lastCall! as [Scene, Camera];
+      const webglFaces: number[][] = [];
+      scene.traverse(object => {
+        if (!(object instanceof Mesh)) return;
+        const part = document.bricks.find(brick => brick.id === object.parent?.userData.partId);
+        if (!part) return;
+        const expected = createLocalBrickGeometry(part.type);
+        expect(object.geometry.getAttribute("position").array).toEqual(expected.getAttribute("position").array);
+        expected.dispose();
+        object.parent!.matrix.elements.forEach((value, index) =>
+          expect(value).toBeCloseTo(brickTransformMatrix(part).elements[index], 12));
+        const flat = object.geometry.toNonIndexed(), positions = flat.getAttribute("position");
+        for (let index = 0; index < positions.count; index += 3) {
+          webglFaces.push([0, 1, 2].flatMap(offset => {
+            const point = new Vector3().fromBufferAttribute(positions, index + offset).applyMatrix4(object.matrixWorld).project(camera);
+            return [(point.x + 1) * 500, (1 - point.y) * 380];
+          }));
+        }
+        flat.dispose();
+      });
+      softwareFaces.length = 0;
+      software.image(ids, step);
+      // Software stores world coordinates as float32; allow only that rounding.
+      const sorted = (faces: number[][]) => faces.slice().sort((a, b) => {
+        for (let index = 0; index < a.length; index++) {
+          const difference = Math.round(a[index] * 1000) - Math.round(b[index] * 1000);
+          if (difference) return difference;
+        }
+        return 0;
+      });
+      const actual = sorted(softwareFaces), expected = sorted(webglFaces);
+      expect(actual.length).toBeGreaterThan(500);
+      expect(actual).toHaveLength(expected.length);
+      actual.forEach((face, index) => face.forEach((coordinate, component) =>
+        expect(coordinate).toBeCloseTo(expected[index][component], 3)));
+    }
+    expect(JSON.stringify(document)).toBe(before);
+  } finally { webgl.dispose(); software.dispose(); }
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 

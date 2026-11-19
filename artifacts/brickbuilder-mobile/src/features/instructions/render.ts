@@ -1,9 +1,11 @@
 import {
-  AmbientLight, Box3, BoxGeometry, Color, CylinderGeometry, DirectionalLight,
+  AmbientLight, Box3, Color, DirectionalLight,
   Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Matrix4,
   Mesh, MeshLambertMaterial, OrthographicCamera, Scene, Vector3, WebGLRenderer,
 } from "three";
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor/model";
+import type { BuilderDocument } from "../editor/model";
+import { brickTransformMatrix } from "../editor/brick-transform";
+import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
@@ -89,24 +91,20 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       imported = await createImportedGroupAsync(document.imported, { signal });
       assembly.add(imported);
     }
+    const bounds = imported ? new Box3().setFromObject(imported) : new Box3();
     for (const part of document.bricks) {
-      const definition = BRICK_DEFINITIONS[part.type], group = new Group();
+      const group = new Group();
       group.userData.partId = part.id;
       const material = new MeshLambertMaterial({ color: new Color(part.color) });
       brickColors.set(part.id, material.color.clone());
       brickMaterials.set(part.id, material);
-      const box = new Mesh(new BoxGeometry(definition.studsX * 0.96, BRICK_HEIGHT, definition.studsZ * 0.96), material);
-      box.position.y = BRICK_HEIGHT / 2; group.add(box);
-      for (let x = 0; x < definition.studsX; x++) for (let z = 0; z < definition.studsZ; z++) {
-        const stud = new Mesh(new CylinderGeometry(0.3, 0.3, 0.18, 16), material);
-        stud.position.set(x - (definition.studsX - 1) / 2, BRICK_HEIGHT + 0.09, z - (definition.studsZ - 1) / 2);
-        group.add(stud);
-      }
-      group.position.set(part.x, part.y, part.z);
-      group.rotation.set((part.tiltX ?? 0) * Math.PI / 180, part.rotation * Math.PI / 180, (part.tiltZ ?? 0) * Math.PI / 180, "XYZ");
+      group.add(new Mesh(createLocalBrickGeometry(part.type), material));
+      group.applyMatrix4(brickTransformMatrix(part));
       assembly.add(group);
+      // A rotated bounding box includes empty space above the body beside the
+      // studs. Use actual local vertices, as the software renderer does.
+      bounds.expandByObject(group, true);
     }
-    const bounds = new Box3().setFromObject(assembly);
     const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
     const radius = bounds.isEmpty() ? 2 : Math.max(1, bounds.getSize(new Vector3()).length() / 2);
     assembly.position.sub(center);
@@ -169,7 +167,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           const boxes = new Map<string, Box3>();
           assembly.traverse(object => {
             if (object.userData.partId && visible.has(object.userData.partId) && highlightIds.has(object.userData.partId)) {
-              boxes.set(object.userData.partId, new Box3().setFromObject(object));
+              boxes.set(object.userData.partId, new Box3().setFromObject(object, true));
             }
             if (!(object instanceof Mesh)) return;
             if (!(object instanceof InstancedMesh)) return;

@@ -1,6 +1,7 @@
-import { Box3, BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor/model";
+import { Box3, BufferGeometry, Color, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
+import type { BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
+import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
@@ -51,7 +52,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     }
     if (index % 12 === 0) await new Promise(resolve => setTimeout(resolve, 0));
   }
-  const addGeometry = (id: string, geometry: BoxGeometry | CylinderGeometry, matrix: Matrix4, color: string) => {
+  const addGeometry = (id: string, geometry: BufferGeometry, matrix: Matrix4, color: string) => {
     const flat = geometry.index ? geometry.toNonIndexed() : geometry;
     try {
       push(id, flat.getAttribute("position").array, matrix, `0x2${color.slice(1)}`);
@@ -62,14 +63,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   };
   for (const part of document.bricks) {
     signal?.throwIfAborted();
-    const def = BRICK_DEFINITIONS[part.type];
-    const matrix = brickTransformMatrix(part);
-    addGeometry(part.id, new BoxGeometry(def.studsX * 0.96, BRICK_HEIGHT, def.studsZ * 0.96),
-      matrix.clone().multiply(new Matrix4().makeTranslation(0, BRICK_HEIGHT / 2, 0)), part.color);
-    for (let x = 0; x < def.studsX; x++) for (let z = 0; z < def.studsZ; z++) {
-      addGeometry(part.id, new CylinderGeometry(0.3, 0.3, 0.18, 16),
-        matrix.clone().multiply(new Matrix4().makeTranslation(x - (def.studsX - 1) / 2, BRICK_HEIGHT + 0.09, z - (def.studsZ - 1) / 2)), part.color);
-    }
+    addGeometry(part.id, createLocalBrickGeometry(part.type), brickTransformMatrix(part), part.color);
   }
   const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
   const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius ?? 1, bounds.getSize(new Vector3()).length() / 2);

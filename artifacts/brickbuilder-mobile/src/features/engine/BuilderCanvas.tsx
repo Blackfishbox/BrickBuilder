@@ -5,7 +5,6 @@ import {
   Box3Helper,
   BufferGeometry,
   Color,
-  CylinderGeometry,
   EdgesGeometry,
   Group,
   InstancedMesh,
@@ -25,7 +24,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { createLocalBrickGeometry, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -112,7 +111,7 @@ interface ProjectedPoint {
   depth: number;
 }
 
-class FallbackRenderer {
+export class FallbackRenderer {
   readonly domElement = document.createElement("canvas");
   private readonly context = this.domElement.getContext("2d");
   private pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
@@ -243,70 +242,31 @@ class FallbackRenderer {
       if (visibleBricks++ >= (interactive ? 300 : 1200) && brick.id !== selectedId) continue;
       const definition = BRICK_DEFINITIONS[brick.type];
       const transform = brickTransformMatrix(brick);
-      const corners = [
-        [-definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, definition.studsZ / 2],
-        [-definition.studsX / 2, definition.studsZ / 2],
-      ].map(([x, z]) => new Vector3(x, 0, z).applyMatrix4(transform));
-      const bodyHeight = BRICK_HEIGHT - 0.08;
-      const topWorld = [
-        [-definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, definition.studsZ / 2],
-        [-definition.studsX / 2, definition.studsZ / 2],
-      ].map(([x, z]) => new Vector3(x, bodyHeight, z).applyMatrix4(transform));
-      const bottom = corners.map(point => project(point.x, point.y, point.z));
-      const top = topWorld.map(point => project(point.x, point.y, point.z));
       const color = new Color(brick.color);
       if (instructionFocusIds !== undefined) instructionDisplayColor(color, instructionFocusIds.has(brick.id));
-      const sideNormals = [
-        new Vector3(0, 0, -1), new Vector3(1, 0, 0),
-        new Vector3(0, 0, 1), new Vector3(-1, 0, 0),
-      ];
-      const visibleSides = sideNormals.map((normal, index) => {
-        const worldNormal = normal.transformDirection(transform);
-        const face = [
-          bottom[index],
-          bottom[(index + 1) % bottom.length],
-          top[(index + 1) % top.length],
-          top[index],
-        ];
-        const center = corners[index].clone().add(corners[(index + 1) % corners.length])
-          .add(topWorld[(index + 1) % topWorld.length]).add(topWorld[index]).multiplyScalar(0.25);
-        const towardCamera = worldNormal.dot(new Vector3().subVectors(camera.position, center));
-        const centerDepth = face.reduce((sum, point) => sum + point.depth, 0) / face.length;
-        return { face, towardCamera, centerDepth };
-      })
-        .filter(side => side.towardCamera > 0)
-        .sort((first, second) => second.centerDepth - first.centerDepth);
-      for (const [index, side] of visibleSides.entries()) {
-        const shade = index === 0 ? 0.72 : 0.84;
-        fillPolygon(context, side.face, color.clone().multiplyScalar(shade).getStyle(), "#7d453b");
+      // Project the same body and cylindrical studs as WebGL/PDF. Screen-space
+      // ellipses cannot represent a stud correctly when its brick is tilted.
+      const triangles = localBrickTriangles(brick.type);
+      const faces: { points: ProjectedPoint[]; depth: number; shade: number }[] = [];
+      const light = new Vector3(0.4, 0.8, 0.5).normalize();
+      for (let index = 0; index < triangles.length; index += 9) {
+        const world = [0, 3, 6].map(offset =>
+          new Vector3().fromArray(triangles, index + offset).applyMatrix4(transform));
+        const normal = world[1].clone().sub(world[0]).cross(world[2].clone().sub(world[0])).normalize();
+        if (normal.dot(camera.position.clone().sub(world[0])) <= 0) continue;
+        const points = world.map(point => project(point.x, point.y, point.z));
+        if (points.some(point => point.depth < 0.1)) continue;
+        faces.push({
+          points,
+          depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
+          shade: 0.58 + 0.42 * Math.abs(normal.dot(light)),
+        });
       }
-      fillPolygon(context, top, color.clone().lerp(new Color("#ffffff"), 0.12).getStyle(), "#75433a");
-
-      for (let x = 0; x < definition.studsX; x += 1) {
-        for (let z = 0; z < definition.studsZ; z += 1) {
-          const localX = x - (definition.studsX - 1) / 2;
-          const localZ = z - (definition.studsZ - 1) / 2;
-          const world = new Vector3(localX, BRICK_HEIGHT, localZ).applyMatrix4(transform);
-          const center = project(world.x, world.y, world.z);
-          const radiusXPoint = new Vector3(localX + 0.22, BRICK_HEIGHT, localZ).applyMatrix4(transform);
-          const radiusZPoint = new Vector3(localX, BRICK_HEIGHT, localZ + 0.22).applyMatrix4(transform);
-          const projectedX = project(radiusXPoint.x, radiusXPoint.y, radiusXPoint.z);
-          const projectedZ = project(radiusZPoint.x, radiusZPoint.y, radiusZPoint.z);
-          const radiusX = Math.hypot(projectedX.x - center.x, projectedX.y - center.y);
-          const radiusZ = Math.hypot(projectedZ.x - center.x, projectedZ.y - center.y);
-          const radius = Math.max(1.6, Math.min(8, (radiusX + radiusZ) / 2));
-          context.beginPath();
-          context.ellipse(center.x, center.y, radius, Math.max(1.4, radius * 0.62), 0, 0, Math.PI * 2);
-          context.fillStyle = color.clone().lerp(new Color("#ffffff"), 0.24).getStyle();
-          context.fill();
-          context.strokeStyle = color.clone().multiplyScalar(0.7).getStyle();
-          context.lineWidth = 0.8;
-          context.stroke();
-        }
+      faces.sort((first, second) => second.depth - first.depth);
+      for (const face of faces) {
+        polygonPath(context, face.points);
+        context.fillStyle = color.clone().multiplyScalar(face.shade).getStyle();
+        context.fill();
       }
 
       if (selectedId === brick.id) {
@@ -316,7 +276,8 @@ class FallbackRenderer {
           [definition.studsX / 2, definition.studsZ / 2],
           [-definition.studsX / 2, definition.studsZ / 2],
         ].map(([x, z]) => {
-          const point = new Vector3(x, BRICK_HEIGHT + 0.18, z).applyMatrix4(transform);
+          const shape = localBrickShape(brick.type);
+          const point = new Vector3(x, shape.bodyHeight + shape.studHeight, z).applyMatrix4(transform);
           return project(point.x, point.y, point.z);
         });
         polygonPath(context, selectionTop);
@@ -330,7 +291,7 @@ class FallbackRenderer {
   }
 }
 
-const geometryCache = new Map<BrickType, ReturnType<typeof mergeGeometries>>();
+const geometryCache = new Map<BrickType, BufferGeometry>();
 
 function polygonPath(context: CanvasRenderingContext2D, points: ProjectedPoint[]): void {
   if (!points.length) return;
@@ -358,34 +319,7 @@ function brickGeometry(type: BrickType) {
   const cached = geometryCache.get(type);
   if (cached) return cached;
 
-  const definition = BRICK_DEFINITIONS[type];
-  const bodyHeight = BRICK_HEIGHT - 0.08;
-  const studHeight = 0.16;
-  const pieces: BufferGeometry[] = [];
-  const body = new BoxGeometry(
-    definition.studsX - 0.035,
-    bodyHeight,
-    definition.studsZ - 0.035,
-  );
-  body.translate(0, bodyHeight / 2, 0);
-  pieces.push(body);
-
-  for (let x = 0; x < definition.studsX; x += 1) {
-    for (let z = 0; z < definition.studsZ; z += 1) {
-      const cylinder = new CylinderGeometry(0.27, 0.27, studHeight, 16);
-      cylinder.translate(
-        x - (definition.studsX - 1) / 2,
-        bodyHeight + studHeight / 2,
-        z - (definition.studsZ - 1) / 2,
-      );
-      pieces.push(cylinder);
-    }
-  }
-
-  const merged = mergeGeometries(pieces, false);
-  for (const piece of pieces) piece.dispose();
-  if (!merged) throw new Error(`Could not build geometry for ${type}.`);
-  merged.computeVertexNormals();
+  const merged = createLocalBrickGeometry(type);
   geometryCache.set(type, merged);
   return merged;
 }
@@ -1063,7 +997,6 @@ export function BuilderCanvas({
       groups.set(key, group);
     }
 
-    const dummy = new Object3D();
     for (const groupBricks of groups.values()) {
       const first = groupBricks[0];
       const material = new MeshLambertMaterial({ color: first.color });
@@ -1079,15 +1012,7 @@ export function BuilderCanvas({
       installInstructionFocus(instances);
       instances.name = `brick-group-${first.type}`;
       groupBricks.forEach((brick, index) => {
-        dummy.position.set(brick.x, brick.y, brick.z);
-        dummy.rotation.set(
-          (brick.tiltX ?? 0) * Math.PI / 180,
-          brick.rotation * Math.PI / 180,
-          (brick.tiltZ ?? 0) * Math.PI / 180,
-          "XYZ",
-        );
-        dummy.updateMatrix();
-        instances.setMatrixAt(index, dummy.matrix);
+        instances.setMatrixAt(index, brickTransformMatrix(brick));
       });
       instances.instanceMatrix.needsUpdate = true;
       nextRoot.add(instances);
