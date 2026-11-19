@@ -5,8 +5,15 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createEmptyDocument } from "../editor/model";
 import StepPartsBox from "./StepPartsBox";
 
-const { image } = vi.hoisted(() => ({ image: vi.fn(async () => "data:image/jpeg;base64,thumbnail") }));
+const { image, calloutImage } = vi.hoisted(() => ({
+  image: vi.fn(async () => "data:image/jpeg;base64,thumbnail"),
+  calloutImage: vi.fn(async () => "data:image/jpeg;base64,assembly"),
+}));
 vi.mock("./part-images", () => ({ instructionPartImage: image }));
+vi.mock("./callouts", () => ({
+  instructionCalloutImage: calloutImage,
+  instructionCalloutPartIds: () => ["subpart"],
+}));
 vi.mock("../parts/thumbnails/visibility", () => ({ observeThumbnail: (_: Element, notify: (value: boolean) => void) => { notify(true); return () => {}; } }));
 let root: ReturnType<typeof createRoot>, host: HTMLDivElement;
 afterEach(() => { if (root) act(() => root.unmount()); host?.remove(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -43,4 +50,17 @@ it("offers explicit loading on old WebViews instead of an endless spinner or eag
   expect(image).not.toHaveBeenCalled();
   await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
   expect(host.querySelector("img")?.alt).toBe("LDraw 3004 · #ff0000");
+});
+
+it("shows a rendered subassembly callout for a step without new loose parts", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", class {});
+  const doc = createEmptyDocument();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  const callout = { id: "0/31", title: "window", occurrence: [0, 31] };
+  await act(async () => root.render(<StepPartsBox document={doc} partIds={[]} callouts={[callout]} />));
+  expect(host.querySelector('[aria-label="Baugruppe einsetzen: window"]')).not.toBeNull();
+  expect(host.querySelector("img")?.alt).toBe("3D-Vorschau der Baugruppe window");
+  expect(host.textContent).toContain("1 enthaltene Teile");
+  expect(host.textContent).not.toContain("Keine neuen Teile");
 });

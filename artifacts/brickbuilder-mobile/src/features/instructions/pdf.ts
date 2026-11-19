@@ -6,6 +6,7 @@ import { createInstructionRenderer, type InstructionImageRenderer } from "./rend
 import { instructionPartGroups } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { drawInstructionPartBox } from "./pdf-parts";
+import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
 
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
@@ -23,6 +24,7 @@ export async function exportInstructionPDF(
   options: InstructionPdfOptions = {},
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
   renderPart = instructionPartImage,
+  renderCallout = instructionCalloutImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   options.signal?.throwIfAborted();
@@ -40,9 +42,14 @@ export async function exportInstructionPDF(
       pdf.text(title, 16, 20);
       let imageY = 24 + (title.length - 1) * 7;
       const groups = instructionPartGroups(document, step.partIds);
-      imageY += await drawInstructionPartBox(pdf, document, groups.slice(0, 12), imageY, options.signal, renderPart) + 4;
+      const callouts = step.callouts ?? [];
+      const firstPageParts = callouts.length ? 6 : 12;
+      imageY += await drawInstructionPartBox(
+        pdf, document, groups.slice(0, firstPageParts), imageY, options.signal, renderPart,
+        callouts.slice(0, 3), renderCallout,
+      ) + 4;
       step.partIds.forEach(id => visible.add(id));
-      const highlightIds = options.highlight ? new Set(step.partIds) : undefined;
+      const highlightIds = options.highlight ? instructionHighlightIds(document, step) : undefined;
       pdf.addImage(renderer.image(visible, step, highlightIds), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
       const text = (value: string, bold = false) => {
@@ -53,8 +60,9 @@ export async function exportInstructionPDF(
           pdf.text(line, 16, y); y += 5;
         }
       };
-      text(`${step.partIds.length} neue Teile · ${visible.size} Teile bis zu diesem Schritt`, true);
-      if (options.highlight) text("Türkis: neue Teile in diesem Schritt · Hellgrau: bereits verbaute Teile");
+      const calloutSummary = callouts.length ? ` · ${callouts.length} Baugruppen einsetzen` : "";
+      text(`${step.partIds.length} neue Teile${calloutSummary} · ${visible.size} Teile bis zu diesem Schritt`, true);
+      if (options.highlight) text("Türkis: neue Teile und einzusetzende Baugruppen · Hellgrau: bereits verbaute Teile");
       if (step.notes) { y += 3; text(step.notes); }
       const missing = document.imported?.instances.filter(part => visible.has(part.id) && part.part.status !== "resolved") ?? [];
       if (missing.length) {
@@ -63,8 +71,17 @@ export async function exportInstructionPDF(
         text(`Hinweis: ${missing.length} Teile ohne geladene Geometrie sind in der Abbildung nicht dargestellt. Die Teileliste bleibt vollständig.`);
         pdf.setTextColor(0);
       }
-      for (let offset = 12; offset < groups.length; offset += 36) {
-        if (offset === 12) text("Weitere Teile für diesen Schritt auf den folgenden Seiten.");
+      for (let offset = 3; offset < callouts.length; offset += 12) {
+        pdf.addPage();
+        pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
+        const continued = pdf.splitTextToSize(`${index + 1}. ${step.title} – Baugruppen (Fortsetzung)`, 178) as string[];
+        pdf.text(continued, 16, 20);
+        const y = 24 + (continued.length - 1) * 6;
+        await drawInstructionPartBox(pdf, document, [], y, options.signal, renderPart,
+          callouts.slice(offset, offset + 12), renderCallout);
+      }
+      for (let offset = firstPageParts; offset < groups.length; offset += 36) {
+        if (offset === firstPageParts) text("Weitere Teile für diesen Schritt auf den folgenden Seiten.");
         pdf.addPage();
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
         const continued = pdf.splitTextToSize(`${index + 1}. ${step.title} – Teile (Fortsetzung)`, 178) as string[];
