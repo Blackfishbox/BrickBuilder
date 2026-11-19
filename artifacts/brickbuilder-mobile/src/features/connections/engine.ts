@@ -14,7 +14,7 @@ export const MAGNET_CAPTURE_STUDS = 0.75;
 export const MAGNET_RELEASE_STUDS = 0.95;
 export const CONNECTION_PREVIEW_STUDS = 1.5;
 const CELL = 80, REACH = MAGNET_CAPTURE_STUDS * 20, EPS = 1e-4, MAX_CONTACTS = 64;
-const PREVIEW_REACH = CONNECTION_PREVIEW_STUDS * 20, MAX_PREVIEWS = 12;
+const MAX_PREVIEWS = 12;
 interface Entry { id: string; instance: ImportedInstance; connectors: Connector[]; box: Box3 }
 interface Index { entries: Map<string, Entry>; cells: Map<string, Set<Entry>>; wide: Entry[] }
 const indexes = new WeakMap<ImportedModel, Index>();
@@ -229,16 +229,19 @@ export function hasUsableConnections(model: ImportedModel, id: string): boolean 
 
 /** Nearby compatible contacts are display-only suggestions; they never move
  * the part or participate in magnetic snapping. */
-export function previewConnections(model: ImportedModel, id: string, desired: Position3): Contact[] {
+export function previewConnections(
+  model: ImportedModel, id: string, desired: Position3, rangeStuds = CONNECTION_PREVIEW_STUDS,
+): Contact[] {
   const index = indexFor(model), original = index.entries.get(id), instance = original?.instance;
   if (!instance || !original.connectors.length) return [];
+  const reach = Math.max(0, Number.isFinite(rangeStuds) ? rangeStuds : CONNECTION_PREVIEW_STUDS) * 20;
   const matrix = [...instance.matrix] as Affine;
   matrix[3] = desired.x * 20; matrix[7] = -desired.y * 20; matrix[11] = desired.z * 20;
   const moving = describeConnections(instance.reference, model).connectors
     .map(c => transformConnector(c, matrix)).filter((c): c is Connector => !!c);
   const query = original.box.clone()
     .translate(new Vector3(matrix[3] - instance.matrix[3], matrix[7] - instance.matrix[7], matrix[11] - instance.matrix[11]))
-    .expandByScalar(PREVIEW_REACH);
+    .expandByScalar(reach);
   const near = neighbours(index, query, id), result: Contact[] = [], seen = new Set<string>();
   for (const a of moving) for (const entry of near) for (const b of entry.connectors) {
     if (!potentialPair(a, b) || occupied(index, b, entry.id, id, a)) continue;
@@ -247,7 +250,7 @@ export function previewConnections(model: ImportedModel, id: string, desired: Po
     if (!genericFree && Math.abs(aa.y.dot(bb.y)) < Math.cos(Math.PI / 12)) continue;
     const planar = aa.position.clone().sub(bb.position);
     planar.addScaledVector(bb.y, -planar.dot(bb.y));
-    if (planar.length() > PREVIEW_REACH) continue;
+    if (planar.length() > reach) continue;
 
     const ai = intervals(a), bi = intervals(b), offsets = new Set<number>();
     if (a.family === "generic") offsets.add(0);
@@ -260,7 +263,7 @@ export function previewConnections(model: ImportedModel, id: string, desired: Po
       if (!profileOverlap(a, b, offset, direction, roll)) continue;
       const wanted = bb.position.clone().addScaledVector(bb.y, offset);
       const delta = wanted.clone().sub(aa.position);
-      if (Math.hypot(delta.x, delta.z) > PREVIEW_REACH || Math.abs(delta.y) > PREVIEW_REACH) continue;
+      if (Math.hypot(delta.x, delta.z) > reach || Math.abs(delta.y) > reach) continue;
       const distance = Math.abs(offset - currentOffset) + delta.length() * 0.001;
       if (distance < bestDistance) { bestOffset = offset; bestDistance = distance; }
     }
