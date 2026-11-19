@@ -544,6 +544,48 @@ describe("frame-coalesced drag transactions", () => {
     sendProgress(workers[1], 99);
     expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
   });
+  it("clears worker progress after failure and ignores later messages from that worker", async () => {
+    const workers: {
+      onmessage: ((event: MessageEvent) => void) | null;
+      terminated: boolean;
+    }[] = [];
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      terminated = false;
+      constructor() { workers.push(this); }
+      postMessage() {}
+      terminate() { this.terminated = true; }
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!.click());
+    expect(workers).toHaveLength(1);
+
+    const worker = workers[0];
+    act(() => worker.onmessage?.({
+      data: { progress: { phase: "checking", percent: 42 } },
+    } as MessageEvent));
+    expect(element.querySelector<HTMLProgressElement>("progress[aria-label='Fortschritt der Kollisionsprüfung']")?.value).toBe(42);
+
+    await act(async () => {
+      worker.onmessage?.({
+        data: { error: { name: "Error", message: "simulated worker failure" } },
+      } as MessageEvent);
+    });
+    expect(worker.terminated).toBe(true);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toBe("Kollisionsprüfung nicht abgeschlossen");
+    expect(element.querySelector("progress[aria-label='Fortschritt der Kollisionsprüfung']")).toBeNull();
+
+    act(() => worker.onmessage?.({
+      data: { progress: { phase: "checking", percent: 91 } },
+    } as MessageEvent));
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toBe("Kollisionsprüfung nicht abgeschlossen");
+    expect(element.querySelector("progress[aria-label='Fortschritt der Kollisionsprüfung']")).toBeNull();
+  });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
       toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), showConstructionControls: false };
