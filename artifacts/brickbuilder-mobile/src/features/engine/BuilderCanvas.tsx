@@ -654,7 +654,7 @@ export function BuilderCanvas({
     });
     const grid = new LineSegments(createStudGridGeometry(constructionArea(new Box3())), gridMaterial);
     grid.name = "construction-grid";
-    grid.position.y = -0.025;
+    grid.position.set(0, -0.025, 0);
     scene.add(grid);
     let floorSignature = "";
     const refreshConstructionArea = (candidate?: Box3) => {
@@ -694,6 +694,7 @@ export function BuilderCanvas({
       previousBoardGeometry.dispose();
       const previousGridGeometry = grid.geometry;
       grid.geometry = createStudGridGeometry(area);
+      grid.position.set(area.centerX, -0.025, area.centerZ);
       previousGridGeometry.dispose();
       invalidatorRef.current?.();
     };

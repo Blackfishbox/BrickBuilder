@@ -8,7 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import BuilderCanvas from "./BuilderCanvas";
-import { constructionArea, createStudGridGeometry, brickConstructionBounds } from "./construction-floor";
+import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
 import { compilePart, worldMatrix } from "./ldraw-geometry";
 import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "./instruction-camera";
@@ -177,6 +177,8 @@ function expectConstructionArea(bounds: Box3): void {
   expect(board.position.z).toBe(expected.centerZ);
   expect(board.geometry.parameters.width).toBe(expected.width);
   expect(board.geometry.parameters.depth).toBe(expected.depth);
+  expect(grid.position.x).toBe(expected.centerX);
+  expect(grid.position.z).toBe(expected.centerZ);
   expect(Array.from(grid.geometry.getAttribute("position").array)).toEqual(
     Array.from(createStudGridGeometry(expected).getAttribute("position").array),
   );
@@ -212,6 +214,27 @@ describe("frame-coalesced drag transactions", () => {
       renderStep([original, { ...original, id: "added", x: 48, z: -24 }]);
       renderStep([original, { ...original, id: "added", x: 96, z: 32 }]);
       renderStep([original]);
+    });
+
+    it(`renders a bounded grid for very large builds in ${rendererName}`, () => {
+      observed.webglEnabled = webgl;
+      const bricks: Brick[] = [
+        { id: "west", type: "brick-2x4", color: "#B40000", x: -500_000, y: 0, z: -300_000, rotation: 0 },
+        { id: "east", type: "brick-2x4", color: "#B40000", x: 500_000, y: 0, z: 300_000, rotation: 0 },
+      ];
+      const props = { bricks, selectedId: null, selectedType: "brick-2x4" as const,
+        selectedColor: "#B40000", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+
+      const bounds = bricks.reduce((result, brick) => result.union(brickConstructionBounds(brick)), new Box3());
+      expectConstructionArea(bounds);
+      const grid = observed.scene3d!.getObjectByName("construction-grid") as import("three").LineSegments;
+      const position = grid.geometry.getAttribute("position");
+      expect(position.count / 2).toBeLessThanOrEqual(MAX_STUD_GRID_LINES);
+      expect(Array.from(position.array).every(Number.isFinite)).toBe(true);
+      expect(observed.scene3d!.getObjectByName("construction-floor")).toBeDefined();
     });
 
     it(`keeps the ground and camera current for imported parts in ${rendererName}`, async () => {

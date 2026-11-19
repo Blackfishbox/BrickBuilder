@@ -53,16 +53,32 @@ export function constructionArea(bounds: Box3): ConstructionArea {
   }
   const width = maxX - minX;
   const depth = maxZ - minZ;
+  // Each interval contributes at most one additional line beyond its
+  // width/stride ratio. Reserve two lines for those endpoints so the combined
+  // X- and Z-aligned lines stay within the single geometry budget.
+  let gridStride = Math.max(1, Math.ceil(
+    width / (MAX_STUD_GRID_LINES - 2) + depth / (MAX_STUD_GRID_LINES - 2),
+  ));
+  while (
+    gridLineCount(minX, maxX, gridStride) + gridLineCount(minZ, maxZ, gridStride)
+    > MAX_STUD_GRID_LINES
+  ) gridStride++;
   return {
     minX, maxX, minZ, maxZ,
     centerX: (minX + maxX) / 2,
     centerZ: (minZ + maxZ) / 2,
     width, depth,
-    gridStride: Math.max(1, Math.ceil(Math.max(width, depth) / (MAX_STUD_GRID_LINES - 1))),
+    gridStride,
   };
 }
 
-/** Stud-aligned grid lines, sampled at whole-stud intervals for bounded geometry. */
+function gridLineCount(minimum: number, maximum: number, stride: number): number {
+  const first = Math.ceil(minimum / stride) * stride;
+  const last = Math.floor(maximum / stride) * stride;
+  return first <= last ? Math.floor((last - first) / stride) + 1 : 0;
+}
+
+/** Stud-aligned grid lines, sampled at whole-stud intervals within one line budget. */
 export function createStudGridGeometry(area: ConstructionArea): BufferGeometry {
   const positions: number[] = [];
   const firstX = Math.ceil(area.minX / area.gridStride) * area.gridStride;
@@ -70,10 +86,16 @@ export function createStudGridGeometry(area: ConstructionArea): BufferGeometry {
   const firstZ = Math.ceil(area.minZ / area.gridStride) * area.gridStride;
   const lastZ = Math.floor(area.maxZ / area.gridStride) * area.gridStride;
   for (let x = firstX; x <= lastX; x += area.gridStride) {
-    positions.push(x, 0, area.minZ, x, 0, area.maxZ);
+    positions.push(
+      x - area.centerX, 0, area.minZ - area.centerZ,
+      x - area.centerX, 0, area.maxZ - area.centerZ,
+    );
   }
   for (let z = firstZ; z <= lastZ; z += area.gridStride) {
-    positions.push(area.minX, 0, z, area.maxX, 0, z);
+    positions.push(
+      area.minX - area.centerX, 0, z - area.centerZ,
+      area.maxX - area.centerX, 0, z - area.centerZ,
+    );
   }
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
