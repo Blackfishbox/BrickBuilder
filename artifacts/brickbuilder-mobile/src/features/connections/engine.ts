@@ -1,7 +1,8 @@
 import { Box3, Matrix4, Quaternion, Vector3 } from "three";
 import type { Affine, ImportedInstance, ImportedModel } from "../formats/types";
 import type { Position3 } from "../editor/model";
-import { stackingBounds, localPartBounds, liftOverlaps } from "../engine/stacking";
+import { stackingBounds, localPartBounds, stackedPosition } from "../engine/stacking";
+import { importedCollisionQuery } from "../engine/imported-collision";
 import { worldMatrix } from "../engine/ldraw-geometry";
 import { affine, describeConnections, matrix4, transformConnector } from "./description";
 import { axes, intervals, potentialPair, profileOverlap } from "./profiles";
@@ -119,10 +120,13 @@ function obstructed(model: ImportedModel, id: string, proposed: Affine, contacts
   const size = lduBox.getSize(new Vector3()).divideScalar(CELL).addScalar(2);
   if (size.x * size.y * size.z > 1024) return true;
   buckets(lduBox, key => { for (const other of obstacleIndex.cells.get(key) ?? []) candidates.add(other); });
+  const overlaps = importedCollisionQuery(model);
   for (const otherId of candidates) {
     if (otherId === id) continue;
     const other = boxes.get(otherId);
     if (!other || !positiveOverlap(moved, other)) continue;
+    const target = indexFor(model).entries.get(otherId)?.instance;
+    if (target && overlaps(instance.reference, proposed, target.reference, target.matrix) === "clear") continue;
     const allowed = contacts.filter(c => c.targetId === otherId);
     if (!allowed.length) return true;
     const slabs = allowed.map(c => {
@@ -194,8 +198,7 @@ function localStackedPosition(model: ImportedModel, id: string, desired: Positio
   for (let x = loX; x <= hiX; x++) for (let z = loZ; z <= hiZ; z++)
     for (const otherId of bounds.columns.get(`${x}:${z}`) ?? []) if (otherId !== id) ids.add(otherId);
   ids.delete(id);
-  const boxes = stackingBounds(model);
-  return { ...desired, y: desired.y + liftOverlaps(moved, [...ids].map(other => boxes.get(other)!).filter(Boolean)) };
+  return stackedPosition(model, id, desired, ids);
 }
 function allContacts(moving: Connector[], nearby: Entry[], id: string, state: Contact["state"]): Contact[] {
   const result: Contact[] = [];

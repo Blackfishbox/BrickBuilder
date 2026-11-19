@@ -2,6 +2,8 @@ import { Box3, Vector3 } from "three";
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import type { Position3 } from "../editor/model";
 import { compilePart, reuseGeometryCache, worldMatrix } from "./ldraw-geometry";
+import { importedCollisionQuery } from "./imported-collision";
+import type { Affine } from "../formats/types";
 
 const instanceBounds = new WeakMap<ImportedInstance, { resources: ImportedModel["resources"]; box: Box3 }>();
 const modelBounds = new WeakMap<ImportedModel, Map<string, Box3>>();
@@ -71,8 +73,8 @@ export function liftOverlaps(moving: Box3, obstacles: Iterable<Box3>): number {
   return lift;
 }
 
-export function stackedPosition(model: ImportedModel, id: string, position: Position3): Position3 {
-  const instance = model.instances.find(value => value.id === id);
+export function stackedPosition(model: ImportedModel, id: string, position: Position3, candidateIds?: Iterable<string>): Position3 {
+  const instance = stackingInstances(model).get(id);
   const boxes = stackingBounds(model), source = boxes.get(id);
   if (!instance || !source) return position;
   const moved = source.clone().translate(new Vector3(
@@ -80,8 +82,35 @@ export function stackedPosition(model: ImportedModel, id: string, position: Posi
     position.y + instance.matrix[7] / 20,
     position.z - instance.matrix[11] / 20,
   ));
-  const lift = liftOverlaps(moved, (function* () {
-    for (const [otherId, box] of boxes) if (otherId !== id) yield box;
-  })());
+  const instances = stackingInstances(model);
+  const candidates = [...(candidateIds ?? boxes.keys())].filter(otherId => otherId !== id)
+    .map(otherId => ({ instance: instances.get(otherId), box: boxes.get(otherId) }))
+    .filter((entry): entry is { instance: ImportedInstance; box: Box3 } => !!entry.instance && !!entry.box &&
+      moved.min.x < entry.box.max.x - 0.0001 && moved.max.x > entry.box.min.x + 0.0001 &&
+      moved.min.z < entry.box.max.z - 0.0001 && moved.max.z > entry.box.min.z + 0.0001)
+    .sort((a, b) => a.box.min.y - b.box.min.y);
+  let lift = 0;
+  const proposed = [...instance.matrix] as Affine;
+  proposed[3] = position.x * 20; proposed[11] = position.z * 20;
+  const overlaps = importedCollisionQuery(model);
+  for (let i = 0; i < candidates.length; i++) {
+    const obstacle = candidates[i];
+    if (moved.min.y + lift >= obstacle.box.max.y - 0.0001 || moved.max.y + lift <= obstacle.box.min.y + 0.0001) continue;
+    proposed[7] = -(position.y + lift) * 20;
+    // Only positive geometric clearance suppresses conservative lifting.
+    if (overlaps(instance.reference, proposed, obstacle.instance.reference, obstacle.instance.matrix) !== "clear") {
+      lift = obstacle.box.max.y - moved.min.y;
+      // A lift can enter a previously clear cavity's roof or side wall.
+      // Every lift passes at least one obstacle's top, so this terminates.
+      i = -1;
+    }
+  }
   return { ...position, y: position.y + lift };
+}
+
+const modelInstances = new WeakMap<ImportedModel, Map<string, ImportedInstance>>();
+function stackingInstances(model: ImportedModel): Map<string, ImportedInstance> {
+  let instances = modelInstances.get(model);
+  if (!instances) { instances = new Map(model.instances.map(instance => [instance.id, instance])); modelInstances.set(model, instances); }
+  return instances;
 }
