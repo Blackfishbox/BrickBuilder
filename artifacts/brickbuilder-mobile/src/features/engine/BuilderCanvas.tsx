@@ -39,7 +39,10 @@ import { reuseGeometryCache } from "./ldraw-geometry";
 import { importedSelectionBounds, pickSoftwareInstance } from "./imported-selection";
 import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftware, applySoftwareInstructionFocus, INTERACTIVE_TRIANGLE_BUDGET, type SoftwareScene } from "./software-scene";
 import { InstanceIndex, instanceIndex } from "./instance-index";
-import { activeConnections, magneticConstructionTransform, hasUsableConnections, previewConnections } from "../connections/engine";
+import {
+  activeConnections, magneticConstructionTransform, hasUsableConnections,
+  previewConnections, CONNECTION_PREVIEW_STUDS,
+} from "../connections/engine";
 import type { MagneticLatch } from "../connections/engine";
 import { ConnectionOverlay } from "../connections/overlay";
 import type { InstructionCamera } from "../instructions/types";
@@ -477,6 +480,9 @@ export function BuilderCanvas({
   const [showConnectionPreview, setShowConnectionPreview] = useState(false);
   const showConnectionPreviewRef = useRef(false);
   showConnectionPreviewRef.current = showConnectionPreview;
+  const [connectionPreviewRange, setConnectionPreviewRange] = useState(CONNECTION_PREVIEW_STUDS);
+  const connectionPreviewRangeRef = useRef(connectionPreviewRange);
+  connectionPreviewRangeRef.current = connectionPreviewRange;
   const [connectionStatus, setConnectionStatus] = useState("");
   const [floatingCount, setFloatingCount] = useState(0);
   const [showFloating, setShowFloating] = useState(false);
@@ -1225,7 +1231,7 @@ export function BuilderCanvas({
         const result = magnetic.transform;
         drag.connection = result;
         const suggestions = !showConnectionPreviewRef.current || !showConnectionsRef.current
-          ? [] : previewConnections(propsRef.current.imported, drag.id, requested).filter(suggestion =>
+          ? [] : previewConnections(propsRef.current.imported, drag.id, requested, connectionPreviewRangeRef.current).filter(suggestion =>
             !result.contacts.some(contact => contact.targetId === suggestion.targetId &&
               contact.targetConnectorId === suggestion.targetConnectorId &&
               contact.movingConnectorId === suggestion.movingConnectorId));
@@ -1539,6 +1545,14 @@ export function BuilderCanvas({
         onClick={() => setShowConnectionPreview(value => !value)}>
         Vorschläge {showConnectionPreview ? "an" : "aus"}
       </button>
+      <label className="pointer-events-auto flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 text-xs shadow-sm">
+        <span>Reichweite</span>
+        <input type="range" min="0.5" max="4" step="0.25" value={connectionPreviewRange}
+          aria-label="Reichweite der Vorschläge" data-testid="connection-preview-range"
+          onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+          onChange={event => setConnectionPreviewRange(Number(event.currentTarget.value))} />
+        <output data-testid="connection-preview-range-value">{connectionPreviewRange.toLocaleString("de-DE")} Noppen</output>
+      </label>
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showFloating} aria-label="Schwebewarnung anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}

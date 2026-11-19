@@ -47,4 +47,16 @@ describe("connection preview", () => {
     ].join("\n"));
     expect(previewConnections(model, model.instances[1].id, { x: 0, y: 10, z: 0 })).toHaveLength(0);
   });
+
+  it("uses the selected suggestion range without changing magnetic capture", () => {
+    const model = connectionFixture([
+      partLine("3001", 0, -24),
+      partLine("3003", 160, -24),
+    ].join("\n"));
+    const movingId = model.instances[1].id;
+    const desired = { x: 0, y: 3.8, z: 0 };
+    expect(previewConnections(model, movingId, desired, 0.5)).toHaveLength(0);
+    expect(previewConnections(model, movingId, desired, 4).length).toBeGreaterThan(0);
+    expect(snapConnection(model, movingId, desired)).toBeNull();
+  });
 });
