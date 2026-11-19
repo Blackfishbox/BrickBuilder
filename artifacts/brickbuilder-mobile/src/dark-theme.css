@@ -280,6 +280,33 @@
   .inv-pager button, .inv-problems button, .inv-search button) {
   color: hsl(var(--foreground));
 }
+.dark .inv-panel :is(.inv-import-head small, .inv-counts, .inv-row-copy small,
+  .inv-empty, .inv-empty-state, .inv-pick, .inv-pager) {
+  color: hsl(var(--muted-foreground));
+}
+.dark .inv-panel :is(.inv-note, .inv-template code) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+.dark .inv-panel :is(.inv-error, .inv-issue, .inv-problems) {
+  background: hsl(8 38% 22%);
+  color: hsl(8 80% 82%);
+  border-color: hsl(8 35% 38%);
+}
+.dark .inv-panel :is(.inv-error button, .inv-status button, .inv-template button,
+  .inv-pager button, .inv-search button) {
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.dark .inv-panel .inv-use:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+.dark .inv-panel :focus-visible,
+.dark .inv-tabs :focus-visible {
+  outline-color: hsl(var(--ring));
+}
 .dark .inv-row.blocked { background: repeating-linear-gradient(135deg, hsl(166 16% 19%) 0 8px, hsl(166 14% 23%) 8px 16px); }
 .dark .inv-row.active { box-shadow: inset 0 0 0 1px hsl(var(--primary)); }
 .dark .sm-drawer :is(.sm-gauge, .sm-row, .sm-ghost, .sm-empty, .sm-skel) {
@@ -289,6 +316,14 @@
 }
 .dark .sm-drawer :is(.sm-gauge-top, .sm-gauge-top span, .sm-group h3, .sm-row-copy strong,
   .sm-size, .sm-confirm-copy b, .sm-state strong) { color: hsl(var(--foreground)); }
+.dark .sm-drawer :is(.sm-gauge p, .sm-note, .sm-row-copy small, .sm-group h3 > span,
+  .sm-group h3 em, .sm-active) { color: hsl(var(--muted-foreground)); }
+.dark .sm-drawer .sm-notice {
+  background: hsl(164 24% 22%);
+  color: hsl(150 32% 82%);
+  border: 1px solid hsl(164 18% 34%);
+}
+.dark .sm-drawer .sm-state { color: hsl(var(--foreground)); }
 .dark .sm-drawer .sm-bar { background: hsl(var(--muted)); }
 .dark .sm-drawer .sm-skel { background-image: linear-gradient(90deg, hsl(var(--muted)), hsl(var(--card)), hsl(var(--muted))); }
 .dark .sm-drawer .sm-warning,
