@@ -14,6 +14,7 @@
 .ins-icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #ddd8c9; border-radius: 10px; background: #fbf9f1; color: #30443e; }
 .ins-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; padding: 0 11px; border: 1px solid #ddd8c9; border-radius: 9px; background: #fbf9f1; color: #30443e; font-size: 12px; font-weight: 600; }
 .ins-ghost.is-danger { color: #a3412c; }
+.ins-highlight[aria-pressed="true"] { border-color: #007b6c; background: #d9f6ed; color: #005c50; }
 .ins-danger { min-height: 44px; padding: 0 12px; border: 0; border-radius: 9px; background: #a3412c; color: #fff8ed; font-weight: 700; font-size: 12px; }
 .ins-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 14px; background: #fffdf0; border-bottom: 1px solid #e3dfd2; font-size: 12px; }
 .ins-banner.is-error { color: #8e3a27; background: #fbefe8; }
@@ -28,6 +29,14 @@
 .ins-parts-box header > span { color: #61736a; white-space: nowrap; }
 .ins-parts-box ul { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; list-style: none; margin: 0; padding: 0 0 4px; }
 .ins-parts-box li { position: relative; flex: 0 0 82px; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border-radius: 7px; background: #fff; }
+.ins-callouts { display: flex; gap: 8px; overflow-x: auto; padding: 0 0 6px; overscroll-behavior-x: contain; }
+.ins-callout { flex: 0 0 148px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px; border: 1px solid #d7d9ca; border-radius: 9px; background: #f5f3e9; text-align: center; }
+.ins-callout > strong { color: #a24935; font-size: 9px; }
+.ins-callout-title { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; font-weight: 700; }
+.ins-callout-image { display: grid; place-items: center; width: 132px; height: 82px; font-size: 9px; color: #7b5548; }
+.ins-callout-image img { display: block; width: 132px; height: 82px; object-fit: contain; }
+.ins-callout-image button { min-height: 44px; border: 0; background: transparent; color: #7b5548; font-size: 9px; }
+.ins-callout small { color: #61736a; font-size: 8px; }
 .ins-part-image { display: grid; place-items: center; width: 76px; height: 52px; font-size: 9px; text-align: center; color: #7b5548; }
 .ins-part-image img { display: block; width: 76px; height: 52px; object-fit: contain; }
 .ins-part-image button { min-height: 44px; border: 0; background: transparent; color: #7b5548; font-size: 9px; }

@@ -6,6 +6,7 @@ import { effectiveInstructions, instructionView } from "./model";
 import type { InstructionPlan, InstructionStep } from "./types";
 import StudioLayoutEditor from "./StudioLayoutEditor";
 import StepPartsBox from "./StepPartsBox";
+import { instructionHighlightIds } from "./callouts";
 import "./instructions.css";
 
 interface Props {
@@ -27,7 +28,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
   const [highlight, setHighlight] = useState(false);
   const current = Math.min(index, plan.steps.length - 1);
   const step = plan.steps[current];
-  const focusIds = useMemo(() => highlight ? new Set(step.partIds) : undefined, [highlight, step.partIds]);
+  const focusIds = useMemo(() => highlight ? instructionHighlightIds(document, step) : undefined, [highlight, document, step]);
   const [scope, setScope] = useState<"step" | "all">("step");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -154,7 +155,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
 
       <div className="ins-body">
         <section className="ins-preview" aria-label={`Vorschau bis ${step.title || `Schritt ${current + 1}`}`}>
-          <StepPartsBox document={document} partIds={step.partIds} paused={Boolean(exporting)} />
+          <StepPartsBox document={document} partIds={step.partIds} callouts={step.callouts} paused={Boolean(exporting)} />
           <div className="ins-model">
           {exporting ? (
             <div className="ins-empty" role="status">PDF wird erzeugt. Die 3D-Vorschau wird dafür kurz pausiert.</div>
@@ -213,7 +214,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               Neue Teile hervorheben: {highlight ? "Ein" : "Aus"}
             </button>
             {highlight && <p className="ins-hint" data-testid="text-instructions-highlight-legend">
-              Türkis: aktueller Schritt ({step.partIds.length} Teile). Hellgrau: bereits verbaut.
+              Türkis: neue Teile und einzusetzende Baugruppen. Hellgrau: bereits verbaute Teile.
               Diese Hervorhebung wird auch in die PDF übernommen. Teile ohne Geometrie bleiben in der Teileliste.
             </p>}
             <div className="ins-row">
@@ -238,7 +239,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               ))}
               {step.rotation && <button className="ins-ghost" onClick={() => patchStep({ rotation: undefined })} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>}
             </fieldset>
-            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt. Zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte werden beim IO-Export als flache Baugruppe mit einfachen Anleitungsseiten ausgegeben. Originale Studio-Daten bleiben als Sicherung erhalten.</p>
+            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt; zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte erhalten beim MPD-/IO-Export vorkommensspezifische Untermodelle und eingebettete Flächen. IO-Seiten werden einfach neu erzeugt; originale Studio-Daten bleiben als Sicherung erhalten. Eine verlustfreie Studio-Seitengestaltung ist nicht zugesichert.</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> Schritt danach</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label="Schritt nach vorne verschieben" data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
