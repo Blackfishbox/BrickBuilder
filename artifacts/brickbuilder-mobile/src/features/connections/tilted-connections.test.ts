@@ -264,6 +264,56 @@ describe("tilted construction contacts", () => {
         c.movingConnectorId === pair.movingConnectorId && c.targetConnectorId === pair.targetConnectorId)).toBe(true);
     });
 
+    it(`holds and cleanly releases a mixed-angle ${movingPart}/${targetPart} joint during drag jitter`, () => {
+      const tilts = { target: [30, -12] as const, moving: [-15, 24] as const };
+      const pair = mechanicalPlacement(targetPart, movingPart, 0, 0, 0, targetPart, false,
+        targetPart === "32064" ? "axle" : undefined, tilts);
+      const model = pair.document.imported!;
+      const target = model.instances.find(i => i.id === pair.targetId)!;
+      const moving = model.instances.find(i => i.id === pair.id)!;
+      const initial = magneticConstructionTransform(model, pair.id, pair.desired);
+
+      expect(initial.latch).toBeDefined();
+      expect(initial.transform.contacts.some(c => c.movingConnectorId === pair.movingConnectorId &&
+        c.targetConnectorId === pair.targetConnectorId)).toBe(true);
+
+      const firstJitter = magneticConstructionTransform(model, pair.id, {
+        x: pair.desired.x + 0.25, y: pair.desired.y + 0.2, z: pair.desired.z - 0.25,
+      }, initial.latch);
+      expect(firstJitter.transform).toBe(initial.transform);
+      const secondJitter = magneticConstructionTransform(model, pair.id, {
+        x: pair.desired.x - 0.4, y: pair.desired.y - 0.2, z: pair.desired.z + 0.2,
+      }, firstJitter.latch);
+      expect(secondJitter.transform).toBe(initial.transform);
+      expect(secondJitter.transform.contacts.length).toBeGreaterThan(0);
+
+      const freePosition = { x: 13.271, y: pair.desired.y, z: 6.427 };
+      const released = magneticConstructionTransform(model, pair.id, freePosition, secondJitter.latch);
+      expect(released.latch).toBeUndefined();
+      expect(released.transform.status).toBe("unconnected");
+      expect(released.transform.contacts).toHaveLength(0);
+      expect(released.transform.matrix[3]).toBe(freePosition.x * 20);
+      expect(released.transform.matrix[7]).toBe(-freePosition.y * 20);
+      expect(released.transform.matrix[11]).toBe(freePosition.z * 20);
+      expect(basis(released.transform.matrix)).toEqual(basis(moving.matrix));
+
+      const verticalReleasePosition = { ...pair.desired, y: pair.desired.y + 1.1 };
+      const verticalRelease = magneticConstructionTransform(model, pair.id, verticalReleasePosition, initial.latch);
+      expect(verticalRelease.latch).toBeUndefined();
+      expect(verticalRelease.transform.contacts).toHaveLength(0);
+      expect(verticalRelease.transform.matrix[3]).toBe(verticalReleasePosition.x * 20);
+      expect(verticalRelease.transform.matrix[7]).toBe(-verticalReleasePosition.y * 20);
+      expect(verticalRelease.transform.matrix[11]).toBe(verticalReleasePosition.z * 20);
+      expect(basis(verticalRelease.transform.matrix)).toEqual(basis(moving.matrix));
+
+      const committed = moveImported(pair.document, pair.id, freePosition, false, released.transform.matrix);
+      const committedTarget = committed.imported!.instances.find(i => i.id === pair.targetId)!;
+      const committedMoving = committed.imported!.instances.find(i => i.id === pair.id)!;
+      expect([committedTarget.tiltX, committedTarget.tiltZ]).toEqual(tilts.target);
+      expect([committedMoving.tiltX, committedMoving.tiltZ]).toEqual(tilts.moving);
+      expect(basis(committedMoving.matrix)).toEqual(basis(moving.matrix));
+    });
+
     it(`does not latch licensed ${movingPart}/${targetPart} near-misses with different tilts`, () => {
       const tilts = { target: [30, -12] as const, moving: [-15, 24] as const };
       const aligned = mechanicalPlacement(targetPart, movingPart, 0, 0, 0, targetPart, false,
