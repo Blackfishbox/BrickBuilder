@@ -7,7 +7,7 @@ export const FOCUS_VERTEX = "vInstructionFocus = instructionFocus;";
 // Applied in linear space, before output conversion. Zero is exactly the normal view.
 export const FOCUS_FRAGMENT = `
   if (vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.18);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.1);
   } else if (vInstructionFocus > 1.5) {
     // Active parts retain their original colors; the overlay draws red bounds.
   }
@@ -57,5 +57,5 @@ export function applyInstructionFocus(root: Group | null, current?: ReadonlySet<
 const mutedColor = new Color("#ffffff");
 /** Same contrast as WebGL, without mutating source colors or sampled geometry. */
 export function instructionDisplayColor(source: Color, active: boolean): Color {
-  return active ? source : source.lerp(mutedColor, 0.18);
+  return active ? source : source.lerp(mutedColor, 0.1);
 }
