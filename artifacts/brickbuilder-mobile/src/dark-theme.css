@@ -13,7 +13,7 @@
   .selection-action, .selection-empty, .save-status, .toast-note, .more-controls,
   .dock-color, .dock-tool, .dock-history, .drawer-heading h2, .search-field,
   .search-field input, .drawer-piece, .drawer-empty, .confirm-card h2, .confirm-card p,
-  .cancel-button, .canvas-hint, .mobile-selection-label) {
+  .cancel-button, .canvas-hint) {
   color: hsl(var(--foreground));
 }
 .dark :is(.project-popover, .parts-drawer, .color-drawer, .confirm-card,
@@ -151,7 +151,7 @@
 .dark .ins-shell textarea::placeholder { color: hsl(var(--muted-foreground)); }
 .dark :is(.project-title-button > svg, .piece-copy small, .piece-chevron, .color-heading,
   .color-name, .selection-detail small, .selection-empty, .save-status, .more-controls,
-  .canvas-hint, .mobile-selection-label, .saved-project small, .no-saved-projects,
+  .canvas-hint, .saved-project small, .no-saved-projects,
   .popover-eyebrow, .section-heading > span, .context-label, .ins-head-title small,
   .ins-field > span, .ins-rot legend, .ins-hint, .ins-list small, .ins-strip button small,
   .sle-head small, .sle-field > label, .sle-hint, .sle-itemhead small,
