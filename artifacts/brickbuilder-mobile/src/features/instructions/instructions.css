@@ -29,6 +29,14 @@
 .ins-parts-box header > span { color: #61736a; white-space: nowrap; }
 .ins-parts-box ul { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; list-style: none; margin: 0; padding: 0 0 4px; }
 .ins-parts-box li { position: relative; flex: 0 0 82px; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border-radius: 7px; background: #fff; }
+.ins-callouts { display: flex; gap: 8px; overflow-x: auto; padding: 0 0 6px; overscroll-behavior-x: contain; }
+.ins-callout { flex: 0 0 148px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px; border: 1px solid #d7d9ca; border-radius: 9px; background: #f5f3e9; text-align: center; }
+.ins-callout > strong { color: #a24935; font-size: 9px; }
+.ins-callout-title { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; font-weight: 700; }
+.ins-callout-image { display: grid; place-items: center; width: 132px; height: 82px; font-size: 9px; color: #7b5548; }
+.ins-callout-image img { display: block; width: 132px; height: 82px; object-fit: contain; }
+.ins-callout-image button { min-height: 44px; border: 0; background: transparent; color: #7b5548; font-size: 9px; }
+.ins-callout small { color: #61736a; font-size: 8px; }
 .ins-part-image { display: grid; place-items: center; width: 76px; height: 52px; font-size: 9px; text-align: center; color: #7b5548; }
 .ins-part-image img { display: block; width: 76px; height: 52px; object-fit: contain; }
 .ins-part-image button { min-height: 44px; border: 0; background: transparent; color: #7b5548; font-size: 9px; }

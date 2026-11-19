@@ -11,6 +11,7 @@ import { exportInstructionPDF } from "./pdf";
 import { exportMPD } from "../formats/mpd/export";
 import { instructionPlanSchema } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
+import { instructionCalloutPartIds, instructionHighlightIds } from "./callouts";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -45,6 +46,34 @@ describe("local construction instructions", () => {
     expect(new Set(all).size).toBe(2);
     expect(new Set(all)).toEqual(new Set(doc.imported!.instances.map(part => part.id)));
   });
+
+  const mpdFixture = new URL("../../../../../attached_assets/31153-1_1795047996207.mpd", import.meta.url);
+  it.skipIf(!existsSync(mpdFixture))(
+    "turns the empty source boundary at MPD step 214 into a visible subassembly callout",
+    () => {
+      const sourceText = readFileSync(mpdFixture, "utf8");
+      const parsed = parseLDraw(sourceText);
+      const document = createEmptyDocument("31153-1");
+      document.imported = {
+        version: 1, format: "mpd", sourceName: "31153-1.mpd",
+        originalBytes: Array.from(encode(sourceText)), sourceText, ...parsed,
+        resources: {}, legalDocuments: [],
+      };
+      const plan = sourceInstructionPlan(document.imported);
+      const step = plan.steps[213];
+      expect(step.partIds).toEqual([]);
+      expect(step.callouts).toHaveLength(1);
+      expect(step.callouts?.[0].title).toBe("window");
+      expect(step.callouts?.[0].occurrence).toEqual([15, 287, 163, 30]);
+      const prefix = step.callouts![0].occurrence;
+      const subassemblyIds = document.imported.instances.filter(part =>
+        prefix.every((segment, index) => part.sourceOccurrence?.[index] === segment),
+      ).map(part => part.id);
+      expect(subassemblyIds.length).toBeGreaterThan(0);
+      expect(instructionCalloutPartIds(document, step.callouts![0])).toEqual(subassemblyIds);
+      expect(instructionHighlightIds(document, step)).toEqual(new Set(subassemblyIds));
+    },
+  );
 
   it("reconciles deleted and added parts without duplicating quantities", () => {
     const doc = fixture(), first = doc.imported!.instances[0].id;

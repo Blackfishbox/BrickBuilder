@@ -155,6 +155,26 @@ describe("step parts illustrations", () => {
       image: renderModel, dispose: vi.fn(),
     }));
     expect(focusSets).toEqual([new Set(["old"]), new Set(["new"])]);
-    expect(pdfTexts).toContain("Türkis: neue Teile in diesem Schritt · Hellgrau: bereits verbaute Teile");
+    expect(pdfTexts).toContain("Türkis: neue Teile und einzusetzende Baugruppen · Hellgrau: bereits verbaute Teile");
+  });
+
+  it("exports subassembly callouts as rendered Baugruppen boxes", async () => {
+    const doc = createEmptyDocument("Callout");
+    const callout = { id: "0/31", title: "window", occurrence: [0, 31] };
+    const plan: InstructionPlan = {
+      version: 1, source: "ldraw", edited: false, warnings: [],
+      steps: [{ id: "insert", title: "Baugruppe einsetzen", notes: "", partIds: [], callouts: [callout] }],
+    };
+    const image = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    const renderCallout = vi.fn(async () => image);
+    const modelRenderer = { image: vi.fn(() => image), dispose: vi.fn() };
+    pdfTexts.length = 0;
+    const bytes = await exportInstructionPDF(doc, plan, {}, async () => modelRenderer, undefined, renderCallout);
+    const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
+      .filter((value): value is string => typeof value === "string");
+    expect(renderCallout).toHaveBeenCalledWith(doc, callout, expect.any(AbortSignal));
+    expect(strings).toContain("Teile und Baugruppen in diesem Schritt");
+    expect(strings).toContain("window");
+    expect(new TextDecoder().decode(bytes)).toContain("%PDF-1.");
   });
 });
