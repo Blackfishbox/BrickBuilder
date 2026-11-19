@@ -22,7 +22,7 @@ import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
-import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
@@ -555,32 +555,12 @@ export function useBuilder() {
     await refreshProjects().catch(() => undefined);
   }, [refreshProjects, replaceDocument]);
 
-  const resolveImportedProject = useCallback(async (id: string, model: NonNullable<BuilderDocument["imported"]>) => {
-    const current = historyRef.current.document;
-    if (current.id !== id || current.imported?.sourceText !== model.sourceText) throw new Error("Projekt wurde inzwischen gewechselt.");
-    const updated = { ...current, imported: enrichImportedGeometry(current.imported!, model), updatedAt: new Date().toISOString() };
-    await saveProject(updated);
-    if (historyRef.current.document.id !== id) return;
-    // Merge only acquired geometry into every historical snapshot; keep its own
-    // colors, transforms, added parts and deletions, including concurrent edits.
-    const enrich = (doc: BuilderDocument) => doc.imported
-      ? { ...doc, imported: enrichImportedGeometry(doc.imported, model) } : doc;
-    const next = { document: enrich(historyRef.current.document),
-      past: historyRef.current.past.map(enrich), future: historyRef.current.future.map(enrich) };
-    historyRef.current = next;
-    documentRef.current = next.document;
-    setHistory(next);
-    setSavedAt(updated.updatedAt);
-    setSaveError(null);
-  }, []);
-
   const document = history.document;
   return {
     document,
     setInstructionPlan,
     imported: document.imported,
     importProject,
-    resolveImportedProject,
     bricks: document.bricks,
     selectedId,
     selectedType,
