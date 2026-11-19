@@ -156,6 +156,48 @@ it("shows touch rotations in the fields while zoom and pan leave the angles alon
   expect(preview.mock.lastCall![0].viewCamera.target).toEqual([4, 5, 6]);
 });
 
+it("keeps a reset angle after a pending field blurs", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["b"], rotation: [0, 20, 0] },
+    { id: "two", title: "Two", notes: "", partIds: [], rotation: [0, 45, 0] },
+  ] };
+  let savedDocument = source;
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(current => {
+      const updated = updateInstructions(current, plan);
+      savedDocument = updated;
+      return updated;
+    })} onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+
+  act(() => {
+    const input = host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!;
+    input.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "37");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("37");
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-rotation-reset"]')!.click());
+  expect(preview.mock.lastCall![0].viewRotation).toBeUndefined();
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("0");
+
+  act(() => host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+  expect(preview.mock.lastCall![0].viewRotation).toBeUndefined();
+  expect(savedDocument.instructions?.steps[0].rotation).toBeUndefined();
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-next"]')!.click());
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-prev"]')!.click());
+  expect(preview.mock.lastCall![0].viewRotation).toBeUndefined();
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("0");
+});
+
 it("edits and reopens a legacy combined camera without changing zoom, pan, or adding a rotation", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();
@@ -206,7 +248,8 @@ it("edits and reopens a legacy combined camera without changing zoom, pan, or ad
   editedRotation[0] += 12;
   act(() => {
     const input = host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!;
-    input.value = String(editedRotation[0]);
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, String(editedRotation[0]));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
   });
 
@@ -304,7 +347,9 @@ it("passes each saved step rotation to the live view and updates on edit/reset w
   expect(rotation()).toEqual([0, 0, 45]);
   act(() => {
     const input = host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!;
-    input.value = "30"; input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "30");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
   });
   expect(rotation()).toEqual([30, 0, 45]);
   act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-rotation-reset"]')!.click());

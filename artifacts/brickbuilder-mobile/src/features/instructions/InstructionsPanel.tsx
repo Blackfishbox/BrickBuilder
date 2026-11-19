@@ -83,6 +83,14 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       return next;
     });
   };
+  const clearStepAngleDrafts = (stepId: string) => {
+    if (angleDraftRef.current?.stepId === stepId) angleDraftRef.current = null;
+    const prefix = `${stepId}:`;
+    setAngleDrafts(previous => {
+      if (!Object.keys(previous).some(key => key.startsWith(prefix))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(prefix)));
+    });
+  };
   const withRotationEdit = (steps: InstructionStep[], stepId: string, axis: number, raw: string) => {
     const value = Number(raw.replace(",", "."));
     const target = steps.find(candidate => candidate.id === stepId);
@@ -110,6 +118,8 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
     return withRotationEdit(steps, pending.stepId, pending.axis, pending.value);
   };
   const commitAngleField = (stepId: string, axis: number, raw: string) => {
+    const pending = angleDraftRef.current;
+    if (pending?.stepId !== stepId || pending.axis !== axis) return;
     clearAngleDraft(stepId, axis);
     const latestPlan = planRef.current;
     const updated = withRotationEdit(latestPlan.steps, stepId, axis, raw);
@@ -166,8 +176,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
     setAngleDrafts(previous => ({ ...previous, [angleDraftKey(stepId, axis)]: value }));
   };
   const resetRotation = () => {
-    const pending = angleDraftRef.current;
-    if (pending?.stepId === step.id) clearAngleDraft(pending.stepId, pending.axis);
+    clearStepAngleDrafts(step.id);
     patchStep({
       rotation: undefined,
       camera: step.camera ? { ...step.camera, theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI } : undefined,
