@@ -6,7 +6,6 @@ import { exportModel, importModelFile, validateImportFile } from './adapters';
 import ImportPartNotification from './ImportPartNotification';
 import { importDiagnostics } from './import-diagnostics';
 import CatalogPanel from '../catalog/CatalogPanel';
-import { resolveGeometry } from './geometry-resolver';
 import type { GeometryProgress } from './online-geometry';
 import { BrickLinkExportError, type PartsListIssue } from './bricklink/export';
 import './format-dialog.css';
@@ -29,7 +28,6 @@ interface Props {
   initialMode?: 'import' | 'export';
   onClose(): void;
   onImport(document: BuilderDocument): Promise<void>;
-  onResolved?(id: string, model: ImportedModel): Promise<void>;
 }
 
 export function Report({ model, bricks }: { model?: ImportedModel; bricks: number }) {
@@ -130,7 +128,7 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
   );
 }
 
-export default function FormatDialog({ document, initialMode = 'import', onClose, onImport, onResolved }: Props) {
+export default function FormatDialog({ document, initialMode = 'import', onClose, onImport }: Props) {
   const [preview, setPreview] = useState<BuilderDocument | null>(null);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -169,26 +167,6 @@ export default function FormatDialog({ document, initialMode = 'import', onClose
       if (id === token.current) setPreview(doc);
     } catch (e) {
       if (id === token.current) setError(e instanceof Error ? e.message : 'Datei konnte nicht gelesen werden.');
-    } finally { if (id === token.current) setBusy(false); }
-  };
-
-  const retryGeometry = async () => {
-    const source = preview ?? document;
-    if (!source.imported) return;
-    const id = ++token.current;
-    controller.current?.abort();
-    const operation = new AbortController(); controller.current = operation;
-    setBusy(true); setError(''); setProgress(null);
-    try {
-      // Work on a detached model; quota errors or cancellation cannot mutate the open project.
-      const model = structuredClone(source.imported);
-      await resolveGeometry(model, { signal: operation.signal, retry: true,
-        onProgress: value => { if (id === token.current) setProgress(value); } });
-      if (id !== token.current) return;
-      if (preview) setPreview({ ...source, imported: model });
-      else if (onResolved) await onResolved(source.id, model);
-    } catch (e) {
-      if (id === token.current) setError(e instanceof Error ? e.message : 'Geometrie konnte nicht geladen werden.');
     } finally { if (id === token.current) setBusy(false); }
   };
 
@@ -245,21 +223,17 @@ export default function FormatDialog({ document, initialMode = 'import', onClose
             <button type="button" onClick={() => controller.current?.abort()} data-testid="button-cancel-geometry">Nachladen abbrechen</button>
           </div>}
           {error && <div className="fmt-error" role="alert" data-testid="status-import-error">{error}</div>}
+          {preview && (
+            <button type="button" className="confirm-button fmt-create" onClick={() => void create()} disabled={creating || busy} data-testid="button-create-imported">
+              {creating ? <><LoaderCircle className="spin" size={15} /> Wird angelegt …</> : 'Neues Projekt aus Import anlegen'}
+            </button>
+          )}
           {(preview || !busy) && (
             <>
               <p className="fmt-label">{preview ? 'Vorschau' : 'Aktuelles Projekt'}</p>
               <Report model={shown.imported} bricks={shown.bricks.length} />
               {preview && !shown.imported && <p className="fmt-muted">Geprüftes JSON-Projekt: {shown.bricks.length} Steine.</p>}
             </>
-          )}
-          {!busy && shown.imported && shown.imported.instances.some(i => i.part.status === 'missing') && (
-            <button type="button" className="confirm-button fmt-create" onClick={() => void retryGeometry()}
-              disabled={creating || (!preview && !onResolved)} data-testid="button-retry-geometry">Fehlende LDraw-Teile erneut laden</button>
-          )}
-          {preview && (
-              <button type="button" className="confirm-button fmt-create" onClick={() => void create()} disabled={creating || busy} data-testid="button-create-imported">
-              {creating ? <><LoaderCircle className="spin" size={15} /> Wird angelegt …</> : 'Neues Projekt aus Import anlegen'}
-            </button>
           )}
         </div>}
 

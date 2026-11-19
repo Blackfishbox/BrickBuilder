@@ -519,7 +519,7 @@ function App() {
           </section>
         </div>
       )}
-      {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} onResolved={editor.resolveImportedProject} />}
+      {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">Bauanleitung wird geladen …</div>}>
         <InstructionsPanel document={editor.document} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal) => {
