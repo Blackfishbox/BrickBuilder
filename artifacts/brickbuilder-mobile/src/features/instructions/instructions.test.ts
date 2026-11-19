@@ -150,6 +150,40 @@ describe("local construction instructions", () => {
     expect(() => readStudioInstructions("<Bad/>", plan)).toThrow();
   });
 
+  it("preserves repeated touch turns at pitch limits through instruction export and restore", () => {
+    const doc = fixture(), plan = doc.instructions!;
+    let rotation: [number, number, number] | undefined;
+    let expectedView: PerspectiveCamera | undefined;
+    const pose = (theta: number, phi: number, pivot?: [number, number, number]) => {
+      const view = new PerspectiveCamera(), target = new Vector3();
+      view.position.set(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta));
+      view.lookAt(target);
+      applyInstructionCameraRotation(view, target, pivot);
+      return view;
+    };
+    for (let turn = 0; turn < 160; turn++) {
+      const theta = DEFAULT_INSTRUCTION_THETA + 0.08;
+      const phi = turn % 2 === 0 ? 0.25 : 1.42;
+      expectedView = pose(theta, phi, rotation);
+      rotation = instructionRotationFromCameraPose(theta, phi, rotation);
+    }
+    plan.steps[0] = { ...plan.steps[0], rotation };
+
+    const blankPlan = {
+      ...plan,
+      steps: plan.steps.map(step => ({ ...step, rotation: undefined })),
+    };
+    const restored = readStudioInstructions(writeStudioInstructions(plan), blankPlan);
+    const recoveredRotation = restored.steps[0].rotation;
+    const recoveredView = pose(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, recoveredRotation);
+
+    expect(rotation).toBeDefined();
+    expect(rotation!.every(angle => angle >= -180 && angle <= 180)).toBe(true);
+    expect(recoveredRotation).toBeDefined();
+    expect(recoveredRotation!.every(angle => angle >= -180 && angle <= 180)).toBe(true);
+    expect(recoveredView.quaternion.angleTo(expectedView!.quaternion)).toBeLessThan(0.00001);
+  });
+
   it("includes newly built parts in the final exported step", () => {
     const doc = fixture();
     doc.bricks.push({ id: "added", type: "brick-1x2", color: "#123456", x: 0, y: 0, z: 0, rotation: 0 });
