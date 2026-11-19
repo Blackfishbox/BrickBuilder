@@ -193,6 +193,56 @@ describe("optional collision diagnostics", () => {
     expect(result.uncertain).toBe(true);
     expect(progress).toContainEqual({ phase: "checking", percent: 42 });
   });
+  it("reports progress while snapshotting a large recursive imported model", async () => {
+    const model = engineFixture(1, 1);
+    const geometry = "2 24 0 0 0 20 0 0\n".repeat(2_000);
+    const reference = (name: string) => `1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${name}\n`;
+    model.resources["parts/test.dat"].content = `${geometry}${reference("sub1.dat")}`;
+    model.resources["parts/sub1.dat"] = { content: `${geometry}${reference("sub2.dat")}` } as typeof model.resources[string];
+    model.resources["parts/sub2.dat"] = { content: geometry } as typeof model.resources[string];
+
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      constructor() {}
+      postMessage() {
+        queueMicrotask(() => this.onmessage?.({ data: { boxes: [], uncertain: false } } as MessageEvent));
+      }
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const progress: { phase: string; percent: number }[] = [];
+    await collisionWarningsInWorker([], model, new AbortController().signal, undefined, value => progress.push(value));
+
+    const snapshot = progress.filter(value => value.phase === "snapshot").map(value => value.percent);
+    expect(snapshot.length).toBeGreaterThan(2);
+    expect(snapshot.at(-1)).toBe(100);
+    expect(snapshot.slice(1).every((value, index) => value >= snapshot[index])).toBe(true);
+  });
+  it("ignores snapshot progress after the imported model is canceled", async () => {
+    const model = engineFixture(1, 1);
+    model.resources["parts/test.dat"].content = "2 24 0 0 0 20 0 0\n".repeat(20_000);
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      constructor() { throw new Error("Canceled snapshots must not start a worker"); }
+      postMessage() {}
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const controller = new AbortController();
+    const progress: { phase: string; percent: number }[] = [];
+    let updatesAfterAbort = 0;
+    await expect(collisionWarningsInWorker([], model, controller.signal, undefined, value => {
+      if (controller.signal.aborted) updatesAfterAbort++;
+      progress.push(value);
+      if (value.phase === "snapshot" && value.percent > 0) controller.abort();
+    })).rejects.toHaveProperty("name", "AbortError");
+    expect(progress.filter(value => value.phase === "snapshot").at(-1)?.percent).toBeGreaterThan(0);
+    expect(updatesAfterAbort).toBe(0);
+  });
   it("still checks local bricks when an imported model is present", async () => {
     const warnings = await collisionWarnings(
       [brick, { ...brick, id: "b" }], engineFixture(1, 1), new AbortController().signal, 2,

@@ -1495,7 +1495,8 @@ export function BuilderCanvas({
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
     {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
       {collisionState.pending ? <>
-        {collisionState.progress?.phase === "preparing" ? "Kollisionsprüfung wird vorbereitet" : "Kollisionen werden geprüft"}
+        {collisionState.progress?.phase === "snapshot" ? "Importmodell wird vorbereitet"
+          : collisionState.progress?.phase === "preparing" ? "Kollisionsprüfung wird vorbereitet" : "Kollisionen werden geprüft"}
         {collisionState.progress && <> · {Math.floor(collisionState.progress.percent)} %</>}
         {collisionState.progress && <progress className="ml-2 h-2 w-20 align-middle" aria-label="Fortschritt der Kollisionsprüfung"
           max={100} value={collisionState.progress.percent} />}

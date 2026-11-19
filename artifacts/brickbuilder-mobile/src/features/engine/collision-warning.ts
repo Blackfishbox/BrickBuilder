@@ -13,7 +13,7 @@ export interface CollisionWarnings {
 }
 
 export interface CollisionProgress {
-  phase: "preparing" | "checking";
+  phase: "snapshot" | "preparing" | "checking";
   percent: number;
 }
 
@@ -140,19 +140,35 @@ function abortError(): DOMException {
 /** Keep only the geometry dependencies the checker needs before transferring
  * the model. This avoids cloning unrelated archive data and library resources.
  */
-async function collisionModelSnapshot(model: ImportedModel, signal: AbortSignal): Promise<ImportedModel> {
+async function collisionModelSnapshot(
+  model: ImportedModel,
+  signal: AbortSignal,
+  onProgress?: (progress: CollisionProgress) => void,
+): Promise<ImportedModel> {
   const resources: ImportedModel["resources"] = {};
   const pending: string[] = [];
   const instances: ImportedModel["instances"] = [];
-  let work = 0, sliceStart = performance.now();
-  const checkpoint = async () => {
+  let work = 0, sliceStart = performance.now(), progressUnits = 0, totalWork = 1;
+  const reportProgress = (percent: number) => {
+    if (!signal.aborted) onProgress?.({ phase: "snapshot", percent: Math.min(100, percent) });
+  };
+  const checkpoint = async (report = true) => {
     if (signal.aborted) throw abortError();
     if (++work % 128 === 0 || performance.now() - sliceStart > 8) {
       await new Promise(resolve => setTimeout(resolve, 0));
       if (signal.aborted) throw abortError();
       sliceStart = performance.now();
+      if (report) reportProgress(2 + 97 * Math.min(progressUnits / totalWork, 1));
     }
   };
+  const resourcePaths = Object.keys(model.resources);
+  let estimatedContentLength = 0;
+  for (let index = 0; index < resourcePaths.length; index++) {
+    estimatedContentLength += model.resources[resourcePaths[index]].content.length;
+    await checkpoint(false);
+    if (work % 128 === 0) reportProgress(2 * ((index + 1) / resourcePaths.length));
+  }
+  totalWork = Math.max(1, model.instances.length + estimatedContentLength);
   for (const instance of model.instances) {
     instances.push({
       id: instance.id,
@@ -163,10 +179,12 @@ async function collisionModelSnapshot(model: ImportedModel, signal: AbortSignal)
       part: { ldrawId: instance.part.ldrawId, status: instance.part.status },
     });
     if (instance.part.status === "resolved") pending.push(instance.reference);
+    progressUnits++;
     await checkpoint();
   }
   while (pending.length) {
     await checkpoint();
+    progressUnits++;
     const reference = pending.pop()!;
     let path: string | undefined;
     try { path = candidates(reference).find(candidate => Object.hasOwn(model.resources, candidate)); }
@@ -180,6 +198,7 @@ async function collisionModelSnapshot(model: ImportedModel, signal: AbortSignal)
       const newline = source.content.indexOf("\n", start);
       const end = newline < 0 ? source.content.length : newline;
       const line = source.content.slice(start, end);
+      progressUnits += end - start + (newline < 0 ? 0 : 1);
       start = end + 1;
       if (/^\s*1\s/.test(line)) {
         try { pending.push(referenceLine(line).reference); } catch { /* Invalid lines are handled as unknown by the worker. */ }
@@ -187,6 +206,7 @@ async function collisionModelSnapshot(model: ImportedModel, signal: AbortSignal)
       await checkpoint();
     }
   }
+  reportProgress(100);
   return {
     version: 1,
     format: model.format,
@@ -214,7 +234,8 @@ export async function collisionWarningsInWorker(
   onProgress?.({ phase: "preparing", percent: 0 });
   // Non-browser test and server environments have no Worker implementation.
   if (typeof Worker === "undefined") return collisionWarnings(bricks, model, signal, importedOffset, onProgress);
-  const snapshot = model ? await collisionModelSnapshot(model, signal) : undefined;
+  if (model) onProgress?.({ phase: "snapshot", percent: 0 });
+  const snapshot = model ? await collisionModelSnapshot(model, signal, onProgress) : undefined;
   if (signal.aborted) throw abortError();
 
   const worker = new Worker(new URL("./collision-warning.worker.ts", import.meta.url), { type: "module" });
