@@ -8,6 +8,8 @@ import { createImportedGroupAsync, disposeImportedScene } from "../engine/import
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
+import { drawInstructionOutlines } from "./outlines";
+import { applyPdfStepCamera } from "./camera";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
 const FOCUS_VERTEX_HEADER = "attribute float instructionFocus;\nvarying float vInstructionFocus;\n";
@@ -15,10 +17,9 @@ const FOCUS_FRAGMENT_HEADER = "varying float vInstructionFocus;\n";
 const FOCUS_VERTEX = "vInstructionFocus = instructionFocus;";
 const FOCUS_FRAGMENT = `
   if (vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
-    float grey = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-    gl_FragColor.rgb = mix(vec3(grey), vec3(0.72), 0.65);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.62);
   } else if (vInstructionFocus > 1.5) {
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0, 0.65, 0.5), 0.65);
+    // Red bounds are composited separately; keep the source color.
   }
 `;
 
@@ -81,6 +82,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   let imported: Group | undefined;
   const brickColors = new Map<string, Color>();
   const brickMaterials = new Map<string, MeshLambertMaterial>();
+  const output = globalThis.document.createElement("canvas");
+  output.width = 1000; output.height = 760;
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
@@ -127,6 +130,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         signal?.throwIfAborted();
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
+        applyPdfStepCamera(camera, radius, step.camera);
         for (const [id, material] of brickMaterials) {
           material.color.copy(brickColors.get(id)!);
           if (highlightIds !== undefined) instructionDisplayColor(material.color, highlightIds.has(id));
@@ -156,6 +160,30 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           }
         });
         renderer.render(scene, camera);
+        if (highlightIds?.size) {
+          const context = output.getContext("2d");
+          if (!context) throw new Error("PDF-Konturen konnten nicht gezeichnet werden.");
+          context.drawImage(renderer.domElement, 0, 0);
+          const boxes = new Map<string, Box3>();
+          assembly.traverse(object => {
+            if (object.userData.partId && highlightIds.has(object.userData.partId)) {
+              boxes.set(object.uuid, new Box3().setFromObject(object));
+            }
+            if (!(object instanceof Mesh)) return;
+            if (!(object instanceof InstancedMesh)) return;
+            const ids = object.userData.brickIds as string[] | undefined;
+            if (!ids) return;
+            object.geometry.computeBoundingBox();
+            ids.forEach((id, index) => {
+              if (!visible.has(id) || !highlightIds.has(id)) return;
+              object.getMatrixAt(index, matrix);
+              const box = object.geometry.boundingBox!.clone().applyMatrix4(matrix).applyMatrix4(object.matrixWorld);
+              if (boxes.has(id)) boxes.get(id)!.union(box); else boxes.set(id, box);
+            });
+          });
+          drawInstructionOutlines(context, camera, boxes.values(), 1000, 760);
+          return output.toDataURL("image/jpeg", 0.84);
+        }
         return renderer.domElement.toDataURL("image/jpeg", 0.84);
       },
       dispose() {
@@ -169,6 +197,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           });
         }
         renderer.dispose(); renderer.forceContextLoss();
+        output.width = 1; output.height = 1;
       },
     };
   } catch (error) {

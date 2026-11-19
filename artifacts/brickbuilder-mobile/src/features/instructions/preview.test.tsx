@@ -18,6 +18,29 @@ afterEach(() => {
   host?.remove(); vi.unstubAllGlobals(); vi.clearAllMocks();
 });
 
+it("persists manual preview camera changes independently for each step", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, edited: false, source: "manual", warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["b"] }, { id: "two", title: "Two", notes: "", partIds: [] },
+  ] };
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(d => updateInstructions(d, plan))}
+      onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+  const saved = { theta: 1.4, phi: 0.8, distance: 12, target: [1, 2, 3], referenceDistance: 20, referenceTarget: [0, 0, 0] };
+  act(() => preview.mock.lastCall![0].onViewCameraChange(saved));
+  expect(preview.mock.lastCall![0].viewCamera).toEqual(saved);
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-next"]')!.click());
+  expect(preview.mock.lastCall![0].viewCamera).toBeUndefined();
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-prev"]')!.click());
+  expect(preview.mock.lastCall![0].viewCamera).toEqual(saved);
+});
+
 it("passes each saved step rotation to the live view and updates on edit/reset without changing model parts", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();
@@ -67,7 +90,8 @@ it("toggles occurrence highlighting across cumulative, empty and previous steps 
   expect(props().instructionFocusIds).toBeUndefined();
   click("highlight");
   expect(host.querySelector('[data-testid="button-instructions-highlight"]')!.getAttribute("aria-pressed")).toBe("true");
-  expect(props().instructionFocusIds).toEqual(new Set(["old"]));
+  expect(props().instructionFocusIds).toBeUndefined();
+  expect(host.querySelector('[data-testid="text-instructions-highlight-legend"]')).toBeNull();
   click("next");
   expect(props().bricks.map((b: { id: string }) => b.id)).toEqual(["old", "new"]);
   expect(props().instructionFocusIds).toEqual(new Set(["new"]));

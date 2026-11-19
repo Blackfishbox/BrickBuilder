@@ -28,7 +28,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
   const [highlight, setHighlight] = useState(false);
   const current = Math.min(index, plan.steps.length - 1);
   const step = plan.steps[current];
-  const focusIds = useMemo(() => highlight ? instructionHighlightIds(document, step) : undefined, [highlight, document, step]);
+  const focusIds = useMemo(() => highlight && current > 0 ? instructionHighlightIds(document, step) : undefined, [highlight, current, document, step]);
   const [scope, setScope] = useState<"step" | "all">("step");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -168,6 +168,9 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             <BuilderCanvas
               showConstructionControls={false}
               viewRotation={step.rotation}
+              viewStepId={step.id}
+              viewCamera={step.camera}
+              onViewCameraChange={camera => patchStep({ camera })}
               instructionFocusIds={focusIds}
               projectId={`${document.id}-instructions`}
               bricks={view.bricks}
@@ -213,10 +216,6 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
               Neue Teile hervorheben: {highlight ? "Ein" : "Aus"}
             </button>
-            {highlight && <p className="ins-hint" data-testid="text-instructions-highlight-legend">
-              Türkis: neue Teile und einzusetzende Baugruppen. Hellgrau: bereits verbaute Teile.
-              Diese Hervorhebung wird auch in die PDF übernommen. Teile ohne Geometrie bleiben in der Teileliste.
-            </p>}
             <div className="ins-row">
               <label className="ins-field ins-grow">
                 <span>Titel</span>

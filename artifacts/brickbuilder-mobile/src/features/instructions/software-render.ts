@@ -4,6 +4,8 @@ import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
+import { drawInstructionOutlines } from "./outlines";
+import { applyPdfStepCamera } from "./camera";
 
 const MAX_TRIANGLES = 120_000;
 interface Face { id: string; points: Float32Array; color: string; alpha: number }
@@ -72,15 +74,22 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   return {
     image(visible, step, highlightIds) {
       signal?.throwIfAborted();
+      applyPdfStepCamera(camera, radius, step.camera);
       const rotation = new Matrix4().makeRotationFromEuler(new Euler(
         ...(step.rotation ?? [0, 0, 0]).map(angle => angle * Math.PI / 180) as [number, number, number],
       ));
       const projected: { points: number[]; depth: number; color: string; alpha: number }[] = [];
+      const outlines = new Map<string, Box3>();
       for (const face of faces) {
         if (!visible.has(face.id)) continue;
         a.fromArray(face.points, 0).sub(center).applyMatrix4(rotation);
         b.fromArray(face.points, 3).sub(center).applyMatrix4(rotation);
         c.fromArray(face.points, 6).sub(center).applyMatrix4(rotation);
+        if (highlightIds?.has(face.id)) {
+          let box = outlines.get(face.id);
+          if (!box) { box = new Box3(); outlines.set(face.id, box); }
+          box.expandByPoint(a); box.expandByPoint(b); box.expandByPoint(c);
+        }
         normal.copy(b).sub(a).cross(vertex.copy(c).sub(a)).normalize();
         const shade = 0.58 + 0.42 * Math.abs(normal.dot(light));
         color.set(face.color);
@@ -100,6 +109,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         context.lineTo(face.points[4], face.points[5]); context.closePath(); context.fill();
       }
       context.globalAlpha = 1;
+      if (outlines.size) drawInstructionOutlines(context, camera, outlines.values(), width, height);
       return canvas.toDataURL("image/jpeg", 0.84);
     },
     dispose() { faces.length = 0; canvas.width = 1; canvas.height = 1; },

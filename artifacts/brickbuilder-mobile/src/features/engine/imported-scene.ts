@@ -140,7 +140,7 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
         gl_FragColor = vec4(vec3(0.03310477), 0.25);
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
-            ? vec4(0.0, 0.3, 0.23, 0.95)
+            ? vec4(0.6, 0.015, 0.01, 0.95)
             : vec4(vec3(0.45), 0.12);
         }
         #include <colorspace_fragment>

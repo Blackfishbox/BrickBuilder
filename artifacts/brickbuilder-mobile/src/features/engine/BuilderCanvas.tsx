@@ -38,6 +38,8 @@ import { InstanceIndex, instanceIndex } from "./instance-index";
 import { activeConnections, magneticConstructionTransform, hasUsableConnections } from "../connections/engine";
 import type { MagneticLatch } from "../connections/engine";
 import { ConnectionOverlay } from "../connections/overlay";
+import type { InstructionCamera } from "../instructions/types";
+import { drawInstructionOutlines } from "../instructions/outlines";
 import { floatingParts, legacyBrickBounds } from "./floating";
 import { stackingBounds } from "./stacking";
 import type { ConnectionTransform } from "../connections/types";
@@ -59,6 +61,9 @@ interface BuilderCanvasProps {
   showConstructionControls?: boolean;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
+  viewCamera?: InstructionCamera;
+  viewStepId?: string;
+  onViewCameraChange?: (camera: InstructionCamera) => void;
   /** Occurrence IDs for the current instruction step; undefined restores normal colors. */
   instructionFocusIds?: ReadonlySet<string>;
   projectId?: string;
@@ -417,6 +422,9 @@ function softwareWarning(scene: SoftwareScene): string {
 export function BuilderCanvas({
   showConstructionControls = true,
   viewRotation,
+  viewCamera,
+  viewStepId,
+  onViewCameraChange,
   instructionFocusIds,
   projectId,
   bricks,
@@ -516,6 +524,7 @@ export function BuilderCanvas({
   const raycasterRef = useRef(new Raycaster());
   const propsRef = useRef({
     viewRotation,
+    viewCamera, onViewCameraChange,
     instructionFocusIds,
     projectId,
     bricks,
@@ -543,9 +552,19 @@ export function BuilderCanvas({
     distance: 17,
     target: new Vector3(0, 0, 0),
   });
+  const cameraReferenceRef = useRef({ distance: 17, target: new Vector3(), theta: 0.72, phi: 0.93 });
+  const restoreStepCamera = () => {
+    const stored = propsRef.current.viewCamera, state = cameraStateRef.current, reference = cameraReferenceRef.current;
+    state.theta = stored?.theta ?? reference.theta;
+    state.phi = stored?.phi ?? reference.phi;
+    state.distance = stored?.distance ?? reference.distance;
+    state.target.copy(stored ? new Vector3(...stored.target) : reference.target);
+    invalidatorRef.current?.();
+  };
 
   propsRef.current = {
     viewRotation,
+    viewCamera, onViewCameraChange,
     instructionFocusIds,
     projectId,
     bricks,
@@ -674,6 +693,25 @@ export function BuilderCanvas({
           const box = importedRootRef.current ? instanceIndex(importedRootRef.current)?.records.get(id)?.bounds : softwareSceneRef.current?.instanceBounds.get(id);
           return box ?? null;
         });
+        const focus = propsRef.current.instructionFocusIds;
+        if (focus?.size) {
+          const boxes: Box3[] = [];
+          const offset = new Vector3(0, importedOffsetRef.current, 0);
+          for (const id of focus) {
+            const bounds = importedRootRef.current ? instanceIndex(importedRootRef.current)?.records.get(id)?.bounds : softwareSceneRef.current?.instanceBounds.get(id);
+            if (bounds) boxes.push(bounds.clone().translate(offset));
+            else {
+              const brick = propsRef.current.bricks.find(b => b.id === id);
+              if (brick) {
+                const size = getFootprint(brick);
+                boxes.push(new Box3(new Vector3(brick.x - size.width / 2, brick.y, brick.z - size.depth / 2),
+                  new Vector3(brick.x + size.width / 2, brick.y + BRICK_HEIGHT + 0.24, brick.z + size.depth / 2)));
+              }
+            }
+          }
+          const context = overlay.canvas.getContext("2d");
+          if (context) drawInstructionOutlines(context, camera, boxes, overlay.canvas.width, overlay.canvas.height);
+        }
         if (interactive) {
           clearTimeout(settleTimer);
           settleTimer = setTimeout(invalidate, 190);
@@ -733,6 +771,7 @@ export function BuilderCanvas({
   }, [viewRotation?.[0], viewRotation?.[1], viewRotation?.[2]]);
 
   useEffect(() => { refreshInstructionFocus(); }, [instructionFocusIds]);
+  useEffect(() => { if (viewStepId) restoreStepCamera(); }, [viewStepId, viewCamera]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -855,7 +894,12 @@ export function BuilderCanvas({
           camera.aspect = rectangle.width / rectangle.height;
           camera.updateProjectionMatrix();
         }
-        if (!sameModel) fitImportedView(camera, bounds, cameraStateRef.current);
+        if (!sameModel) {
+          fitImportedView(camera, bounds, cameraStateRef.current);
+          const state = cameraStateRef.current;
+          cameraReferenceRef.current = { distance: state.distance, target: state.target.clone(), theta: state.theta, phi: state.phi };
+          if (propsRef.current.viewCamera) restoreStepCamera();
+        }
       }
       if (root) { scene.add(root); importedRootRef.current = root; }
       refreshInstructionFocus();
@@ -1249,6 +1293,13 @@ export function BuilderCanvas({
       const point = { x: event.clientX, y: event.clientY };
       const current = propsRef.current;
       const click = clickRef.current;
+      if (current.onViewCameraChange && (click?.moved || cameraOnlyRef.current)) {
+        const state = cameraStateRef.current, reference = cameraReferenceRef.current;
+        current.onViewCameraChange({
+          theta: state.theta, phi: state.phi, distance: state.distance, target: state.target.toArray(),
+          referenceDistance: reference.distance, referenceTarget: reference.target.toArray(),
+        });
+      }
       if (pointersRef.current.size === 1 && !cameraOnlyRef.current) {
         const drag = dragRef.current;
         if (drag?.pointerId === event.pointerId && drag.moved) {

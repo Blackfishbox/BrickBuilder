@@ -210,6 +210,22 @@ describe("frame-coalesced drag transactions", () => {
     flushFrame();
     expect(gesture.mock.calls.at(-1)![0].camera.distance).toBeCloseTo(zoomedDistance);
   });
+  it("reports the rotated and zoomed touch camera when an instruction gesture ends", async () => {
+    const { props } = await mount("view");
+    const onViewCameraChange = vi.fn();
+    act(() => root.render(<BuilderCanvas {...props} viewStepId="step-2" onViewCameraChange={onViewCameraChange} />));
+    const gesture = vi.spyOn(cameraGestures, "cameraGesture");
+    pointer("pointerdown", 240, 300, 1);
+    pointer("pointerdown", 290, 300, 2);
+    pointer("pointermove", 340, 330, 2);
+    pointer("pointerup", 340, 330, 2);
+    const saved = onViewCameraChange.mock.lastCall![0];
+    const moved = gesture.mock.results.at(-1)!.value;
+    expect(saved.distance).toBeCloseTo(moved.distance);
+    expect(saved.theta).toBeCloseTo(moved.theta);
+    expect(saved.target).toHaveLength(3);
+    expect(saved.referenceDistance).toBeGreaterThan(0);
+  });
   for (const toolMode of ["view", "build", "select", "delete"] as const) {
     it(`takes over touches on parts in ${toolMode} without editor transactions`, async () => {
       const { props, point, model } = await mount(toolMode);

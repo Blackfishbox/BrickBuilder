@@ -47,6 +47,17 @@ describe("local construction instructions", () => {
     expect(new Set(all)).toEqual(new Set(doc.imported!.instances.map(part => part.id)));
   });
 
+  it("shows a submodel-only parent step as a callout", () => {
+    const doc = fixture(`0 FILE main.ldr\n1 16 0 0 0 1 0 0 0 1 0 0 0 1 child.ldr\n0 STEP\n0 FILE child.ldr\n${line()}\n0 STEP\n`);
+    const insertion = doc.instructions!.steps.at(-1)!;
+    expect(insertion.partIds).toEqual([]);
+    expect(insertion.callouts).toHaveLength(1);
+    expect(insertion.callouts?.[0].title).toBe("child");
+    const ids = instructionCalloutPartIds(doc, insertion.callouts![0]);
+    expect(ids).toHaveLength(1);
+    expect(instructionHighlightIds(doc, insertion)).toEqual(new Set(ids));
+  });
+
   const mpdFixture = new URL("../../../../../attached_assets/31153-1_1795047996207.mpd", import.meta.url);
   it.skipIf(!existsSync(mpdFixture))(
     "turns the empty source boundary at MPD step 214 into a visible subassembly callout",
