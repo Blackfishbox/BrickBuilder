@@ -1218,15 +1218,6 @@ export function BuilderCanvas({
     const resolveDrag = (drag: DragCandidate) => {
       if (!drag.destination || !drag.needsSnap) return;
       if (drag.matrix && propsRef.current.imported) {
-        const movingInstance = propsRef.current.imported.instances.find(instance => instance.id === drag.id);
-        if (movingInstance?.tiltX || movingInstance?.tiltZ) {
-          drag.needsSnap = false;
-          drag.magneticLatch = undefined;
-          drag.connection = undefined;
-          if (overlayRef.current) overlayRef.current.contacts = [];
-          setConnectionStatus("Neigung aktiv · freie Platzierung, Einrasten aus");
-          return;
-        }
         const offset = importedOffsetRef.current;
         const magnetic = magneticConstructionTransform(propsRef.current.imported, drag.id,
           { ...drag.destination, y: drag.destination.y - offset }, drag.magneticLatch);

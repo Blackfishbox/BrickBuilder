@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Group, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
+import { Box3, Group, Matrix4, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -20,8 +20,10 @@ import { gunzipSync } from "fflate";
 import { parseLDraw } from "../formats/ldraw/parser";
 import type { ImportedModel } from "../formats/types";
 import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model";
-import { moveImported } from "../editor/ldraw-editing";
+import { moveImported, tiltImported } from "../editor/ldraw-editing";
 import type { Affine } from "../formats/types";
+import { connectionFixture, partLine } from "../connections/fixtures";
+import { affine, matrix4 } from "../connections/description";
 
 const observed = vi.hoisted(() => ({
   scene: undefined as SoftwareScene | undefined,
@@ -379,6 +381,65 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene!.positions).toEqual(preview);
     expect(snapping.activeConnections(committed.imported!, id)).toHaveLength(2);
   });
+  for (const webgl of [true, false]) {
+    it(`previews and commits real tilted stud contacts with ${webgl ? "WebGL" : "software rendering"}`, async () => {
+      observed.webglEnabled = webgl;
+      let document = { ...createEmptyDocument(), imported: connectionFixture([
+        partLine("3001", 4.6, -200, 3.4), partLine("3003", 160, -200),
+      ].join("\n")) };
+      const [target, moving] = document.imported.instances;
+      for (const instance of [target, moving]) {
+        document = tiltImported(document, instance.id, 27, -18) as typeof document;
+      }
+      const expected = affine(matrix4(document.imported.instances[0].matrix).multiply(new Matrix4().makeTranslation(0, -24, 0)));
+      document = moveImported(document, moving.id, {
+        x: expected[3] / 20 + 4, y: -expected[7] / 20, z: expected[11] / 20,
+      }, false) as typeof document;
+      const model = document.imported, id = moving.id, onMove = vi.fn();
+      const props = { projectId: "tilted-studs", bricks: [], imported: model, selectedId: id,
+        selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove, onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? observed.scene3d && currentImportedBounds(true).isEmpty() === false : observed.scene).toBeTruthy());
+      });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      const camera = observed.camera!, bounds = currentImportedBounds(webgl);
+      const offset = Math.max(0, -bounds.min.y), matrix = model.instances[1].matrix;
+      const toScreen = (point: Vector3) => {
+        const p = point.clone().project(camera);
+        return { x: (p.x + 1) * 300, y: (1 - p.y) * 300 };
+      };
+      const start = toScreen(currentImportedInstanceBounds(id, webgl).getCenter(new Vector3()).add(new Vector3(0, offset, 0)));
+      const ray = new Raycaster();
+      ray.setFromCamera(new Vector2((start.x - 300) / 300, (300 - start.y) / 300), camera);
+      const planeStart = ray.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), matrix[7] / 20 - offset), new Vector3())!;
+      const end = toScreen(planeStart.clone().add(new Vector3((expected[3] - matrix[3]) / 20 + 0.03, 0, 0.02)));
+      const search = vi.spyOn(snapping, "magneticConstructionTransform");
+      pointer("pointerdown", start.x, start.y);
+      expect(props.onSelect).toHaveBeenCalledWith(id);
+      pointer("pointermove", end.x, end.y);
+      flushFrame();
+      expect(search).toHaveBeenCalledOnce();
+      const transform = search.mock.results[0].value.transform;
+      expect(transform.contacts.length).toBeGreaterThan(0);
+      expected.forEach((n, i) => expect(transform.matrix[i]).toBeCloseTo(n, 9));
+      expect(element.querySelector("[data-testid='connection-status']")?.textContent).toContain("Magnetisch eingerastet");
+      const previewBounds = currentImportedInstanceBounds(id, webgl);
+      pointer("pointerup", end.x, end.y);
+      expect(onMove).toHaveBeenCalledOnce();
+      expect(onMove.mock.calls[0][2]).toEqual(transform.matrix);
+      const committed = moveImported(document, id, onMove.mock.calls[0][1], false, onMove.mock.calls[0][2]);
+      act(() => root.render(<BuilderCanvas {...props} imported={committed.imported} />));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+      flushFrame();
+      const committedBounds = currentImportedInstanceBounds(id, webgl);
+      expect(committedBounds.min.distanceTo(previewBounds.min)).toBeLessThan(1e-6);
+      expect(committedBounds.max.distanceTo(previewBounds.max)).toBeLessThan(1e-6);
+      expect(snapping.activeConnections(committed.imported!, id).length).toBeGreaterThan(0);
+    });
+  }
   for (const webgl of [true, false]) {
     const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
     it(`expands the floor for a drag preview and restores it on cancellation in ${rendererName}`, async () => {

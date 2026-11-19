@@ -121,7 +121,6 @@ function obstructed(model: ImportedModel, id: string, proposed: Affine, contacts
     if (otherId === id) continue;
     const other = boxes.get(otherId);
     if (!other || !positiveOverlap(moved, other)) continue;
-    const intersection = moved.clone().intersect(other).applyMatrix4(toLdu);
     const allowed = contacts.filter(c => c.targetId === otherId);
     if (!allowed.length) return true;
     const slabs = allowed.map(c => {
@@ -130,7 +129,15 @@ function obstructed(model: ImportedModel, id: string, proposed: Affine, contacts
       const inv = matrix4(b.frame).invert(), localA = matrix4(a.frame).premultiply(inv);
       const ys = intervals(a).flatMap(s => [new Vector3(0, s.lo, 0).applyMatrix4(localA).y, new Vector3(0, s.hi, 0).applyMatrix4(localA).y]);
       const bs = intervals(b), low = Math.max(Math.min(...ys), Math.min(...bs.map(s => s.lo))), high = Math.min(Math.max(...ys), Math.max(...bs.map(s => s.hi)));
-      const local = intersection.clone().applyMatrix4(inv);
+      // Intersect bounds AFTER transforming the original part-local boxes
+      // into the mating frame. Rotating an already intersected world AABB
+      // invents overlap outside the stud layer for perfectly mated tilted parts.
+      const targetInstance = nearby.find(v => v.id === otherId)!.instance;
+      const local = localPartBounds(model, instance.reference).clone()
+        .applyMatrix4(inv.clone().multiply(matrix4(proposed)))
+        .intersect(localPartBounds(model, targetInstance.reference).clone()
+          .applyMatrix4(inv.clone().multiply(matrix4(targetInstance.matrix))));
+      if (local.isEmpty()) return true;
       const radius = Math.max(a.radius, b.radius, ...a.sections.map(s => s.radius), ...b.sections.map(s => s.radius), 0) + 0.1;
       // Repeated ordinary antistuds use S6 holes; the slab is the stud layer,
       // not a body-wide exception for Technic/clip/generic insertion.
@@ -237,6 +244,10 @@ export function snapConnection(model: ImportedModel, id: string, desired: Positi
   query.union(original.box.clone().translate(shift)
     .translate(new Vector3(0, -(raised.y - desired.y) * 20, 0)).expandByScalar(REACH));
   const near = neighbours(index, query, id);
+  // Explicit editor tilt is an orientation constraint, not an invitation to
+  // flatten the part onto the nearest stud. Translate matching rotated frames
+  // only. Untilted parts retain automatic pin/axle orientation alignment.
+  const preserveOrientation = !!(instance.tiltX || instance.tiltZ);
   let best: ConnectionTransform | null = null, score = Infinity;
   const tried = new Set<string>();
   for (const a of moving) for (const entry of near) for (const b of entry.connectors) {
@@ -247,11 +258,15 @@ export function snapConnection(model: ImportedModel, id: string, desired: Positi
     if (distance > Math.max(a.length, b.length) + REACH + Math.abs(raised.y - desired.y) * 20) continue;
     for (const direction of [1, -1]) {
       let rotation: Matrix4;
-      if (a.family === "generic" && a.placement === "free" && b.placement === "free") rotation = new Matrix4();
+      if (preserveOrientation) {
+        if (!(a.family === "generic" && a.placement === "free" && b.placement === "free") &&
+          aa.y.dot(bb.y) * direction < 1 - EPS) continue;
+        rotation = new Matrix4();
+      } else if (a.family === "generic" && a.placement === "free" && b.placement === "free") rotation = new Matrix4();
       else if (a.family === "generic") {
         rotation = matrix4(b.frame).setPosition(0, 0, 0).multiply(matrix4(a.frame).setPosition(0, 0, 0).invert());
       } else rotation = new Matrix4().makeRotationFromQuaternion(new Quaternion().setFromUnitVectors(aa.y, bb.y.clone().multiplyScalar(direction)));
-      if (a.sections.some(s => ["A", "S"].includes(s.shape)) && b.sections.some(s => ["A", "S"].includes(s.shape))) {
+      if (!preserveOrientation && a.sections.some(s => ["A", "S"].includes(s.shape)) && b.sections.some(s => ["A", "S"].includes(s.shape))) {
         const x = aa.x.clone().transformDirection(rotation);
         const angle = Math.atan2(bb.y.dot(x.clone().cross(bb.x)), x.dot(bb.x));
         const correction = angle - Math.round(angle / (Math.PI / 2)) * Math.PI / 2;
@@ -282,7 +297,12 @@ export function snapConnection(model: ImportedModel, id: string, desired: Positi
           .applyMatrix4(matrix4(entry.instance.matrix).setPosition(0, 0, 0));
         transform.setPosition(targetAnchor.addScaledVector(bb.y, offset).sub(anchor)
           .add(new Vector3(entry.instance.matrix[3], entry.instance.matrix[7], entry.instance.matrix[11])));
-        const matrix = affine(transform), key = matrix.map(n => n.toFixed(5)).join(",");
+        const matrix = affine(transform);
+        if (preserveOrientation) {
+          // Preserve even the exact imported basis coefficients.
+          for (const i of [0, 1, 2, 4, 5, 6, 8, 9, 10]) matrix[i] = desiredMatrix[i];
+        }
+        const key = matrix.map(n => n.toFixed(5)).join(",");
         if (tried.has(key)) continue; tried.add(key);
         const transformed = local.map(c => transformConnector(c, matrix)).filter((c): c is Connector => !!c);
         const contacts = allContacts(transformed, near, id, "candidate");
@@ -304,7 +324,10 @@ export function constructionTransform(model: ImportedModel, id: string, desired:
   const snap = snapConnection(model, id, desired);
   if (snap) return snap;
   const instance = indexFor(model).entries.get(id)!.instance;
-  const position = localStackedPosition(model, id, { ...desired, x: Math.round(desired.x * 2) / 2, z: Math.round(desired.z * 2) / 2 });
+  // A missed connection must not replace deliberate tilted placement with
+  // axis-aligned grid rounding or whole-box automatic lifting.
+  const position = instance.tiltX || instance.tiltZ ? desired :
+    localStackedPosition(model, id, { ...desired, x: Math.round(desired.x * 2) / 2, z: Math.round(desired.z * 2) / 2 });
   const matrix = [...instance.matrix] as Affine;
   matrix[3] = position.x * 20; matrix[7] = -position.y * 20; matrix[11] = position.z * 20;
   return { matrix, contacts: [], status: hasUsableConnections(model, id) ? "unconnected" : "no-data" };
