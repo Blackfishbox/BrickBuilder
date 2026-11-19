@@ -498,6 +498,52 @@ describe("frame-coalesced drag transactions", () => {
     act(() => element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!.click());
     expect(element.querySelector("[data-testid='collision-warning']")).toBeNull();
   });
+  it("shows worker progress and ignores stale progress after model changes or disabling", () => {
+    const workers: {
+      onmessage: ((event: MessageEvent) => void) | null;
+      terminated: boolean;
+    }[] = [];
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      terminated = false;
+      constructor() { workers.push(this); }
+      postMessage() {}
+      terminate() { this.terminated = true; }
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!;
+    act(() => toggle.click());
+    expect(workers).toHaveLength(1);
+
+    const sendProgress = (worker: typeof workers[number], percent: number) => {
+      act(() => worker.onmessage?.({ data: { progress: { phase: "checking", percent } } } as MessageEvent));
+    };
+    sendProgress(workers[0], 42);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("42 %");
+    expect(element.querySelector<HTMLProgressElement>("progress[aria-label='Fortschritt der Kollisionsprüfung']")?.value).toBe(42);
+
+    act(() => root.render(<BuilderCanvas {...props} bricks={[{ id: "new", type: "brick-1x2", color: "#fff", x: 0, y: 0, z: 0, rotation: 0 }]} />));
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminated).toBe(true);
+    sendProgress(workers[0], 91);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
+    sendProgress(workers[1], 18);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("18 %");
+
+    act(() => toggle.click());
+    expect(element.querySelector("[data-testid='collision-warning']")).toBeNull();
+    expect(workers[1].terminated).toBe(true);
+    act(() => toggle.click());
+    expect(workers).toHaveLength(3);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
+    sendProgress(workers[1], 99);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
+  });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
       toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), showConstructionControls: false };

@@ -136,6 +136,19 @@ describe("optional collision diagnostics", () => {
     controller.abort();
     await expect(collisionWarnings([brick], undefined, controller.signal)).rejects.toHaveProperty("name", "AbortError");
   });
+  it("reports regular, increasing progress while checking candidate pairs", async () => {
+    for (const bricks of [
+      Array.from({ length: 24 }, (_, index) => ({ ...brick, id: `dense-${index}` })),
+      Array.from({ length: 96 }, (_, index) => ({ ...brick, id: `sparse-${index}`, x: index * 20 })),
+    ]) {
+      const progress: { phase: string; percent: number }[] = [];
+      await collisionWarnings(bricks, undefined, new AbortController().signal, undefined, value => progress.push(value));
+      const checking = progress.filter(value => value.phase === "checking").map(value => value.percent);
+      expect(checking.length).toBeGreaterThan(2);
+      expect(checking.at(-1)).toBe(100);
+      expect(checking.slice(1).every((value, index) => value >= checking[index])).toBe(true);
+    }
+  });
   it("terminates a running worker as soon as its model becomes obsolete", async () => {
     let instance: { terminated: boolean } | undefined;
     class WorkerStub {
@@ -155,25 +168,30 @@ describe("optional collision diagnostics", () => {
     expect(instance?.terminated).toBe(true);
   });
   it("restores verified warning boxes returned by the worker", async () => {
+    const progress: { phase: string; percent: number }[] = [];
     class WorkerStub {
       onmessage: ((event: MessageEvent) => void) | null = null;
       onerror: ((event: ErrorEvent) => void) | null = null;
       onmessageerror: (() => void) | null = null;
       constructor() {}
       postMessage() {
-        queueMicrotask(() => this.onmessage?.({ data: {
-          boxes: [["a", [0, 0, 0], [1, 1, 1]], ["b", [1, 0, 0], [2, 1, 1]]],
-          uncertain: true,
-        } } as MessageEvent));
+        queueMicrotask(() => {
+          this.onmessage?.({ data: { progress: { phase: "checking", percent: 42 } } } as MessageEvent);
+          this.onmessage?.({ data: {
+            boxes: [["a", [0, 0, 0], [1, 1, 1]], ["b", [1, 0, 0], [2, 1, 1]]],
+            uncertain: true,
+          } } as MessageEvent);
+        });
       }
       terminate() {}
     }
     vi.stubGlobal("Worker", WorkerStub);
-    const result = await collisionWarningsInWorker([brick], undefined, new AbortController().signal);
+    const result = await collisionWarningsInWorker([brick], undefined, new AbortController().signal, undefined, value => progress.push(value));
     expect([...result.boxes.keys()]).toEqual(["a", "b"]);
     expect(result.boxes.get("a")?.min.toArray()).toEqual([0, 0, 0]);
     expect(result.boxes.get("b")?.max.toArray()).toEqual([2, 1, 1]);
     expect(result.uncertain).toBe(true);
+    expect(progress).toContainEqual({ phase: "checking", percent: 42 });
   });
   it("still checks local bricks when an imported model is present", async () => {
     const warnings = await collisionWarnings(

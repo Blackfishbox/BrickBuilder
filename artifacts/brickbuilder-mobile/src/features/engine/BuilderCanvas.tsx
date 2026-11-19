@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link2, TriangleAlert, Cloud } from "lucide-react";
-import { collisionWarningsInWorker } from "./collision-warning";
+import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
   BoxGeometry,
   Box3,
@@ -412,7 +412,9 @@ export function BuilderCanvas({
   const overlayRef = useRef<ConnectionOverlay | null>(null);
   const [showConnections, setShowConnections] = useState(true);
   const [showCollisions, setShowCollisions] = useState(false);
-  const [collisionState, setCollisionState] = useState({ count: 0, uncertain: false, pending: false, failed: false });
+  const [collisionState, setCollisionState] = useState<{
+    count: number; uncertain: boolean; pending: boolean; failed: boolean; progress: CollisionProgress | null;
+  }>({ count: 0, uncertain: false, pending: false, failed: false, progress: null });
   const [toggleToast, setToggleToast] = useState("");
   useEffect(() => {
     if (!toggleToast) return;
@@ -967,18 +969,24 @@ export function BuilderCanvas({
   useEffect(() => {
     const controller = new AbortController();
     if (overlayRef.current) overlayRef.current.collisions = new Map();
-    setCollisionState({ count: 0, uncertain: false, pending: showCollisions, failed: false });
+    setCollisionState({
+      count: 0, uncertain: false, pending: showCollisions, failed: false,
+      progress: showCollisions ? { phase: "preparing", percent: 0 } : null,
+    });
     invalidatorRef.current?.();
     if (showCollisions) {
       const offset = sceneModelRef.current && sceneProjectRef.current === projectId ? importedOffsetRef.current : undefined;
-      void collisionWarningsInWorker(bricks, imported, controller.signal, offset).then(result => {
+      void collisionWarningsInWorker(bricks, imported, controller.signal, offset, progress => {
+        if (controller.signal.aborted) return;
+        setCollisionState(current => current.pending ? { ...current, progress } : current);
+      }).then(result => {
         if (controller.signal.aborted) return;
         if (overlayRef.current) overlayRef.current.collisions = result.boxes;
-        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false, failed: false });
+        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false, failed: false, progress: null });
         invalidatorRef.current?.();
       }).catch(error => {
         if (!controller.signal.aborted) {
-          setCollisionState({ count: 0, uncertain: true, pending: false, failed: true });
+          setCollisionState({ count: 0, uncertain: true, pending: false, failed: true, progress: null });
           setToggleToast("Kollisionsprüfung konnte nicht abgeschlossen werden");
           console.error(error);
         }
@@ -1486,7 +1494,13 @@ export function BuilderCanvas({
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
     {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
-      {collisionState.pending ? "Kollisionen werden geprüft …" : collisionState.count
+      {collisionState.pending ? <>
+        {collisionState.progress?.phase === "preparing" ? "Kollisionsprüfung wird vorbereitet" : "Kollisionen werden geprüft"}
+        {collisionState.progress && <> · {Math.floor(collisionState.progress.percent)} %</>}
+        {collisionState.progress && <progress className="ml-2 h-2 w-20 align-middle" aria-label="Fortschritt der Kollisionsprüfung"
+          max={100} value={collisionState.progress.percent} />}
+        {!collisionState.progress && " …"}
+      </> : collisionState.count
         ? `${collisionState.count} Teile kollidieren · orange markiert`
         : collisionState.failed ? "Kollisionsprüfung nicht abgeschlossen"
         : collisionState.uncertain ? "Keine Kollisionen nachgewiesen · einige Geometrien nicht eindeutig prüfbar"

@@ -1,4 +1,4 @@
-import { collisionWarnings } from "./collision-warning";
+import { collisionWarnings, type CollisionProgress } from "./collision-warning";
 import type { Brick } from "../editor/model";
 import type { ImportedModel } from "../formats/types";
 
@@ -15,12 +15,15 @@ interface SerializedCollisionResult {
 
 const workerScope = self as unknown as {
   onmessage: ((event: MessageEvent<CollisionWorkerRequest>) => void) | null;
-  postMessage: (message: SerializedCollisionResult | { error: { name: string; message: string } }) => void;
+  postMessage: (message: SerializedCollisionResult | { progress: CollisionProgress } | { error: { name: string; message: string } }) => void;
 };
 
 workerScope.onmessage = async event => {
   try {
-    const result = await collisionWarnings(event.data.bricks, event.data.model, new AbortController().signal, event.data.importedOffset);
+    const result = await collisionWarnings(
+      event.data.bricks, event.data.model, new AbortController().signal, event.data.importedOffset,
+      progress => workerScope.postMessage({ progress }),
+    );
     workerScope.postMessage({
       boxes: [...result.boxes].map(([id, box]) => [id, box.min.toArray(), box.max.toArray()]),
       uncertain: result.uncertain,

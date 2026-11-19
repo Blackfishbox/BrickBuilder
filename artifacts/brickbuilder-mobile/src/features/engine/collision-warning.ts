@@ -12,6 +12,11 @@ export interface CollisionWarnings {
   uncertain: boolean;
 }
 
+export interface CollisionProgress {
+  phase: "preparing" | "checking";
+  percent: number;
+}
+
 function warningVolume(brick: Brick) {
   const { studsX, studsZ } = BRICK_DEFINITIONS[brick.type];
   const { tiltX = 0, tiltZ = 0 } = brick as Brick & { tiltX?: number; tiltZ?: number };
@@ -34,7 +39,9 @@ function warningVolume(brick: Brick) {
  */
 export async function collisionWarnings(
   bricks: Brick[], model: ImportedModel | undefined, signal: AbortSignal, importedOffset?: number,
+  onProgress?: (progress: CollisionProgress) => void,
 ): Promise<CollisionWarnings> {
+  onProgress?.({ phase: "preparing", percent: 0 });
   const importedBoxes = model ? stackingBounds(model) : new Map<string, Box3>();
   const total = new Box3();
   for (const box of importedBoxes.values()) total.union(box);
@@ -52,19 +59,45 @@ export async function collisionWarnings(
   const query = model ? importedWarningQuery(model) : null;
   const boxes = new Map<string, Box3>();
   let uncertain = false, sliceStart = performance.now(), work = 0;
+  let currentProgress: CollisionProgress = { phase: "preparing", percent: 0 };
   const checkpoint = async () => {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     if (++work % 32 === 0 || performance.now() - sliceStart > 8) {
       await new Promise(resolve => setTimeout(resolve, 0));
       sliceStart = performance.now();
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      onProgress?.(currentProgress);
     }
   };
+  // Count the x-overlapping pairs cheaply before narrow-phase checks. This
+  // gives the worker an exact denominator without estimating based on all
+  // possible model pairs.
+  let candidatePairs = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const box = entries[i][1];
+    let low = i + 1, high = entries.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (entries[middle][1].min.x < box.max.x - 0.0001) low = middle + 1;
+      else high = middle;
+    }
+    candidatePairs += low - i - 1;
+    currentProgress = { phase: "preparing", percent: entries.length ? ((i + 1) / entries.length) * 100 : 100 };
+    await checkpoint();
+  }
+  currentProgress = { phase: "checking", percent: 0 };
+  onProgress?.(currentProgress);
+  let checkedPairs = 0, checkedEntries = 0;
   for (let i = 0; i < entries.length; i++) {
     await checkpoint();
     const [id, box] = entries[i];
     for (let j = i + 1; j < entries.length && entries[j][1].min.x < box.max.x - 0.0001; j++) {
       await checkpoint();
+      checkedPairs++;
+      currentProgress = {
+        phase: "checking",
+        percent: ((checkedPairs + checkedEntries) / (candidatePairs + entries.length)) * 100,
+      };
       const [otherId, other] = entries[j];
       if (box.min.y >= other.max.y - 0.0001 || other.min.y >= box.max.y - 0.0001 ||
           box.min.z >= other.max.z - 0.0001 || other.min.z >= box.max.z - 0.0001) continue;
@@ -85,7 +118,13 @@ export async function collisionWarnings(
       }
       if (overlap) { boxes.set(id, box); boxes.set(otherId, other); }
     }
+    checkedEntries++;
+    currentProgress = {
+      phase: "checking",
+      percent: ((checkedPairs + checkedEntries) / (candidatePairs + entries.length)) * 100,
+    };
   }
+  onProgress?.({ phase: "checking", percent: 100 });
   return { boxes, uncertain };
 }
 
@@ -169,10 +208,12 @@ async function collisionModelSnapshot(model: ImportedModel, signal: AbortSignal)
  */
 export async function collisionWarningsInWorker(
   bricks: Brick[], model: ImportedModel | undefined, signal: AbortSignal, importedOffset?: number,
+  onProgress?: (progress: CollisionProgress) => void,
 ): Promise<CollisionWarnings> {
   if (signal.aborted) throw abortError();
+  onProgress?.({ phase: "preparing", percent: 0 });
   // Non-browser test and server environments have no Worker implementation.
-  if (typeof Worker === "undefined") return collisionWarnings(bricks, model, signal, importedOffset);
+  if (typeof Worker === "undefined") return collisionWarnings(bricks, model, signal, importedOffset, onProgress);
   const snapshot = model ? await collisionModelSnapshot(model, signal) : undefined;
   if (signal.aborted) throw abortError();
 
@@ -188,8 +229,12 @@ export async function collisionWarningsInWorker(
     };
     const onAbort = () => finish(() => reject(abortError()));
     signal.addEventListener("abort", onAbort, { once: true });
-    worker.onmessage = (event: MessageEvent<WorkerCollisionResult | { error: { name: string; message: string } }>) => {
+    worker.onmessage = (event: MessageEvent<WorkerCollisionResult | { progress: CollisionProgress } | { error: { name: string; message: string } }>) => {
       const result = event.data;
+      if ("progress" in result) {
+        if (!signal.aborted) onProgress?.(result.progress);
+        return;
+      }
       if ("error" in result) {
         finish(() => reject(Object.assign(new Error(result.error.message), { name: result.error.name })));
         return;
