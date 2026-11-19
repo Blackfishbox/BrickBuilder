@@ -1032,7 +1032,8 @@ export function BuilderCanvas({
     setCollisionState({ count: 0, uncertain: false, pending: showCollisions });
     invalidatorRef.current?.();
     if (showCollisions) {
-      void collisionWarnings(bricks, imported, controller.signal).then(result => {
+      const offset = sceneModelRef.current && sceneProjectRef.current === projectId ? importedOffsetRef.current : undefined;
+      void collisionWarnings(bricks, imported, controller.signal, offset).then(result => {
         if (controller.signal.aborted) return;
         if (overlayRef.current) overlayRef.current.collisions = result.boxes;
         setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false });
