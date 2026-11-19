@@ -7,6 +7,7 @@ import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
+import * as instructionOutlines from "../instructions/outlines";
 import BuilderCanvas from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
@@ -189,6 +190,48 @@ function expectConstructionArea(bounds: Box3): void {
 function expectCameraPose(expected: { target: number[]; distance: number }): void {
   expect(observed.cameraPose!.target).toEqual(expected.target);
   expect(observed.cameraPose!.distance).toBeCloseTo(expected.distance, 8);
+}
+
+for (const webgl of [true, false]) {
+  it(`reuses spatial highlight groups across camera redraws in ${webgl ? "WebGL" : "software"} preview`, async () => {
+    observed.webglEnabled = webgl;
+    const imported = engineFixture(4, 1);
+    imported.resources["parts/test.dat"].content = "4 16 -20 0 -20 20 0 -20 20 24 20 -20 24 20";
+    imported.instances.forEach(part => { part.colorCode = "4"; });
+    const bricks: Brick[] = [0, 2, 4, 6].map((x, index) => ({
+      id: `local-${index}`, type: "brick-2x2", color: "#ff0000", x, y: 0, z: 6, rotation: 0,
+    }));
+    const focus = new Set([...imported.instances.map(part => part.id), ...bricks.map(part => part.id)]);
+    const grouping = vi.spyOn(instructionOutlines, "groupInstructionHighlights");
+    const drawing = vi.spyOn(instructionOutlines, "drawInstructionOutlines").mockImplementation(() => {});
+    const props = { bricks, imported, instructionFocusIds: focus, showConstructionControls: false,
+      selectedId: null, selectedType: "brick-2x2" as const, selectedColor: "#ff0000", toolMode: "view" as const,
+      onPlace: vi.fn(), onSelect: vi.fn(), onMove: vi.fn() };
+    await act(async () => root.render(<BuilderCanvas {...props} />));
+    await act(async () => {
+      await vi.waitFor(() => expect(webgl
+        ? observed.scene3d?.children.some(child => instanceIndex(child as Group))
+        : observed.scene).toBeTruthy());
+    });
+    flushFrame();
+    const boxes = drawing.mock.lastCall![2] as Box3[];
+    expect(boxes).toHaveLength(2);
+    expect(boxes[1].min.y).toBeCloseTo(0); // Imported ground offset is applied only for drawing.
+    const groupCalls = grouping.mock.calls.length;
+    act(() => root.render(<BuilderCanvas {...props} viewRotation={[20, 35, -15]} />));
+    flushFrame();
+    expect(grouping).toHaveBeenCalledTimes(groupCalls);
+    expect(drawing.mock.lastCall![2]).toBe(boxes);
+
+    const outlinesBeforeToggle = drawing.mock.calls.length;
+    act(() => root.render(<BuilderCanvas {...props} instructionFocusIds={undefined} />));
+    flushFrame();
+    expect(drawing).toHaveBeenCalledTimes(outlinesBeforeToggle);
+    const moved = bricks.map(part => part.id === "local-3" ? { ...part, x: 20 } : part);
+    act(() => root.render(<BuilderCanvas {...props} bricks={moved} />));
+    flushFrame();
+    expect(drawing.mock.lastCall![2]).toHaveLength(3);
+  });
 }
 
 describe("frame-coalesced drag transactions", () => {

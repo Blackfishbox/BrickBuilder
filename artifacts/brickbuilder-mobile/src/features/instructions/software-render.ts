@@ -5,7 +5,7 @@ import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
-import { drawInstructionOutlines } from "./outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
 import { applyPdfStepCamera } from "./camera";
 
 const MAX_TRIANGLES = 120_000;
@@ -79,6 +79,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   camera.lookAt(0, 0, 0); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
   const a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3();
   const light = new Vector3(0.4, 0.8, 0.5).normalize(), color = new Color();
+  const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
   return {
     image(visible, step, highlightIds) {
       signal?.throwIfAborted();
@@ -117,7 +118,10 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         context.lineTo(face.points[4], face.points[5]); context.closePath(); context.fill();
       }
       context.globalAlpha = 1;
-      if (outlines.size) drawInstructionOutlines(context, camera, outlines.values(), width, height);
+      if (outlines.size) {
+        const groups = groupInstructionHighlights(highlightOccurrences, new Set(outlines.keys()));
+        drawInstructionOutlines(context, camera, instructionGroupBounds(groups, outlines), width, height);
+      }
       return canvas.toDataURL("image/jpeg", 0.84);
     },
     dispose,

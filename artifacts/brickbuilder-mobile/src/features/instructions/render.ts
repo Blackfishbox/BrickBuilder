@@ -8,7 +8,7 @@ import { createImportedGroupAsync, disposeImportedScene } from "../engine/import
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
-import { drawInstructionOutlines } from "./outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
 import { applyPdfStepCamera } from "./camera";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
@@ -126,6 +126,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       }
     });
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
+    const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
       image(visible, step, highlightIds) {
         signal?.throwIfAborted();
@@ -167,8 +168,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           context.drawImage(renderer.domElement, 0, 0);
           const boxes = new Map<string, Box3>();
           assembly.traverse(object => {
-            if (object.userData.partId && highlightIds.has(object.userData.partId)) {
-              boxes.set(object.uuid, new Box3().setFromObject(object));
+            if (object.userData.partId && visible.has(object.userData.partId) && highlightIds.has(object.userData.partId)) {
+              boxes.set(object.userData.partId, new Box3().setFromObject(object));
             }
             if (!(object instanceof Mesh)) return;
             if (!(object instanceof InstancedMesh)) return;
@@ -182,7 +183,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
               if (boxes.has(id)) boxes.get(id)!.union(box); else boxes.set(id, box);
             });
           });
-          drawInstructionOutlines(context, camera, boxes.values(), 1000, 760);
+          const groups = groupInstructionHighlights(highlightOccurrences, new Set([...highlightIds].filter(id => visible.has(id))));
+          drawInstructionOutlines(context, camera, instructionGroupBounds(groups, boxes), 1000, 760);
           return output.toDataURL("image/jpeg", 0.84);
         }
         return renderer.domElement.toDataURL("image/jpeg", 0.84);

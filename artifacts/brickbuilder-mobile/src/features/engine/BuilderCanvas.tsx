@@ -43,7 +43,7 @@ import { activeConnections, magneticConstructionTransform, hasUsableConnections,
 import type { MagneticLatch } from "../connections/engine";
 import { ConnectionOverlay } from "../connections/overlay";
 import type { InstructionCamera } from "../instructions/types";
-import { drawInstructionOutlines } from "../instructions/outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "../instructions/outlines";
 import { floatingParts, legacyBrickBounds } from "./floating";
 import { stackingBounds } from "./stacking";
 import type { ConnectionTransform } from "../connections/types";
@@ -458,6 +458,9 @@ export function BuilderCanvas({
   const refreshConstructionAreaRef = useRef<((candidate?: Box3) => void) | null>(null);
   const softwareSceneRef = useRef<SoftwareScene | undefined>(undefined);
   const importedOffsetRef = useRef(0);
+  const instructionOutlineCacheRef = useRef<{
+    bricks: Brick[]; imported?: ImportedModel; focus: ReadonlySet<string>; offset: number; boxes: Box3[];
+  } | null>(null);
   const interactionTimeRef = useRef(-Infinity);
   const buildControllerRef = useRef<AbortController | null>(null);
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
@@ -766,22 +769,24 @@ export function BuilderCanvas({
         });
         const focus = propsRef.current.instructionFocusIds;
         if (focus?.size) {
-          const boxes: Box3[] = [];
-          const offset = new Vector3(0, importedOffsetRef.current, 0);
-          for (const id of focus) {
-            const bounds = importedRootRef.current ? instanceIndex(importedRootRef.current)?.records.get(id)?.bounds : softwareSceneRef.current?.instanceBounds.get(id);
-            if (bounds) boxes.push(bounds.clone().translate(offset));
-            else {
-              const brick = propsRef.current.bricks.find(b => b.id === id);
-              if (brick) {
-                const bounds = brickConstructionBounds(brick);
-                bounds.max.y += 0.24;
-                boxes.push(bounds);
-              }
-            }
+          const { bricks, imported } = propsRef.current;
+          const offset = importedOffsetRef.current;
+          let cached = instructionOutlineCacheRef.current;
+          if (!cached || cached.bricks !== bricks || cached.imported !== imported || cached.focus !== focus || cached.offset !== offset) {
+            const occurrences = instructionHighlightOccurrences(bricks, imported);
+            const groups = groupInstructionHighlights(occurrences, focus);
+            const importedIds = new Set(imported?.instances.map(part => part.id));
+            const boxes = new Map(occurrences.map(part => {
+              const box = part.bounds.clone();
+              if (importedIds.has(part.id)) box.translate(new Vector3(0, offset, 0));
+              else box.max.y += 0.24; // Preserve the preview's existing stud clearance.
+              return [part.id, box];
+            }));
+            cached = { bricks, imported, focus, offset, boxes: instructionGroupBounds(groups, boxes) };
+            instructionOutlineCacheRef.current = cached;
           }
           const context = overlay.canvas.getContext("2d");
-          if (context) drawInstructionOutlines(context, camera, boxes, overlay.canvas.width, overlay.canvas.height);
+          if (context) drawInstructionOutlines(context, camera, cached.boxes, overlay.canvas.width, overlay.canvas.height);
         }
         if (interactive) {
           clearTimeout(settleTimer);
