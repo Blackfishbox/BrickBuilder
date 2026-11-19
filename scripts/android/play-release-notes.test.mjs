@@ -24,6 +24,16 @@ test("requires a precise note in every included commit", () => {
   assert.throws(() => summarizeCommitMessages([]), /No commits/);
 });
 
+test("skips only generated task-merge metadata without a release note", () => {
+  assert.equal(summarizeCommitMessages([
+    "Merge task results\n\nReplit-Task-Id: task-123\nReplit-Merge-Attempt: MergeTask:task-123",
+    "Improve inventory import\n\nRelease-Notes-DE: Teilelisten zeigen nach dem Prüfen die Übernehmen-Schaltfläche direkt oben.",
+  ]), "• Teilelisten zeigen nach dem Prüfen die Übernehmen-Schaltfläche direkt oben.");
+  assert.throws(() => summarizeCommitMessages([
+    "Merge task results\n\nReplit-Task-Id: task-123\nReplit-Merge-Attempt: MergeTask:task-123",
+  ]), /No concrete German release notes/);
+});
+
 test("enforces the 500-character limit instead of truncating release notes", () => {
   assert.equal([...summarizeCommitMessages([`Change\n\nRelease-Notes-DE: ${"x".repeat(498)}`])].length, 500);
   assert.throws(() => summarizeCommitMessages([`Change\n\nRelease-Notes-DE: ${"x".repeat(499)}`]), /allows 500/);

@@ -16,6 +16,9 @@ export function summarizeCommitMessages(messages) {
   for (const message of messages) {
     const subject = message.split(/\r?\n/, 1)[0].trim() || "(commit without subject)";
     const trailers = [...message.matchAll(/^Release-Notes-DE:\s*(.*?)\s*$/gim)];
+    // Replit task merges can add generated metadata-only commits without user-written trailers.
+    if (trailers.length === 0 && /^Replit-Task-Id:\s*\S+/im.test(message) &&
+        /^Replit-Merge-Attempt:\s*\S+/im.test(message)) continue;
     if (trailers.length !== 1 || !trailers[0][1].trim()) {
       throw new Error(
         `Commit "${subject}" must contain exactly one "${RELEASE_NOTE_TRAILER}: <konkrete deutsche Änderung>" trailer. ` +
@@ -29,6 +32,7 @@ export function summarizeCommitMessages(messages) {
     const key = note.replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
     if (!seen.has(key)) { seen.add(key); notes.push(note); }
   }
+  if (notes.length === 0) throw new Error("No concrete German release notes found. Add a Release-Notes-DE trailer.");
   const result = notes.map(note => `• ${note}`).join("\n");
   if ([...result].length > 500) {
     throw new Error(
