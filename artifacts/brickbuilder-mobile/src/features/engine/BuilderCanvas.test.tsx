@@ -8,6 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import BuilderCanvas from "./BuilderCanvas";
+import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "./instruction-camera";
 import * as snapping from "../connections/engine";
 import type { Contact } from "../connections/types";
 import { readFileSync } from "node:fs";
@@ -222,9 +223,22 @@ describe("frame-coalesced drag transactions", () => {
     const saved = onViewCameraChange.mock.lastCall![0];
     const moved = gesture.mock.results.at(-1)!.value;
     expect(saved.distance).toBeCloseTo(moved.distance);
-    expect(saved.theta).toBeCloseTo(moved.theta);
+    expect(saved.theta).toBe(DEFAULT_INSTRUCTION_THETA);
+    expect(saved.phi).toBe(DEFAULT_INSTRUCTION_PHI);
+    expect(onViewCameraChange.mock.lastCall![1]).toHaveLength(3);
     expect(saved.target).toHaveLength(3);
     expect(saved.referenceDistance).toBeGreaterThan(0);
+  });
+  it("does not convert a two-finger pan or zoom into instruction rotation", async () => {
+    const { props } = await mount("view");
+    const onViewCameraChange = vi.fn();
+    act(() => root.render(<BuilderCanvas {...props} viewStepId="pan-only" onViewCameraChange={onViewCameraChange} />));
+    pointer("pointerdown", 240, 300, 1);
+    pointer("pointerdown", 290, 300, 2);
+    pointer("pointermove", 340, 300, 2);
+    pointer("pointerup", 340, 300, 2);
+    expect(onViewCameraChange).toHaveBeenCalledOnce();
+    expect(onViewCameraChange.mock.lastCall![1]).toBeUndefined();
   });
   for (const toolMode of ["view", "build", "select", "delete"] as const) {
     it(`takes over touches on parts in ${toolMode} without editor transactions`, async () => {
