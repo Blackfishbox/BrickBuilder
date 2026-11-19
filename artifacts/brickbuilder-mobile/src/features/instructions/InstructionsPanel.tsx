@@ -30,6 +30,8 @@ const noop = () => undefined;
 
 export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF }: Props) {
   const plan = useMemo(() => effectiveInstructions(document), [document]);
+  const planRef = useRef(plan);
+  planRef.current = plan;
   const [index, setIndex] = useState(0);
   const [highlight, setHighlight] = useState(false);
   const current = Math.min(index, plan.steps.length - 1);
@@ -42,6 +44,8 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [angleDrafts, setAngleDrafts] = useState<Record<string, string>>({});
+  const angleDraftRef = useRef<{ stepId: string; axis: number; value: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -68,24 +72,77 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const commit = (steps: InstructionStep[]) => onChange({ ...plan, edited: true, steps });
   const patchStep = (patch: Partial<InstructionStep>) => commit(plan.steps.map((s, i) => (i === current ? { ...s, ...patch } : s)));
 
-  const go = (i: number) => { setIndex(Math.max(0, Math.min(plan.steps.length - 1, i))); setConfirmDelete(false); setLimit(PAGE); };
+  const angleDraftKey = (stepId: string, axis: number) => `${stepId}:${axis}`;
+  const clearAngleDraft = (stepId: string, axis: number) => {
+    if (angleDraftRef.current?.stepId === stepId && angleDraftRef.current.axis === axis) angleDraftRef.current = null;
+    const key = angleDraftKey(stepId, axis);
+    setAngleDrafts(previous => {
+      if (!(key in previous)) return previous;
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+  };
+  const withRotationEdit = (steps: InstructionStep[], stepId: string, axis: number, raw: string) => {
+    const value = Number(raw.replace(",", "."));
+    const target = steps.find(candidate => candidate.id === stepId);
+    if (!target || !Number.isFinite(value)) return steps;
+    const targetRotation = instructionRotationFromCameraPose(
+      target.camera?.theta ?? DEFAULT_INSTRUCTION_THETA,
+      target.camera?.phi ?? DEFAULT_INSTRUCTION_PHI,
+      target.rotation,
+    );
+    const next = [...targetRotation] as [number, number, number];
+    next[axis] = value;
+    const camera = target.camera ? {
+      ...target.camera,
+      theta: DEFAULT_INSTRUCTION_THETA,
+      phi: DEFAULT_INSTRUCTION_PHI,
+    } : undefined;
+    return steps.map(candidate => candidate.id === stepId
+      ? { ...candidate, rotation: next, camera }
+      : candidate);
+  };
+  const saveAngleDraft = (steps: InstructionStep[]) => {
+    const pending = angleDraftRef.current;
+    if (!pending) return steps;
+    clearAngleDraft(pending.stepId, pending.axis);
+    return withRotationEdit(steps, pending.stepId, pending.axis, pending.value);
+  };
+  const commitAngleField = (stepId: string, axis: number, raw: string) => {
+    clearAngleDraft(stepId, axis);
+    const latestPlan = planRef.current;
+    const updated = withRotationEdit(latestPlan.steps, stepId, axis, raw);
+    if (updated !== latestPlan.steps) onChange({ ...latestPlan, edited: true, steps: updated });
+  };
+
+  const go = (i: number) => {
+    const steps = saveAngleDraft(plan.steps);
+    if (steps !== plan.steps) commit(steps);
+    setIndex(Math.max(0, Math.min(plan.steps.length - 1, i)));
+    setConfirmDelete(false);
+    setLimit(PAGE);
+  };
 
   const addStep = () => {
-    const steps = [...plan.steps];
+    const steps = [...saveAngleDraft(plan.steps)];
     steps.splice(current + 1, 0, { id: crypto.randomUUID(), title: `Schritt ${current + 2}`, notes: "", partIds: [] });
-    commit(steps); go(current + 1); setIndex(current + 1);
+    commit(steps);
+    setIndex(current + 1);
+    setConfirmDelete(false);
+    setLimit(PAGE);
   };
   const deleteStep = () => {
     if (plan.steps.length < 2) return;
     const target = current > 0 ? current - 1 : 1;
-    const steps = plan.steps.map((s, i) => (i === target ? { ...s, partIds: target < current ? [...s.partIds, ...step.partIds] : [...step.partIds, ...s.partIds] } : s));
+    const steps = saveAngleDraft(plan.steps).map((s, i) => (i === target ? { ...s, partIds: target < current ? [...s.partIds, ...step.partIds] : [...step.partIds, ...s.partIds] } : s));
     steps.splice(current, 1);
     commit(steps); setConfirmDelete(false); setIndex(Math.max(0, current - 1));
   };
   const moveStep = (dir: -1 | 1) => {
     const to = current + dir;
     if (to < 0 || to >= plan.steps.length) return;
-    const steps = [...plan.steps];
+    const steps = [...saveAngleDraft(plan.steps)];
     [steps[current], steps[to]] = [steps[to], steps[current]];
     commit(steps); setIndex(to);
   };
@@ -104,22 +161,18 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
     step.camera?.phi ?? DEFAULT_INSTRUCTION_PHI,
     step.rotation,
   ), [step.camera?.theta, step.camera?.phi, step.rotation]);
-  const setRotation = (axis: number, raw: string) => {
-    const value = Number(raw.replace(",", "."));
-    if (!Number.isFinite(value)) return;
-    const next = [...rotation] as [number, number, number];
-    next[axis] = value;
-    const camera = step.camera ? {
-      ...step.camera,
-      theta: DEFAULT_INSTRUCTION_THETA,
-      phi: DEFAULT_INSTRUCTION_PHI,
-    } : undefined;
-    patchStep({ rotation: next, camera });
+  const setRotationDraft = (stepId: string, axis: number, value: string) => {
+    angleDraftRef.current = { stepId, axis, value };
+    setAngleDrafts(previous => ({ ...previous, [angleDraftKey(stepId, axis)]: value }));
   };
-  const resetRotation = () => patchStep({
-    rotation: undefined,
-    camera: step.camera ? { ...step.camera, theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI } : undefined,
-  });
+  const resetRotation = () => {
+    const pending = angleDraftRef.current;
+    if (pending?.stepId === step.id) clearAngleDraft(pending.stepId, pending.axis);
+    patchStep({
+      rotation: undefined,
+      camera: step.camera ? { ...step.camera, theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI } : undefined,
+    });
+  };
 
   const exportPdf = async () => {
     const controller = new AbortController();
@@ -254,8 +307,9 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
               {(["X", "Y", "Z"] as const).map((axis, a) => (
                 <label key={axis} className="ins-field">
                   <span>{axis}</span>
-                  <input key={`${step.id}-${a}-${rotation[a]}`} type="text" inputMode="decimal" defaultValue={String(rotation[a])}
-                    onBlur={e => setRotation(a, e.target.value)} onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  <input type="text" inputMode="decimal" value={angleDrafts[angleDraftKey(step.id, a)] ?? String(rotation[a])}
+                    onChange={e => setRotationDraft(step.id, a, e.target.value)} onBlur={e => commitAngleField(step.id, a, e.currentTarget.value)}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                     aria-label={`Drehung ${axis} in Grad`} data-testid={`input-instructions-rotation-${axis.toLowerCase()}`} />
                 </label>
               ))}

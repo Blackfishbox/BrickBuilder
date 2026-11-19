@@ -48,6 +48,48 @@ it("persists manual preview camera changes independently for each step", () => {
   expect(preview.mock.lastCall![0].viewCamera).toEqual(saved);
 });
 
+it("commits a focused angle edit to its original step before switching steps", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  const nextStepCamera = {
+    theta: 1.1, phi: 0.9, distance: 14, target: [2, 3, 4] as [number, number, number],
+    referenceDistance: 22, referenceTarget: [0, 0, 0] as [number, number, number],
+  };
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["b"], rotation: [0, 0, 0] },
+    { id: "two", title: "Two", notes: "", partIds: [], rotation: [0, 60, 0], camera: nextStepCamera },
+  ] };
+  let savedDocument = source;
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(current => {
+      const updated = updateInstructions(current, plan);
+      savedDocument = updated;
+      return updated;
+    })} onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+
+  act(() => {
+    const input = host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!;
+    input.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "37");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-next"]')!.click());
+
+  expect(preview.mock.lastCall![0].viewCamera).toEqual(nextStepCamera);
+  expect(preview.mock.lastCall![0].viewRotation).toEqual([0, 60, 0]);
+  expect(savedDocument.instructions?.steps[0].rotation).toEqual([37, 0, 0]);
+  expect(savedDocument.instructions?.steps[1].rotation).toEqual([0, 60, 0]);
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-prev"]')!.click());
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("37");
+  expect(preview.mock.lastCall![0].viewRotation).toEqual([37, 0, 0]);
+});
+
 it("shows touch rotations in the fields while zoom and pan leave the angles alone", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();
