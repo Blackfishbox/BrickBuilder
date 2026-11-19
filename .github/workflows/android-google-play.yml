@@ -112,6 +112,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install reviewed lockfile dependencies
         run: pnpm install --frozen-lockfile
+      - name: Check all resolved dependencies for security advisories
+        run: pnpm run audit:dependencies
       - name: Check types and regressions
         run: |
           node --test scripts/android/*.test.mjs
