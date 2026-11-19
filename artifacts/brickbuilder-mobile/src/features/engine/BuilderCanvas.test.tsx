@@ -178,6 +178,36 @@ function transformedPartBounds(model: ImportedModel, instance: ImportedModel["in
   return bounds;
 }
 
+function transformedPartBoxBounds(model: ImportedModel, instance: ImportedModel["instances"][number]): Box3 {
+  const bounds = new Box3(), point = new Vector3();
+  for (const surface of compilePart(model, instance.reference, "16")) {
+    for (const positions of [surface.positions, surface.edges]) {
+      for (let index = 0; index < positions.length; index += 3) {
+        bounds.expandByPoint(point.fromArray(positions, index));
+      }
+    }
+  }
+  return bounds.applyMatrix4(worldMatrix(instance.matrix));
+}
+
+function importedTiltTransform(
+  position: Vector3,
+  angles: readonly [number, number, number],
+  mirrored: boolean,
+): Affine {
+  const world = new Matrix4().makeRotationFromEuler(new Euler(
+    angles[0] * Math.PI / 180, angles[1] * Math.PI / 180, angles[2] * Math.PI / 180, "XYZ",
+  ));
+  if (mirrored) world.multiply(new Matrix4().makeScale(-1, 1, 1));
+  world.setPosition(position);
+  // Imported matrices use LDraw's Y-down coordinates and LDU translations.
+  const yFlip = new Matrix4().makeScale(1, -1, 1);
+  const source = yFlip.clone().multiply(world).multiply(yFlip);
+  const matrix = affine(source);
+  matrix[3] *= 20; matrix[7] *= 20; matrix[11] *= 20;
+  return matrix;
+}
+
 const basis = (matrix: Affine) => matrix.filter((_, index) => ![3, 7, 11].includes(index));
 
 function licensedTiltedMechanicalPair(targetPart: string, movingPart: string) {
@@ -408,6 +438,80 @@ describe("frame-coalesced drag transactions", () => {
         instance.id === "remote" ? movedPart : instance) };
       await renderStep(moved, movedPart);
       await renderStep({ ...moved, instances: moved.instances.filter(instance => instance.id !== "remote") });
+    });
+
+    it(`keeps tilted and mirrored imported bounds current in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 1);
+      model.resources["parts/test.dat"].content =
+        "3 16 -40 -10 -10 40 -10 -10 -20 30 30\n2 24 -40 -10 -10 40 -10 -10";
+      const props = { projectId: `tilted-floor-${rendererName}`, bricks: [], imported: model, selectedId: null,
+        selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? instanceIndex(
+          observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group,
+        ) : observed.scene).toBeDefined());
+      });
+      flushFrame();
+      const camera = { ...observed.cameraPose! };
+      const originalBounds = currentImportedBounds(webgl).clone();
+
+      const transformed = (position: Vector3, angles: readonly [number, number, number], mirrored: boolean) => ({
+        ...model.instances[0], id: "transformed",
+        matrix: importedTiltTransform(position, angles, mirrored),
+      });
+      const renderStep = async (next: ImportedModel, changed?: ImportedModel["instances"][number]) => {
+        await act(async () => root.render(<BuilderCanvas {...props} imported={next} />));
+        flushFrame();
+
+        const expectedBounds = next.instances.reduce(
+          (bounds, instance) => bounds.union(transformedPartBoxBounds(next, instance)),
+          new Box3(),
+        );
+        const actualBounds = currentImportedBounds(webgl);
+        expect(actualBounds.min.x).toBeCloseTo(expectedBounds.min.x, 3);
+        expect(actualBounds.max.x).toBeCloseTo(expectedBounds.max.x, 3);
+        expect(actualBounds.min.y).toBeCloseTo(expectedBounds.min.y, 3);
+        expect(actualBounds.max.y).toBeCloseTo(expectedBounds.max.y, 3);
+        expect(actualBounds.min.z).toBeCloseTo(expectedBounds.min.z, 3);
+        expect(actualBounds.max.z).toBeCloseTo(expectedBounds.max.z, 3);
+        expectConstructionArea(actualBounds);
+        if (changed) {
+          const expectedPart = transformedPartBoxBounds(next, changed);
+          const actualPart = currentImportedInstanceBounds(changed.id, webgl);
+          expect(actualPart.min.x).toBeCloseTo(expectedPart.min.x, 3);
+          expect(actualPart.max.x).toBeCloseTo(expectedPart.max.x, 3);
+          expect(actualPart.min.z).toBeCloseTo(expectedPart.min.z, 3);
+          expect(actualPart.max.z).toBeCloseTo(expectedPart.max.z, 3);
+          const area = constructionArea(actualBounds);
+          expect(area.minX).toBeLessThanOrEqual(actualPart.min.x);
+          expect(area.maxX).toBeGreaterThanOrEqual(actualPart.max.x);
+          expect(area.minZ).toBeLessThanOrEqual(actualPart.min.z);
+          expect(area.maxZ).toBeGreaterThanOrEqual(actualPart.max.z);
+        }
+        expectCameraPose(camera);
+      };
+
+      const tilted = transformed(new Vector3(90, 12, -70), [38, 0, -27], false);
+      const added = { ...model, instances: [...model.instances, tilted] };
+      await renderStep(added, tilted);
+
+      const tiltedAndMirrored = transformed(new Vector3(-150, -8, 130), [-31, 19, 42], true);
+      const moved = { ...added, instances: added.instances.map(instance =>
+        instance.id === "transformed" ? tiltedAndMirrored : instance) };
+      await renderStep(moved, tiltedAndMirrored);
+
+      await renderStep({ ...moved, instances: moved.instances.filter(instance => instance.id !== "transformed") });
+      const restoredBounds = currentImportedBounds(webgl);
+      expect(restoredBounds.min.x).toBeCloseTo(originalBounds.min.x, 3);
+      expect(restoredBounds.max.x).toBeCloseTo(originalBounds.max.x, 3);
+      expect(restoredBounds.min.y).toBeCloseTo(originalBounds.min.y, 3);
+      expect(restoredBounds.max.y).toBeCloseTo(originalBounds.max.y, 3);
+      expect(restoredBounds.min.z).toBeCloseTo(originalBounds.min.z, 3);
+      expect(restoredBounds.max.z).toBeCloseTo(originalBounds.max.z, 3);
     });
   }
 
