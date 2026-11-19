@@ -8,6 +8,7 @@ export const MARKER_LIMIT = 32;
 export class ConnectionOverlay {
   readonly canvas = document.createElement("canvas");
   contacts: Contact[] = [];
+  previews: Contact[] = [];
   floating = new Map<string, Box3>();
   visible = true;
   constructor(host: HTMLElement) {
@@ -44,6 +45,30 @@ export class ConnectionOverlay {
       context.fillStyle = "#fff"; context.font = "bold 12px sans-serif"; context.fillText("!", x + 3, y - 5);
     }
     const outlined = new Set<string>();
+    for (const contact of (this.visible ? this.previews : []).slice(0, MARKER_LIMIT)) {
+      const point = new Vector3(...contact.position); point.y += offset;
+      const p = project(point); if (!p.visible) continue;
+      context.save();
+      context.strokeStyle = "#2878c7"; context.fillStyle = "#fff";
+      context.lineWidth = 2; context.setLineDash([2, 2]);
+      context.beginPath(); context.arc(p.x, p.y, 7, 0, Math.PI * 2); context.fill(); context.stroke();
+      context.setLineDash([]);
+      context.beginPath(); context.moveTo(p.x - 3, p.y); context.lineTo(p.x + 3, p.y);
+      context.moveTo(p.x, p.y - 3); context.lineTo(p.x, p.y + 3); context.stroke();
+      context.restore();
+      if (outlined.has(contact.targetId)) continue;
+      outlined.add(contact.targetId);
+      const box = bounds(contact.targetId); if (!box) continue;
+      const points = [];
+      for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z])
+        points.push(project(new Vector3(x, y + offset, z)));
+      if (points.some(v => !v.visible)) continue;
+      const xs = points.map(v => v.x), ys = points.map(v => v.y);
+      context.save(); context.strokeStyle = "#2878c7"; context.globalAlpha = 0.8;
+      context.setLineDash([2, 3]);
+      context.strokeRect(Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      context.restore();
+    }
     for (const contact of (this.visible ? this.contacts : []).slice(0, MARKER_LIMIT)) {
       const point = new Vector3(...contact.position); point.y += offset;
       const p = project(point); if (!p.visible) continue;
@@ -65,5 +90,5 @@ export class ConnectionOverlay {
       context.restore();
     }
   }
-  dispose(): void { this.contacts = []; this.floating.clear(); this.canvas.remove(); }
+  dispose(): void { this.contacts = []; this.previews = []; this.floating.clear(); this.canvas.remove(); }
 }
