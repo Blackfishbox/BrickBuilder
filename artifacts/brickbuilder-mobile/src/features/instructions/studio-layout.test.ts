@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "../editor/model";
 import { parseLDraw } from "../formats/ldraw/parser";
@@ -75,6 +77,17 @@ describe("source-preserving Studio layout edits", () => {
     expect(() => studioNodes("<Instruction><Broken></Instruction>")).toThrow();
     expect(() => studioNodes(" ".repeat(8 * 1024 * 1024 + 1))).toThrow();
   });
+
+  it("rejects a near-limit malformed stop-node payload within a bounded process", () => {
+    const worker = fileURLToPath(new URL("../malformed-xml-import-worker.ts", import.meta.url));
+    const packageRoot = fileURLToPath(new URL("../../../", import.meta.url));
+    const tsx = fileURLToPath(new URL("../../../node_modules/.bin/tsx", import.meta.url));
+    const result = spawnSync(tsx, [worker, "studio"], {
+      cwd: packageRoot, timeout: 5000, maxBuffer: 16 * 1024,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr.toString() || result.stdout.toString()).toBe(0);
+  }, 15000);
 
   it("exports layout-only changes without rewriting models, source layout or image resources", () => {
     const doc = fixture(), before = readZip(new Uint8Array(doc.imported!.originalBytes));

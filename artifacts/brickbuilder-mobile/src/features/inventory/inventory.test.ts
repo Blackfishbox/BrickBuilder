@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { parseInventory } from "./import";
 import { allocatedCounts, inventorySpreadCandidates, MAX_INVENTORY_SPREAD_UNITS, replaceInventory, validateInventory } from "./accounting";
 import { MAX_LIST_BYTES, type InventoryChoice } from "./types";
@@ -77,6 +79,16 @@ describe("bounded inventory imports", () => {
     expect(() => parseInventory(csv, "list.txt")).toThrow("dokumentierte CSV");
     expect(parseInventory('\uFEFFpart_id,color_id,quantity\r\n"3001","5","2"\r\n', "quoted.csv").rows[0].quantity).toBe(2);
   });
+  it("rejects a near-limit malformed stop-node payload within a bounded process", () => {
+    const worker = fileURLToPath(new URL("../malformed-xml-import-worker.ts", import.meta.url));
+    const packageRoot = fileURLToPath(new URL("../../../", import.meta.url));
+    const tsx = fileURLToPath(new URL("../../../node_modules/.bin/tsx", import.meta.url));
+    const result = spawnSync(tsx, [worker, "inventory"], {
+      cwd: packageRoot, timeout: 5000, maxBuffer: 16 * 1024,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr.toString() || result.stdout.toString()).toBe(0);
+  }, 15000);
 });
 
 describe("durable stock allocations", () => {
