@@ -42,10 +42,13 @@ function flushFrame(): void {
   act(() => { callbacks.forEach(callback => callback(performance.now())); });
 }
 function pointer(type: string, x: number, y: number, id = 1): void {
+  pointerOn(host, type, x, y, id);
+}
+function pointerOn(target: HTMLElement, type: string, x: number, y: number, id = 1): void {
   act(() => {
     const event = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true });
     Object.defineProperty(event, "pointerId", { value: id });
-    host.dispatchEvent(event);
+    target.dispatchEvent(event);
   });
 }
 function pickPoint(): { x: number; y: number } {
@@ -166,6 +169,26 @@ describe("frame-coalesced drag transactions", () => {
     expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 3 Noppen");
     act(() => toggle.click());
     expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
+  });
+  it("keeps slider drags from starting a canvas camera gesture", async () => {
+    await mount("select");
+    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!.click());
+    const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
+    const cameraPosition = observed.camera!.position.toArray();
+    const capturePointer = vi.mocked(host.setPointerCapture);
+    capturePointer.mockClear();
+
+    pointerOn(range, "pointerdown", 120, 150);
+    pointerOn(range, "pointermove", 180, 150);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
+      range.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    pointerOn(range, "pointerup", 180, 150);
+
+    expect(range.value).toBe("3");
+    expect(capturePointer).not.toHaveBeenCalled();
+    expect(observed.camera!.position.toArray()).toEqual(cameraPosition);
   });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
