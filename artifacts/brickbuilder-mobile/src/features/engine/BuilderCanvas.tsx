@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link2, TriangleAlert, Cloud } from "lucide-react";
-import { collisionWarnings } from "./collision-warning";
+import { collisionWarningsInWorker } from "./collision-warning";
 import {
   BoxGeometry,
   Box3,
@@ -971,7 +971,7 @@ export function BuilderCanvas({
     invalidatorRef.current?.();
     if (showCollisions) {
       const offset = sceneModelRef.current && sceneProjectRef.current === projectId ? importedOffsetRef.current : undefined;
-      void collisionWarnings(bricks, imported, controller.signal, offset).then(result => {
+      void collisionWarningsInWorker(bricks, imported, controller.signal, offset).then(result => {
         if (controller.signal.aborted) return;
         if (overlayRef.current) overlayRef.current.collisions = result.boxes;
         setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false, failed: false });

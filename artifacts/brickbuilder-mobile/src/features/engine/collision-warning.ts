@@ -5,6 +5,8 @@ import { OBB } from "three/examples/jsm/math/OBB.js";
 import { importedWarningQuery } from "./imported-collision";
 import { stackingBounds } from "./stacking";
 import { activeConnections } from "../connections/engine";
+import { candidates } from "@workspace/ldraw-source";
+import { referenceLine } from "../formats/ldraw/parser";
 
 export interface CollisionWarnings {
   boxes: Map<string, Box3>;
@@ -95,4 +97,120 @@ export async function collisionWarnings(
     }
   }
   return { boxes, uncertain };
+}
+
+interface WorkerCollisionResult {
+  boxes: [string, [number, number, number], [number, number, number]][];
+  uncertain: boolean;
+}
+
+function abortError(): DOMException {
+  return new DOMException("Aborted", "AbortError");
+}
+
+/** Keep only the geometry dependencies the checker needs before transferring
+ * the model. This avoids cloning unrelated archive data and library resources.
+ */
+async function collisionModelSnapshot(model: ImportedModel, signal: AbortSignal): Promise<ImportedModel> {
+  const resources: ImportedModel["resources"] = {};
+  const pending: string[] = [];
+  const instances: ImportedModel["instances"] = [];
+  let work = 0, sliceStart = performance.now();
+  const checkpoint = async () => {
+    if (signal.aborted) throw abortError();
+    if (++work % 128 === 0 || performance.now() - sliceStart > 8) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (signal.aborted) throw abortError();
+      sliceStart = performance.now();
+    }
+  };
+  for (const instance of model.instances) {
+    instances.push({
+      id: instance.id,
+      reference: instance.reference,
+      colorCode: instance.colorCode,
+      matrix: [...instance.matrix] as typeof instance.matrix,
+      sourcePath: [],
+      part: { ldrawId: instance.part.ldrawId, status: instance.part.status },
+    });
+    if (instance.part.status === "resolved") pending.push(instance.reference);
+    await checkpoint();
+  }
+  while (pending.length) {
+    await checkpoint();
+    const reference = pending.pop()!;
+    let path: string | undefined;
+    try { path = candidates(reference).find(candidate => Object.hasOwn(model.resources, candidate)); }
+    catch { continue; }
+    if (!path || Object.hasOwn(resources, path)) continue;
+    const source = model.resources[path];
+    // Geometry compilation and connector descriptions only read `content`.
+    resources[path] = { content: source.content } as ImportedModel["resources"][string];
+    let start = 0;
+    while (start < source.content.length) {
+      const newline = source.content.indexOf("\n", start);
+      const end = newline < 0 ? source.content.length : newline;
+      const line = source.content.slice(start, end);
+      start = end + 1;
+      if (/^\s*1\s/.test(line)) {
+        try { pending.push(referenceLine(line).reference); } catch { /* Invalid lines are handled as unknown by the worker. */ }
+      }
+      await checkpoint();
+    }
+  }
+  return {
+    version: 1,
+    format: model.format,
+    sourceName: model.sourceName,
+    originalBytes: [],
+    sourceText: "",
+    root: model.root,
+    sections: {},
+    instances,
+    issues: [],
+    resources,
+    legalDocuments: [],
+  };
+}
+
+/** Run the optional diagnostic off the UI thread. Terminating the dedicated
+ * worker makes cancellation immediate, even during a synchronous geometry
+ * compilation, connection-index build, or narrow-phase query.
+ */
+export async function collisionWarningsInWorker(
+  bricks: Brick[], model: ImportedModel | undefined, signal: AbortSignal, importedOffset?: number,
+): Promise<CollisionWarnings> {
+  if (signal.aborted) throw abortError();
+  // Non-browser test and server environments have no Worker implementation.
+  if (typeof Worker === "undefined") return collisionWarnings(bricks, model, signal, importedOffset);
+  const snapshot = model ? await collisionModelSnapshot(model, signal) : undefined;
+  if (signal.aborted) throw abortError();
+
+  const worker = new Worker(new URL("./collision-warning.worker.ts", import.meta.url), { type: "module" });
+  return new Promise<CollisionWarnings>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      worker.terminate();
+      callback();
+    };
+    const onAbort = () => finish(() => reject(abortError()));
+    signal.addEventListener("abort", onAbort, { once: true });
+    worker.onmessage = (event: MessageEvent<WorkerCollisionResult | { error: { name: string; message: string } }>) => {
+      const result = event.data;
+      if ("error" in result) {
+        finish(() => reject(Object.assign(new Error(result.error.message), { name: result.error.name })));
+        return;
+      }
+      finish(() => resolve({
+        boxes: new Map(result.boxes.map(([id, min, max]) => [id, new Box3(new Vector3(...min), new Vector3(...max))])),
+        uncertain: result.uncertain,
+      }));
+    };
+    worker.onerror = event => finish(() => reject(new Error(event.message || "Collision worker failed")));
+    worker.onmessageerror = () => finish(() => reject(new Error("Collision worker response could not be read")));
+    worker.postMessage({ bricks, model: snapshot, importedOffset });
+  });
 }

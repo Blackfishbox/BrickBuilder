@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Brick } from "../editor/model";
 import { engineFixture } from "./engine-fixtures";
-import { collisionWarnings } from "./collision-warning";
+import { collisionWarnings, collisionWarningsInWorker } from "./collision-warning";
 import { connectionFixture, partLine } from "../connections/fixtures";
 import { activeConnections } from "../connections/engine";
 
@@ -65,6 +65,45 @@ describe("optional collision diagnostics", () => {
     const controller = new AbortController();
     controller.abort();
     await expect(collisionWarnings([brick], undefined, controller.signal)).rejects.toHaveProperty("name", "AbortError");
+  });
+  it("terminates a running worker as soon as its model becomes obsolete", async () => {
+    let instance: { terminated: boolean } | undefined;
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      terminated = false;
+      constructor() { instance = this; }
+      postMessage() {}
+      terminate() { this.terminated = true; }
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const controller = new AbortController();
+    const result = collisionWarningsInWorker([brick], undefined, controller.signal);
+    controller.abort();
+    await expect(result).rejects.toHaveProperty("name", "AbortError");
+    expect(instance?.terminated).toBe(true);
+  });
+  it("restores verified warning boxes returned by the worker", async () => {
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      constructor() {}
+      postMessage() {
+        queueMicrotask(() => this.onmessage?.({ data: {
+          boxes: [["a", [0, 0, 0], [1, 1, 1]], ["b", [1, 0, 0], [2, 1, 1]]],
+          uncertain: true,
+        } } as MessageEvent));
+      }
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const result = await collisionWarningsInWorker([brick], undefined, new AbortController().signal);
+    expect([...result.boxes.keys()]).toEqual(["a", "b"]);
+    expect(result.boxes.get("a")?.min.toArray()).toEqual([0, 0, 0]);
+    expect(result.boxes.get("b")?.max.toArray()).toEqual([2, 1, 1]);
+    expect(result.uncertain).toBe(true);
   });
   it("still checks local bricks when an imported model is present", async () => {
     const warnings = await collisionWarnings(
