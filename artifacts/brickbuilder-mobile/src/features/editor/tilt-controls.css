@@ -12,6 +12,16 @@
 }
 .tilt-panel strong, .tilt-panel small { grid-column: 1 / -1; }
 .tilt-panel small { color: #78867c; font-size: 10px; }
+.tilt-axis-control {
+  display: grid; grid-column: 1 / -1; grid-template-columns: 58px minmax(80px, 1fr) 42px;
+  align-items: center; gap: 8px; min-height: 44px;
+}
+.tilt-axis-control label { color: #536c5f; font-weight: 800; }
+.tilt-axis-control input[type="range"] {
+  width: 100%; min-width: 0; height: 40px; margin: 0; accent-color: #365f4d; touch-action: pan-y;
+  cursor: pointer;
+}
+.tilt-axis-control output { color: #30463d; font-variant-numeric: tabular-nums; text-align: right; }
 .tilt-panel label {
   display: flex; align-items: center; gap: 5px; min-height: 40px; padding: 4px 8px;
   border: 1px solid #e1ddd0; border-radius: 8px; background: #fffef9;
@@ -37,6 +47,8 @@
   border-color: #3a4d43; background: #1b2822; color: #d5e4da;
 }
 .dark .tilt-panel small, .dark .tilt-panel label span, .dark .tilt-panel label b { color: #9fb3a5; }
+.dark .tilt-axis-control label, .dark .tilt-axis-control output { color: #d5e4da; }
+.dark .tilt-axis-control input[type="range"] { accent-color: #9fc9aa; }
 .dark .tilt-panel label { border-color: #3a4d43; background: #17211c; }
 .dark .tilt-panel label input { color: #e5eee8; }
 .dark .mobile-selection-actions .tilt-controls summary { background: #26362e; color: #d5e4da; }
