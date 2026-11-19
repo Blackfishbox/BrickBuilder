@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Group, Matrix4, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
+import { Box3, Euler, Group, Matrix4, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -24,7 +24,9 @@ import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model"
 import { moveImported, tiltImported } from "../editor/ldraw-editing";
 import type { Affine } from "../formats/types";
 import { connectionFixture, partLine } from "../connections/fixtures";
-import { affine, matrix4 } from "../connections/description";
+import { affine, describeConnections, matrix4, transformConnector } from "../connections/description";
+import { axes, intervals, potentialPair, profileOverlap } from "../connections/profiles";
+import { ConnectionOverlay } from "../connections/overlay";
 
 const observed = vi.hoisted(() => ({
   scene: undefined as SoftwareScene | undefined,
@@ -173,6 +175,70 @@ function transformedPartBounds(model: ImportedModel, instance: ImportedModel["in
     }
   }
   return bounds;
+}
+
+const basis = (matrix: Affine) => matrix.filter((_, index) => ![3, 7, 11].includes(index));
+
+function licensedTiltedMechanicalPair(targetPart: string, movingPart: string) {
+  const document = { ...createEmptyDocument(), imported: connectionFixture([
+    partLine(targetPart), partLine(movingPart, 160),
+  ].join("\n")) };
+  const [target, moving] = document.imported.instances;
+  const approaches: Record<string, { x: number; y: number; z: number }> = {
+    "3700/2780": { x: 0.03, y: -0.5, z: 0.5 },
+    "32064/3705": { x: 0.02, y: -0.5, z: 0.02 },
+    "4085a/30374": { x: 0.02, y: -0.2, z: -1.02 },
+  };
+  const snap = snapping.snapConnection(document.imported, moving.id, approaches[`${targetPart}/${movingPart}`]);
+  if (!snap) throw new Error(`Could not orient licensed example ${movingPart}/${targetPart}`);
+
+  const tilts = { target: [30, -12] as const, moving: [-15, 24] as const };
+  const aligned = matrix4(snap.matrix).setPosition(0, 0, 0);
+  const targetTilt = new Matrix4().makeRotationFromEuler(new Euler(
+    tilts.target[0] * Math.PI / 180, 0, tilts.target[1] * Math.PI / 180, "XYZ",
+  ));
+  const movingTilt = new Matrix4().makeRotationFromEuler(new Euler(
+    tilts.moving[0] * Math.PI / 180, 0, tilts.moving[1] * Math.PI / 180, "XYZ",
+  ));
+  const ldrawToWorld = new Matrix4().makeScale(1, -1, 1);
+  aligned.premultiply(ldrawToWorld.clone()
+    .multiply(movingTilt.invert().multiply(targetTilt))
+    .multiply(ldrawToWorld));
+  const instances = [target, {
+    ...moving,
+    matrix: affine(aligned.setPosition(moving.matrix[3], moving.matrix[7], moving.matrix[11])),
+  }];
+  let tilted = { ...document, imported: { ...document.imported, instances } };
+  tilted = tiltImported(tilted, target.id, ...tilts.target) as typeof tilted;
+  tilted = tiltImported(tilted, moving.id, ...tilts.moving) as typeof tilted;
+  const model = tilted.imported!;
+  const targets = describeConnections(`${targetPart}.dat`, model).connectors
+    .map(connector => transformConnector(connector, model.instances[0].matrix))
+    .filter((connector): connector is NonNullable<typeof connector> => !!connector);
+  const movers = describeConnections(`${movingPart}.dat`, model).connectors
+    .map(connector => transformConnector(connector, model.instances[1].matrix))
+    .filter((connector): connector is NonNullable<typeof connector> => !!connector);
+  for (const a of movers) for (const b of targets) {
+    if (!potentialPair(a, b)) continue;
+    const aa = axes(a), bb = axes(b), direction = aa.y.dot(bb.y) > 0 ? 1 : -1;
+    if (Math.abs(Math.abs(aa.y.dot(bb.y)) - 1) > 1e-4) continue;
+    const offsets = intervals(a).flatMap(section => [section.lo * direction, section.hi * direction])
+      .flatMap(movingEnd => intervals(b).flatMap(section => [section.lo - movingEnd, section.hi - movingEnd]));
+    for (const offset of offsets) {
+      if (!profileOverlap(a, b, offset, direction, aa.x.dot(bb.x))) continue;
+      const delta = bb.position.clone().addScaledVector(bb.y, offset).sub(aa.position);
+      return {
+        document: tilted, id: model.instances[1].id, targetId: model.instances[0].id,
+        movingConnectorId: a.id, targetConnectorId: b.id,
+        desired: {
+          x: (model.instances[1].matrix[3] + delta.x) / 20,
+          y: -(model.instances[1].matrix[7] + delta.y) / 20,
+          z: (model.instances[1].matrix[11] + delta.z) / 20,
+        },
+      };
+    }
+  }
+  throw new Error(`No aligned licensed profile pair found for ${movingPart}/${targetPart}`);
 }
 
 function expectConstructionArea(bounds: Box3): void {
@@ -554,6 +620,122 @@ describe("frame-coalesced drag transactions", () => {
       expect(committedBounds.min.distanceTo(previewBounds.min)).toBeLessThan(1e-6);
       expect(committedBounds.max.distanceTo(previewBounds.max)).toBeLessThan(1e-6);
       expect(snapping.activeConnections(committed.imported!, id).length).toBeGreaterThan(0);
+    });
+  }
+  for (const webgl of [true, false]) {
+    for (const [targetPart, movingPart] of [["3700", "2780"], ["32064", "3705"], ["4085a", "30374"]] as const) {
+      it(`renders committed mixed-tilt ${movingPart}/${targetPart} joints in ${webgl ? "WebGL" : "software view"}`, async () => {
+        observed.webglEnabled = webgl;
+        const pair = licensedTiltedMechanicalPair(targetPart, movingPart);
+        const model = pair.document.imported!, moving = model.instances.find(instance => instance.id === pair.id)!;
+        const result = snapping.constructionTransform(model, pair.id, pair.desired);
+        expect(result.contacts.some(contact => contact.movingConnectorId === pair.movingConnectorId &&
+          contact.targetConnectorId === pair.targetConnectorId)).toBe(true);
+        expect(basis(result.matrix)).toEqual(basis(moving.matrix));
+        const committed = moveImported(pair.document, pair.id, {
+          x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20,
+        }, false, result.matrix);
+        const committedModel = committed.imported!;
+        const markerArc = vi.fn();
+        const overlayContext = new Proxy({ arc: markerArc }, {
+          get: (target, key: string) => key in target ? target[key as keyof typeof target] : vi.fn(),
+          set: () => true,
+        });
+        vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+          kind === "2d" ? overlayContext : observed.webglEnabled && kind === "webgl2" ? {} : null) as HTMLCanvasElement["getContext"]);
+        const overlayDraw = vi.spyOn(ConnectionOverlay.prototype, "draw");
+        const props = { projectId: `mixed-tilt-${targetPart}-${movingPart}`, bricks: [], imported: committedModel,
+          selectedId: pair.id, selectedType: "brick-2x2" as const, selectedColor: "#B40000",
+          toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+        act(() => root.render(<BuilderCanvas {...props} />));
+        await act(async () => {
+          await vi.waitFor(() => {
+            const root = webgl
+              ? observed.scene3d?.children.find(child => instanceIndex(child as Group)) as Group | undefined
+              : undefined;
+            expect(webgl ? root && instanceIndex(root)?.model : observed.scene?.model).toBe(committedModel);
+          });
+        });
+        host = element.querySelector("[data-testid='canvas-3d']")!;
+        flushFrame();
+
+        const committedMoving = committedModel.instances.find(instance => instance.id === pair.id)!;
+        for (const instance of [committedModel.instances.find(value => value.id === pair.targetId)!, committedMoving]) {
+          const actual = currentImportedInstanceBounds(instance.id, webgl);
+          const expected = transformedPartBounds(committedModel, instance);
+          const rendered = webgl
+            ? instanceIndex(observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group)!.records.get(instance.id)!.instance
+            : observed.scene!.records.get(instance.id)!.instance;
+          expect(rendered.matrix).toEqual(instance.matrix);
+          expect(actual.min.distanceTo(expected.min)).toBeLessThan(0.25);
+          expect(actual.max.distanceTo(expected.max)).toBeLessThan(0.25);
+        }
+        expect(element.querySelector("[data-testid='connection-status']")?.textContent)
+          .toContain("geprüfte Verbindung");
+        expect(overlayDraw.mock.contexts.some(context =>
+          (context as ConnectionOverlay).contacts.some(contact =>
+            contact.movingConnectorId === pair.movingConnectorId &&
+            contact.targetConnectorId === pair.targetConnectorId &&
+            contact.state === "verified"))).toBe(true);
+        expect(markerArc.mock.calls.some(([, , radius]) => radius === 5)).toBe(true);
+      });
+    }
+  }
+  for (const [targetPart, movingPart] of [["3700", "2780"], ["32064", "3705"], ["4085a", "30374"]] as const) {
+    it(`leaves a misaligned ${movingPart}/${targetPart} near-miss visibly unconnected`, async () => {
+      const aligned = licensedTiltedMechanicalPair(targetPart, movingPart);
+      const document = tiltImported(aligned.document, aligned.id, -15, 28) as typeof aligned.document;
+      const model = document.imported!;
+      const target = model.instances.find(instance => instance.id === aligned.targetId)!;
+      const moving = model.instances.find(instance => instance.id === aligned.id)!;
+      const a = describeConnections(`${movingPart}.dat`, model).connectors
+        .map(connector => transformConnector(connector, moving.matrix)).find(connector => connector?.id === aligned.movingConnectorId)!;
+      const b = describeConnections(`${targetPart}.dat`, model).connectors
+        .map(connector => transformConnector(connector, target.matrix)).find(connector => connector?.id === aligned.targetConnectorId)!;
+      const aa = axes(a), bb = axes(b), offset = aa.position.clone().sub(bb.position).dot(bb.y);
+      const delta = bb.position.clone().addScaledVector(bb.y, offset).sub(aa.position);
+      const desired = {
+        x: (moving.matrix[3] + delta.x) / 20,
+        y: -(moving.matrix[7] + delta.y) / 20,
+        z: (moving.matrix[11] + delta.z) / 20,
+      };
+      const result = snapping.constructionTransform(model, aligned.id, desired);
+      expect(result.status).toBe("unconnected");
+      expect(result.contacts.some(contact => contact.movingConnectorId === aligned.movingConnectorId &&
+        contact.targetConnectorId === aligned.targetConnectorId)).toBe(false);
+      expect(basis(result.matrix)).toEqual(basis(moving.matrix));
+      const committed = moveImported(document, aligned.id, {
+        x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20,
+      }, false, result.matrix);
+      const committedModel = committed.imported!;
+      const markerArc = vi.fn();
+      const overlayContext = new Proxy({ arc: markerArc }, {
+        get: (target, key: string) => key in target ? target[key as keyof typeof target] : vi.fn(),
+        set: () => true,
+      });
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+        kind === "2d" ? overlayContext : null) as HTMLCanvasElement["getContext"]);
+      const overlayDraw = vi.spyOn(ConnectionOverlay.prototype, "draw");
+      const props = { projectId: `near-miss-${targetPart}-${movingPart}`, bricks: [], imported: committedModel,
+        selectedId: aligned.id, selectedType: "brick-2x2" as const, selectedColor: "#B40000",
+        toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => { await vi.waitFor(() => expect(observed.scene?.model).toBe(committedModel)); });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      await act(async () => {
+        await vi.waitFor(() => expect(snapping.activeConnections(committedModel, aligned.id)).toHaveLength(0));
+      });
+      flushFrame();
+      expect(element.querySelector("[data-testid='connection-status']")?.textContent)
+        .toContain("Keine aktive Verbindung");
+      expect(overlayDraw.mock.contexts.some(context =>
+        (context as ConnectionOverlay).contacts.some(contact =>
+          contact.movingConnectorId === aligned.movingConnectorId &&
+          contact.targetConnectorId === aligned.targetConnectorId))).toBe(false);
+      expect(markerArc.mock.calls.some(([, , radius]) => radius === 5)).toBe(false);
+      expect(snapping.activeConnections(committedModel, aligned.id).some(contact =>
+        contact.movingConnectorId === aligned.movingConnectorId &&
+        contact.targetConnectorId === aligned.targetConnectorId)).toBe(false);
     });
   }
   for (const webgl of [true, false]) {
