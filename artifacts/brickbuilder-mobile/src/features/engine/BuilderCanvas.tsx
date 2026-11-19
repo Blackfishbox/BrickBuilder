@@ -27,6 +27,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
+import type { WebGLProgramParametersWithUniforms } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { instructionDisplayColor } from "../instructions/highlight-color";
 import { applyInstructionCameraRotation } from "./instruction-camera";
@@ -335,7 +336,7 @@ function applyCanvasInstructionFocus(root: Group | null, current?: ReadonlySet<s
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       for (const material of materials) {
         const compile = material.onBeforeCompile;
-        material.onBeforeCompile = (shader, renderer) => {
+        material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms, renderer: WebGLRenderer) => {
           compile.call(material, shader, renderer);
           shader.vertexShader = FOCUS_VERTEX_HEADER + shader.vertexShader.replace(
             "#include <begin_vertex>", "#include <begin_vertex>\nvInstructionFocus = instructionFocus;",
