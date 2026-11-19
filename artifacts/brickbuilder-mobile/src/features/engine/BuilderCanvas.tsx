@@ -26,7 +26,12 @@ import {
   WebGLRenderer,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { applyInstructionCameraRotation } from "./instruction-camera";
+import {
+  applyInstructionCameraRotation,
+  DEFAULT_INSTRUCTION_PHI,
+  DEFAULT_INSTRUCTION_THETA,
+  instructionRotationFromCameraPose,
+} from "./instruction-camera";
 import { applyInstructionFocus, installInstructionFocus, instructionDisplayColor } from "./instruction-focus";
 import { createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
@@ -63,7 +68,7 @@ interface BuilderCanvasProps {
   viewRotation?: readonly [number, number, number];
   viewCamera?: InstructionCamera;
   viewStepId?: string;
-  onViewCameraChange?: (camera: InstructionCamera) => void;
+  onViewCameraChange?: (camera: InstructionCamera, rotation?: [number, number, number]) => void;
   /** Occurrence IDs for the current instruction step; undefined restores normal colors. */
   instructionFocusIds?: ReadonlySet<string>;
   projectId?: string;
@@ -549,17 +554,20 @@ export function BuilderCanvas({
   const gestureStartRef = useRef<GestureStart | null>(null);
   const gesturePairRef = useRef<readonly [number, number] | null>(null);
   const cameraOnlyRef = useRef(false);
+  const cameraInteractionStartRef = useRef<{ theta: number; phi: number } | null>(null);
   const dragRef = useRef<DragCandidate | null>(null);
   const clickRef = useRef<{ id: number; start: PointerPoint; moved: boolean } | null>(
     null,
   );
   const cameraStateRef = useRef({
-    theta: 0.72,
-    phi: 0.93,
+    theta: DEFAULT_INSTRUCTION_THETA,
+    phi: DEFAULT_INSTRUCTION_PHI,
     distance: 17,
     target: new Vector3(0, 0, 0),
   });
-  const cameraReferenceRef = useRef({ distance: 17, target: new Vector3(), theta: 0.72, phi: 0.93 });
+  const cameraReferenceRef = useRef({
+    distance: 17, target: new Vector3(), theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI,
+  });
   const restoreStepCamera = () => {
     const stored = propsRef.current.viewCamera, state = cameraStateRef.current, reference = cameraReferenceRef.current;
     state.theta = stored?.theta ?? reference.theta;
@@ -1263,6 +1271,7 @@ export function BuilderCanvas({
       gesturePairRef.current = [ids[0], ids[1]];
       cameraOnlyRef.current = true;
       const cameraState = cameraStateRef.current;
+      cameraInteractionStartRef.current = { theta: cameraState.theta, phi: cameraState.phi };
       gestureStartRef.current = {
         points: [pointersRef.current.get(ids[0])!, pointersRef.current.get(ids[1])!],
         camera: { ...cameraState, target: cameraState.target.clone() },
@@ -1283,6 +1292,8 @@ export function BuilderCanvas({
         return;
       }
 
+      const cameraState = cameraStateRef.current;
+      cameraInteractionStartRef.current = { theta: cameraState.theta, phi: cameraState.phi };
       clickRef.current = { id: event.pointerId, start: point, moved: false };
       const current = propsRef.current;
       const hit = current.toolMode === "view" ? null : findBrick(point);
@@ -1386,12 +1397,20 @@ export function BuilderCanvas({
       const point = { x: event.clientX, y: event.clientY };
       const current = propsRef.current;
       const click = clickRef.current;
-      if (current.onViewCameraChange && (click?.moved || cameraOnlyRef.current)) {
+      if (current.onViewCameraChange && cameraInteractionStartRef.current && (click?.moved || cameraOnlyRef.current)) {
         const state = cameraStateRef.current, reference = cameraReferenceRef.current;
+        const start = cameraInteractionStartRef.current;
+        const rotated = !!start && (Math.abs(state.theta - start.theta) > 0.000001 || Math.abs(state.phi - start.phi) > 0.000001);
+        const rotation = rotated
+          ? instructionRotationFromCameraPose(state.theta, state.phi, current.viewRotation, reference.theta, reference.phi)
+          : undefined;
         current.onViewCameraChange({
-          theta: state.theta, phi: state.phi, distance: state.distance, target: state.target.toArray(),
+          theta: rotated ? reference.theta : state.theta,
+          phi: rotated ? reference.phi : state.phi,
+          distance: state.distance, target: state.target.toArray(),
           referenceDistance: reference.distance, referenceTarget: reference.target.toArray(),
-        });
+        }, rotation);
+        cameraInteractionStartRef.current = null;
       }
       if (pointersRef.current.size === 1 && !cameraOnlyRef.current) {
         const drag = dragRef.current;
@@ -1428,6 +1447,7 @@ export function BuilderCanvas({
       pointersRef.current.delete(event.pointerId);
       pointerLastRef.current.delete(event.pointerId);
       clickRef.current = null;
+      cameraInteractionStartRef.current = null;
       if (gesturePairRef.current?.includes(event.pointerId)) startGesture();
       if (pointersRef.current.size === 0) cameraOnlyRef.current = false;
       if (pointersRef.current.size === 0) dragRef.current = null;
@@ -1442,6 +1462,7 @@ export function BuilderCanvas({
       if (!pointersRef.current.has(event.pointerId) && dragRef.current?.pointerId !== event.pointerId) return;
       pointersRef.current.delete(event.pointerId);
       pointerLastRef.current.delete(event.pointerId);
+      cameraInteractionStartRef.current = null;
       rollback();
       if (gesturePairRef.current?.includes(event.pointerId)) startGesture();
       if (pointersRef.current.size === 0) cameraOnlyRef.current = false;
@@ -1456,6 +1477,7 @@ export function BuilderCanvas({
     const onBlur = () => {
       rollback(); pointersRef.current.clear(); pointerLastRef.current.clear();
       gestureStartRef.current = null; gesturePairRef.current = null; cameraOnlyRef.current = false;
+      cameraInteractionStartRef.current = null;
     };
     window.addEventListener("blur", onBlur);
     return () => {
