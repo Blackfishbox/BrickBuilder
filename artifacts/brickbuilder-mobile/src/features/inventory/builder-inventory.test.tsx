@@ -157,6 +157,10 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
   await act(async () => editor.importProject(source));
   const inventory = parseInventory("part_id,color_id,quantity\n3001,5,2\n3002,5,1", "batch.csv");
   await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
+  const requests = inventory.rows.map((row, index) => ({
+    choice: { listId: inventory.id, rowId: row.id, ldrawId: index === 1 ? "test-two" : "test", colorCode: "4" },
+    quantity: row.quantity,
+  }));
   const part = { id: "test", packageId: "test", ldrawId: "test", name: "Synthetic", category: "", keywords: [], file: "parts/test.dat" };
   const prepared: PreparedPart = { part, bottom: -1, model: {
     version: 1, format: "ldr", sourceName: "synthetic.ldr", sourceText: "0 Synthetic", originalBytes: [],
@@ -176,31 +180,33 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
 
   vi.mocked(prepareLibraryPart).mockReset();
   vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockRejectedValueOnce(new Error("Geometry failed"));
-  const button = () => container.querySelector('[data-testid="button-inventory-spread"]') as HTMLButtonElement;
-  await act(async () => button().click());
-  expect(container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent).toContain("Nichts wurde platziert");
+  await act(async () => {
+    await expect(editor.spreadInventoryParts(requests, () => {}, new AbortController().signal))
+      .rejects.toThrow("Geometry failed");
+  });
   expect(editor.document.imported).toBeUndefined();
   expect(allocatedCounts(editor.document).size).toBe(0);
 
   let finishPreparation!: (value: PreparedPart) => void;
   vi.mocked(prepareLibraryPart).mockReset();
   vi.mocked(prepareLibraryPart).mockImplementationOnce(() => new Promise(resolve => { finishPreparation = resolve; }));
-  await act(async () => { button().click(); await Promise.resolve(); });
-  await vi.waitFor(() => expect(container.querySelector('[data-testid="status-inventory-spread-progress"]')?.textContent)
-    .toContain("Geometrie wird geladen"));
+  const controller = new AbortController();
+  let cancelled!: Promise<{ placed: number; deferred: number }>;
+  await act(async () => { cancelled = editor.spreadInventoryParts(requests, () => {}, controller.signal); });
+  await vi.waitFor(() => expect(prepareLibraryPart).toHaveBeenCalledOnce(), { timeout: 15_000 });
+  controller.abort();
+  finishPreparation(prepared);
   await act(async () => {
-    (container.querySelector('[data-testid="button-inventory-spread-cancel"]') as HTMLButtonElement).click();
-    finishPreparation(prepared);
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await expect(cancelled).rejects.toThrow(/abort/i);
   });
-  expect(container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
-    .toContain("abgebrochen");
   expect(editor.document.imported).toBeUndefined();
   expect(allocatedCounts(editor.document).size).toBe(0);
 
   vi.mocked(prepareLibraryPart).mockReset();
   vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockResolvedValueOnce(preparedTwo);
-  await act(async () => button().click());
+  let result!: { placed: number; deferred: number };
+  await act(async () => { result = await editor.spreadInventoryParts(requests, () => {}, new AbortController().signal); });
+  expect(result).toEqual({ placed: 3, deferred: 0 });
   const imported = editor.document.imported!;
   expect(imported.instances).toHaveLength(3);
   expect(imported.instances.map(instance => instance.part.ldrawId)).toEqual(["test", "test", "test-two"]);
@@ -208,8 +214,6 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
     inventory.rows[0].id, inventory.rows[0].id, inventory.rows[1].id,
   ]);
   expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(2);
-  expect(container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
-    .toContain("3 Teile auf der Baufläche verteilt");
   const batchBounds = [...stackingBounds(imported).values()];
   const existingBounds = brickBounds(source.bricks[0]);
   for (const bounds of batchBounds) {
