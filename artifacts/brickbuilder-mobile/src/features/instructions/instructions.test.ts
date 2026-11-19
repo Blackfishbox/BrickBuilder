@@ -341,8 +341,11 @@ describe("local construction instructions", () => {
     step.notes = Array.from({ length: 37 }, (_, index) =>
       `NOTE-CONTENT-${String(index).padStart(3, "0")} continues beyond the diagram and must remain readable.`,
     ).join(" ");
+    const longCalloutName = "Callout 03 North Tower Reinforced Upper-Floor Corner Window Assembly";
     step.callouts = Array.from({ length: 16 }, (_, index) => ({
-      id: `callout-${index}`, title: `Callout ${String(index).padStart(2, "0")}`, occurrence: [index],
+      id: `callout-${index}`,
+      title: index === 3 ? longCalloutName : `Callout ${String(index).padStart(2, "0")}`,
+      occurrence: [index],
     }));
     const png = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
     const bytes = await exportInstructionPDF(doc, doc.instructions!, {}, async () => ({
@@ -374,6 +377,10 @@ describe("local construction instructions", () => {
     expect(pageTexts[2]).toContain("Long continuation step");
     expect(pageTexts[2]).toContain("Baugruppen \\(Fortsetzung\\)");
     expect(pageTexts[2]).toContain("Callout 03");
+    const longNameWords = longCalloutName.split(" ").slice(2);
+    const longNamePositions = longNameWords.map(word => pageTexts[2].indexOf(word));
+    expect(longNamePositions.every(position => position >= 0)).toBe(true);
+    expect(longNamePositions).toEqual([...longNamePositions].sort((left, right) => left - right));
     expect(pageTexts[2]).toContain("Callout 14");
     expect(pageTexts[3]).toContain("Long continuation step");
     expect(pageTexts[3]).toContain("Baugruppen \\(Fortsetzung\\)");
