@@ -1,0 +1,307 @@
+.dark .editor-shell {
+  background: radial-gradient(ellipse at 48% 46%, rgba(42, 67, 59, .24), transparent 58%), hsl(var(--background));
+}
+.dark .topbar,
+.dark .mobile-dock {
+  background: rgba(20, 31, 28, .94);
+  border-color: hsl(var(--border));
+}
+.dark .tool-rail { background: rgba(22, 34, 30, .94); border-color: hsl(var(--border)); }
+.dark :is(.project-title-button, .saved-project, .boot-screen, .canvas-loading,
+  .rename-label, .popover-action, .context-label, .brick-count, .icon-button,
+  .section-heading h2, .tool-option, .active-piece, .color-name, .selection-detail strong,
+  .selection-action, .selection-empty, .save-status, .toast-note, .more-controls,
+  .dock-color, .dock-tool, .dock-history, .drawer-heading h2, .search-field,
+  .search-field input, .drawer-piece, .drawer-empty, .confirm-card h2, .confirm-card p,
+  .cancel-button, .canvas-hint, .mobile-selection-label) {
+  color: hsl(var(--foreground));
+}
+.dark :is(.project-popover, .parts-drawer, .color-drawer, .confirm-card,
+  .mobile-selection-actions, .active-piece, .selection-action, .icon-button,
+  .drawer-piece, .mobile-color-option, .fmt-details, .fmt-export, .plib-pkg,
+  .plib-doc, .plib-catalog-row, .inv-row, .inv-import, .sm-gauge, .sm-row,
+  .ins-parts-box, .ins-callout, .ins-part-count, .ins-stepper, .ins-strip button,
+  .ins-card, .ins-jump input, .sle-item, .sle-meta div, .sle-pagejump select) {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--card-foreground));
+}
+.dark :is(.project-title-button:hover, .saved-project:hover, .tool-option:hover:not(.active),
+  .icon-button:hover:not(:disabled), .selection-action:hover, .dock-color:hover,
+  .drawer-piece:hover, .drawer-piece.chosen, .mobile-color-option.selected,
+  .fmt-export:hover:not(:disabled), .plib-pkg.is-installed, .plib-filter button.active) {
+  background-color: hsl(var(--accent));
+  border-color: hsl(var(--border));
+  color: hsl(var(--accent-foreground));
+}
+.dark :is(.project-title-button, .saved-project, .popover-action, .project-name-input,
+  .icon-button, .tool-option.active, .active-piece, .selection-action, .mobile-dock,
+  .mobile-selection-actions, .color-drawer, .parts-drawer, .drawer-piece,
+  .mobile-color-option, .confirm-card, .fmt-mode-tabs button, .fmt-drop,
+  .fmt-details, .fmt-export, .plib-pkg, .plib-filter button, .plib-doc,
+  .plib-catalog-row button, .plib-catalog-row select, .inv-tabs,
+  .inv-import, .inv-template code, .inv-search, .inv-row, .inv-pick select,
+  .sm-gauge, .sm-row, .sm-ghost, .ins-icon, .ins-ghost, .ins-banner,
+  .ins-parts-box, .ins-callout, .ins-stepper, .ins-jump input, .ins-strip button,
+  .ins-card, .ins-field input, .ins-field textarea, .ins-search, .ins-tabs,
+  .ins-selbar, .ins-list li, .sle-item, .sle-pagejump select, .sle-meta div,
+  .sle-inputrow input) {
+  border-color: hsl(var(--border));
+}
+.dark :is(.project-popover, .project-name-input, .search-field, .parts-drawer,
+  .color-drawer, .confirm-card, .mobile-selection-actions, .active-piece,
+  .tool-option.active, .selection-action, .mobile-color-option, .fmt-mode-tabs button,
+  .fmt-drop, .fmt-details, .fmt-export, .plib-pkg, .plib-filter button,
+  .plib-doc, .plib-catalog-row, .inv-import, .inv-search, .inv-row, .inv-pick select,
+  .sm-gauge, .sm-row, .ins-parts-box, .ins-callout, .ins-stepper, .ins-card,
+  .ins-strip button, .sle-item, .sle-meta div) {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .16);
+}
+.dark .project-popover,
+.dark .parts-drawer,
+.dark .color-drawer,
+.dark .confirm-card { background-color: hsl(var(--card)); }
+.dark .topbar { color: hsl(var(--foreground)); }
+.dark .inv-tabs button { color: hsl(var(--muted-foreground)); }
+.dark .inv-tabs button[aria-selected="true"] { color: hsl(var(--foreground)); }
+.dark .project-title-button:hover,
+.dark .saved-project:hover,
+.dark .tool-segment,
+.dark .search-field,
+.dark .drawer-tabs,
+.dark .fmt-mode-tabs button.is-active,
+.dark .fmt-stats div,
+.dark .fmt-source span,
+.dark .fmt-status.s-resolved,
+.dark .inv-tabs,
+.dark .inv-tabs button[aria-selected="true"],
+.dark .inv-preview,
+.dark .ins-tabs,
+.dark .ins-selbar,
+.dark .sle-meta div {
+  background-color: hsl(var(--muted));
+}
+.dark .canvas-host {
+  border-color: hsl(var(--border));
+  background: rgba(10, 18, 16, .25);
+  box-shadow: inset 0 1px 12px rgba(0, 0, 0, .18);
+}
+.dark .canvas-host > .absolute {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border-color: hsl(var(--border));
+}
+.dark .builder-canvas .absolute.bottom-2 button,
+.dark .builder-canvas .absolute.bottom-2 span,
+.dark .builder-canvas .absolute.top-2 {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border-color: hsl(var(--border));
+}
+.dark .builder-canvas [data-testid="floating-warning"] {
+  background-color: hsl(8 38% 22%);
+  color: hsl(8 80% 84%);
+  border-color: hsl(8 35% 38%);
+}
+.dark .theme-toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+.dark .theme-toggle:hover { background: hsl(var(--accent)); }
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: rgba(249, 247, 239, .8);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+.theme-toggle:hover { background: hsl(var(--accent)); }
+.dark .connectivity { color: hsl(var(--muted-foreground)); }
+.dark .connectivity svg { color: hsl(var(--accent-foreground)); }
+.dark .connectivity.is-offline,
+.dark .connectivity.is-offline svg { color: hsl(var(--destructive)); }
+.dark .project-name-input,
+.dark .search-field input,
+.dark .mobile-color-option,
+.dark .parts-drawer :is(input, select, textarea),
+.dark .color-drawer :is(input, select, textarea),
+.dark .fmt-drawer :is(input, select, textarea),
+.dark .sm-drawer :is(input, select, textarea),
+.dark .ins-shell :is(input, select, textarea),
+.dark .sle-root :is(input, select, textarea) {
+  background-color: hsl(var(--input));
+  color: hsl(var(--foreground));
+}
+.dark .project-name-input::placeholder,
+.dark .search-field input::placeholder,
+.dark .ins-shell input::placeholder,
+.dark .ins-shell textarea::placeholder { color: hsl(var(--muted-foreground)); }
+.dark :is(.project-title-button > svg, .piece-copy small, .piece-chevron, .color-heading,
+  .color-name, .selection-detail small, .selection-empty, .save-status, .more-controls,
+  .canvas-hint, .mobile-selection-label, .saved-project small, .no-saved-projects,
+  .popover-eyebrow, .section-heading > span, .context-label, .ins-head-title small,
+  .ins-field > span, .ins-rot legend, .ins-hint, .ins-list small, .ins-strip button small,
+  .sle-head small, .sle-field > label, .sle-hint, .sle-itemhead small,
+  .plib-pkg-copy small, .plib-meta, .plib-part-number, .plib-details, .sm-note,
+  .sm-row-copy small, .sm-active, .inv-counts, .inv-row-copy small, .fmt-muted) {
+  color: hsl(var(--muted-foreground));
+}
+.dark .tool-option.active,
+.dark .dock-tool.active,
+.dark .ins-strip button.is-active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+.dark .selection-mark,
+.dark .inv-template code,
+.dark .inv-row.active,
+.dark .ins-highlight[aria-pressed="true"],
+.dark .ins-list li.is-selected {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.dark .mobile-dock { border-top-color: hsl(var(--border)); }
+.dark .drawer-scrim,
+.dark .modal-scrim,
+.dark .sm-overlay { background: rgba(0, 0, 0, .62); }
+.dark .drawer-handle { background: hsl(var(--muted-foreground)); }
+.dark .project-dot { box-shadow: 0 0 0 3px rgba(215, 91, 63, .18); }
+.dark .color-evidence-status { color: hsl(var(--foreground)); }
+.dark .popover-action { border-bottom-color: hsl(var(--border)); }
+.dark .saved-projects { border-top-color: hsl(var(--border)); }
+.dark .selection-action.danger-action,
+.dark .mobile-selection-actions > button:last-child,
+.dark .ins-ghost.is-danger,
+.dark .ins-danger { color: hsl(var(--destructive)); }
+.dark .ins-shell {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+.dark .ins-head,
+.dark .ins-side {
+  background: hsl(var(--background));
+  border-color: hsl(var(--border));
+}
+.dark .ins-shell .ins-preview {
+  background: radial-gradient(ellipse at 50% 45%, rgba(43, 67, 59, .42), transparent 62%), hsl(var(--background));
+  border-color: hsl(var(--border));
+}
+.dark .ins-shell :is(.ins-head-title strong, .ins-empty strong, .ins-stepper,
+  .ins-strip button, .ins-card, .ins-parts-box, .ins-callout, .ins-list b,
+  .ins-field, .ins-jump, .sle-head strong, .sle-itemhead b, .sle-field,
+  .sle-pagejump select, .sle-meta dd, .sle-styles) {
+  color: hsl(var(--foreground));
+}
+.dark .ins-shell :is(.ins-icon, .ins-ghost, .ins-jump input, .ins-strip button,
+  .ins-card, .ins-parts-box, .ins-callout, .ins-stepper, .ins-search,
+  .ins-field input, .ins-field textarea, .sle-item, .sle-pagejump select,
+  .sle-meta div, .sle-inputrow input) {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+.dark .ins-shell :is(.ins-icon, .ins-ghost) { color: hsl(var(--foreground)); }
+.dark .ins-shell :is(.ins-banner, .ins-banner.is-error, .ins-note, .sle-status) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+.dark .ins-shell .ins-tabs { background: hsl(var(--muted)); }
+.dark .ins-shell .ins-tabs button[aria-selected="true"] {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+.dark .ins-shell .ins-list li { border-bottom-color: hsl(var(--border)); }
+.dark .ins-shell .ins-part-count { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.dark .ins-shell .ins-stepper { background: rgba(23, 35, 31, .96); }
+.dark .ins-shell .ins-empty { color: hsl(var(--muted-foreground)); }
+.dark .sle-root :is(.sle-item, .sle-pagejump select, .sle-meta div, .sle-inputrow input) {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+.dark .sle-root .sle-itemhead b,
+.dark .sle-root .sle-head strong,
+.dark .sle-root .sle-meta dd { color: hsl(var(--foreground)); }
+.dark .sle-root .sle-meta dt,
+.dark .sle-root .sle-field > label { color: hsl(var(--muted-foreground)); }
+.dark .fmt-drawer :is(.fmt-section h3, .fmt-drop b, .fmt-source,
+  .fmt-stats b, .fmt-details summary, .fmt-map b, .fmt-export b) {
+  color: hsl(var(--foreground));
+}
+.dark .fmt-drawer :is(.fmt-section, .fmt-details li, .plib-search-row, .plib-catalog-search) {
+  border-color: hsl(var(--border));
+}
+.dark .fmt-drawer :is(.fmt-mode-tabs button, .fmt-drop, .fmt-details, .fmt-export,
+  .fmt-stats div, .fmt-source span, .fmt-status, .fmt-status.s-resolved) {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.dark .fmt-drawer .fmt-warn { background: hsl(44 42% 20%); color: hsl(44 80% 78%); }
+.dark .fmt-drawer .fmt-error { background: hsl(8 38% 22%); color: hsl(8 80% 82%); }
+.dark .plib :is(.plib-head h3, .plib-pkg-copy strong, .plib-doc summary,
+  .plib-catalog-row small, .plib-catalog-row label, .plib-details summary) {
+  color: hsl(var(--foreground));
+}
+.dark .plib :is(.drawer-tabs, .plib-pkg, .plib-pkg.is-installed, .plib-doc,
+  .plib-doc pre, .plib-thumbnail, .plib-thumbnail.is-ready, .plib-catalog-row,
+  .plib-catalog-row button, .plib-catalog-row select, .plib-alert button,
+  .plib-filter button, .plib-part.is-catalog:hover) {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.dark .plib .drawer-tabs button[aria-selected="true"],
+.dark .plib .plib-filter button.active { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+.dark .plib .plib-id { background: hsl(164 35% 23%); color: hsl(40 28% 91%); }
+.dark .plib .plib-id b { color: hsl(40 28% 95%); }
+.dark .inv-panel { color: hsl(var(--foreground)); }
+.dark .inv-panel :is(.inv-import, .inv-search, .inv-row, .inv-preview,
+  .inv-preview-rows li, .inv-pick select, .inv-tabs button[aria-selected="true"]) {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+.dark .inv-panel :is(.inv-import-head strong, .inv-qty b, .inv-empty-state strong,
+  .inv-stats b, .inv-template button, .inv-error button, .inv-status button,
+  .inv-pager button, .inv-problems button, .inv-search button) {
+  color: hsl(var(--foreground));
+}
+.dark .inv-row.blocked { background: repeating-linear-gradient(135deg, hsl(166 16% 19%) 0 8px, hsl(166 14% 23%) 8px 16px); }
+.dark .inv-row.active { box-shadow: inset 0 0 0 1px hsl(var(--primary)); }
+.dark .sm-drawer :is(.sm-gauge, .sm-row, .sm-ghost, .sm-empty, .sm-skel) {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.dark .sm-drawer :is(.sm-gauge-top, .sm-gauge-top span, .sm-group h3, .sm-row-copy strong,
+  .sm-size, .sm-confirm-copy b, .sm-state strong) { color: hsl(var(--foreground)); }
+.dark .sm-drawer .sm-bar { background: hsl(var(--muted)); }
+.dark .sm-drawer .sm-skel { background-image: linear-gradient(90deg, hsl(var(--muted)), hsl(var(--card)), hsl(var(--muted))); }
+.dark .sm-drawer .sm-warning,
+.dark .sm-drawer .sm-danger { background: hsl(8 38% 22%); color: hsl(8 80% 82%); border-color: hsl(8 35% 34%); }
+.dark .canvas-part-error { background: hsl(var(--card)); color: hsl(var(--destructive)); }
+.dark .inventory-mode-banner { background: hsl(164 35% 23%); color: hsl(40 28% 91%); }
+.dark .ins-shell .ins-note { background: hsl(44 35% 19%); color: hsl(44 65% 78%); border-color: hsl(44 30% 34%); }
+.dark .ins-shell .ins-banner.is-error,
+.dark .ins-shell .sle-status { background: hsl(8 38% 22%); color: hsl(8 80% 82%); }
+.dark .ins-strip button.is-active small { color: hsl(var(--primary-foreground)); }
+.dark .ins-parts-box li { background: hsl(var(--muted)); }
+.dark .theme-toggle:focus-visible { outline: 3px solid hsl(var(--ring)); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .theme-toggle { width: 40px; height: 40px; }
+}

@@ -11,6 +11,7 @@ import "./instructions.css";
 
 interface Props {
   document: BuilderDocument;
+  darkMode?: boolean;
   onChange: (plan: InstructionPlan) => void;
   onClose: () => void;
   onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
@@ -22,7 +23,7 @@ const PAGE = 60;
 const STEP_WINDOW = 30;
 const noop = () => undefined;
 
-export default function InstructionsPanel({ document, onChange, onClose, onExportPDF }: Props) {
+export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF }: Props) {
   const plan = useMemo(() => effectiveInstructions(document), [document]);
   const [index, setIndex] = useState(0);
   const [highlight, setHighlight] = useState(false);
@@ -167,6 +168,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
           ) : (
             <BuilderCanvas
               showConstructionControls={false}
+              darkMode={darkMode}
               viewRotation={step.rotation}
               viewStepId={step.id}
               viewCamera={step.camera}
