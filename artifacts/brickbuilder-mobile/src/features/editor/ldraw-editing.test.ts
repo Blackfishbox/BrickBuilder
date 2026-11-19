@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ray, Vector3 } from "three";
 import { createEmptyDocument } from "./model";
 import { commit, createHistory, redo, undo } from "./history";
-import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
 import { exportLDR } from "../formats/ldraw/export";
@@ -36,7 +36,8 @@ describe("editable imported LDraw instances", () => {
     const source = JSON.stringify([original.imported.sourceText, original.imported.originalBytes, original.imported.sections]);
     const rotated = rotateImported(recolorImported(original, id, "#AEE9EF", "43"), id);
     const moved = moveImported(rotated, id, { x: 3.25, y: -0.4, z: 8 });
-    expect(moved.imported!.instances[0].matrix).toEqual([0, 0, 1, 70, 0, 1, 0, 8, -1, -0, -0, 160]);
+    expect(moved.imported!.instances[0].matrix.map(value => Number(value.toFixed(10))))
+      .toEqual([0, 0, 1, 70, 0, 1, 0, 8, -1, 0, 0, 160]);
     expect(moved.imported!.instances[0]).toMatchObject({ colorCode: "43", color: { alpha: 128 } });
     expect(moved.imported!.instances[1]).toBe(original.imported.instances[1]);
     expect(JSON.stringify([moved.imported!.sourceText, moved.imported!.originalBytes, moved.imported!.sections])).toBe(source);
@@ -66,6 +67,27 @@ describe("editable imported LDraw instances", () => {
     expect(reset.imported!.instances[0].tiltX).toBeUndefined();
     expect(importInternal(exportInternal(tilted)).imported!.instances[0]).toMatchObject({ tiltX: 25, tiltZ: -13 });
   });
+  it("sets arbitrary imported yaw independently of tilt and reapplies it from the stable source transform", () => {
+    const original = fixture(), id = original.imported.instances[0].id;
+    const source = original.imported.instances[0];
+    const yawed = setImportedRotation(original, id, 37.5);
+    const instance = yawed.imported!.instances[0];
+    expect(instance.rotationY).toBe(37.5);
+    expect(instance.matrix.slice(3, 4)).toEqual(source.matrix.slice(3, 4));
+    expect(instance.matrix.slice(11, 12)).toEqual(source.matrix.slice(11, 12));
+    expect(instance.matrix).not.toEqual(source.matrix);
+
+    const tilted = tiltImported(yawed, id, 25, -13);
+    expect(tilted.imported!.instances[0]).toMatchObject({ rotationY: 37.5, tiltX: 25, tiltZ: -13 });
+    const editedAgain = setImportedRotation(tilted, id, 82.25);
+    expect(editedAgain.imported!.instances[0]).toMatchObject({ rotationY: 82.25, tiltX: 25, tiltZ: -13 });
+    const reset = setImportedRotation(editedAgain, id, 0);
+    expect(reset.imported!.instances[0]).toMatchObject({ tiltX: 25, tiltZ: -13 });
+    expect(reset.imported!.instances[0].rotationY).toBeUndefined();
+    expect(setImportedRotation(original, id, 360).imported!.instances[0].matrix).toEqual(source.matrix);
+    expect(setImportedRotation(original, id, 361).imported!.instances[0].rotationY).toBe(360);
+    expect(setImportedRotation(original, id, -1).imported!.instances[0].rotationY).toBeUndefined();
+  });
   it("restores imported deletion, colors and transforms with undo/redo", () => {
     const document = fixture(), id = document.imported.instances[0].id;
     let history = createHistory(document);
@@ -81,12 +103,13 @@ describe("editable imported LDraw instances", () => {
   it("persists the edited flag and effective instances through IndexedDB and internal JSON", async () => {
     await builderDatabase.open();
     const original = fixture(), id = original.imported.instances[0].id;
-    const edited = rotateImported(recolorImported(original, id, "#00852B", "2"), id);
+    const edited = setImportedRotation(tiltImported(recolorImported(original, id, "#00852B", "2"), id, 25, -13), id, 42.75);
     await saveProject(edited);
     const reopened = await loadProject(edited.id);
     expect(reopened!.imported).toEqual(edited.imported);
     const roundtrip = importInternal(exportInternal(edited));
     expect(roundtrip.imported!.edited).toBe(true);
+    expect(roundtrip.imported!.instances[0]).toMatchObject({ rotationY: 42.75, tiltX: 25, tiltZ: -13 });
     expect(roundtrip.imported!.instances[0].matrix).toEqual(edited.imported!.instances[0].matrix.map(value => value || 0));
     expect(roundtrip.imported!.originalBytes).toEqual(original.imported.originalBytes);
   });

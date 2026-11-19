@@ -1,6 +1,7 @@
 import { Box3, Euler, Matrix4, Vector3 } from "three";
 import type { BuilderDocument, Position3 } from "./model";
 import { normalizeTiltAngle } from "./brick-transform";
+import { clampRotationAngle } from "./model";
 import type { ImportedInstance, ImportedModel, Affine } from "../formats/types";
 import type { LibraryPart } from "../parts/types";
 import { COLORS, resolveColor } from "../formats/colors";
@@ -58,29 +59,40 @@ export function recolorImported(document: BuilderDocument, id: string, hex: stri
   const colorCode = appearanceCode(hex, code);
   return editImported(document, id, instance => ({ ...instance, colorCode, color: resolveColor(colorCode) }));
 }
-function rotateImportedBasisY(matrix: Affine): Affine {
-  return [matrix[8], matrix[9], matrix[10], matrix[3], matrix[4], matrix[5], matrix[6], matrix[7], -matrix[0], -matrix[1], -matrix[2], matrix[11]];
-}
 function affineFromWorldMatrix(matrix: Matrix4): Affine {
   const e = matrix.elements, scale = 20;
+  const clean = (value: number) => Object.is(value, -0) ? 0 : value;
   return [
-    e[0] * scale, e[4] * scale, e[8] * scale, e[12] * scale,
-    -e[1] * scale, -e[5] * scale, -e[9] * scale, -e[13] * scale,
-    e[2] * scale, e[6] * scale, e[10] * scale, e[14] * scale,
+    clean(e[0] * scale), clean(e[4] * scale), clean(e[8] * scale), clean(e[12] * scale),
+    clean(-e[1] * scale), clean(-e[5] * scale), clean(-e[9] * scale), clean(-e[13] * scale),
+    clean(e[2] * scale), clean(e[6] * scale), clean(e[10] * scale), clean(e[14] * scale),
   ];
 }
-function applyImportedTilt(model: ImportedModel, reference: string, base: Affine, tiltX: number, tiltZ: number): Affine {
-  if (tiltX === 0 && tiltZ === 0) return [...base];
-  const center = localPartBounds(model, reference).getCenter(new Vector3());
+function importedYawMatrix(angle: number): Matrix4 {
+  const radians = ((angle % 360) + 360) % 360 * Math.PI / 180;
+  const clean = (value: number) => Math.abs(value) < 1e-12 ? 0 : Math.abs(value - 1) < 1e-12 ? 1 : Math.abs(value + 1) < 1e-12 ? -1 : value;
+  const cosine = clean(Math.cos(radians)), sine = clean(Math.sin(radians));
+  return new Matrix4().set(cosine, 0, sine, 0, 0, 1, 0, 0, -sine, 0, cosine, 0, 0, 0, 0, 1);
+}
+function applyImportedTransform(model: ImportedModel, reference: string, base: Affine, rotationY: number, tiltX: number, tiltZ: number): Affine {
+  if (rotationY === 0 && tiltX === 0 && tiltZ === 0) return [...base];
   const world = worldMatrix(base);
-  const pivot = center.applyMatrix4(world);
-  const rotation = new Matrix4().makeRotationFromEuler(new Euler(
-    tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ",
-  ));
-  world.premultiply(new Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z)
-    .multiply(rotation)
-    .multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z)));
+  if (rotationY !== 0) {
+    const origin = new Vector3().setFromMatrixPosition(world);
+    world.premultiply(importedYawMatrix(rotationY));
+    world.setPosition(origin);
+  }
+  if (tiltX !== 0 || tiltZ !== 0) {
+    const center = localPartBounds(model, reference).getCenter(new Vector3()).applyMatrix4(world);
+    const tilt = new Matrix4().makeRotationFromEuler(new Euler(tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ"));
+    world.premultiply(new Matrix4().makeTranslation(center.x, center.y, center.z)
+      .multiply(tilt)
+      .multiply(new Matrix4().makeTranslation(-center.x, -center.y, -center.z)));
+  }
   return affineFromWorldMatrix(world);
+}
+function applyImportedYaw(model: ImportedModel, reference: string, base: Affine, rotationY: number): Affine {
+  return applyImportedTransform(model, reference, base, rotationY, 0, 0);
 }
 export function tiltImported(document: BuilderDocument, id: string, tiltX: number, tiltZ: number): BuilderDocument {
   if (![tiltX, tiltZ].every(Number.isFinite)) return document;
@@ -88,40 +100,81 @@ export function tiltImported(document: BuilderDocument, id: string, tiltX: numbe
   if (!model) return document;
   const x = normalizeTiltAngle(tiltX), z = normalizeTiltAngle(tiltZ);
   return editImported(document, id, instance => {
-    const base = instance.tiltBaseMatrix ?? instance.matrix;
-    if (x === 0 && z === 0) {
-      const { tiltBaseMatrix: _base, tiltX: _x, tiltZ: _z, ...rest } = instance;
+    const base = instance.rotationBaseMatrix ?? instance.tiltBaseMatrix ?? instance.matrix;
+    const rotationY = instance.rotationY ?? 0;
+    if (x === 0 && z === 0 && rotationY === 0) {
+      const { tiltBaseMatrix: _tiltBase, rotationBaseMatrix: _rotationBase, rotationY: _rotation, tiltX: _x, tiltZ: _z, ...rest } = instance;
       return { ...rest, matrix: [...base] as Affine };
     }
     let matrix: Affine;
-    try { matrix = applyImportedTilt(model, instance.reference, base, x, z); }
+    try { matrix = applyImportedTransform(model, instance.reference, base, rotationY, x, z); }
     catch {
       // A missing part can still be transformed around its declared LDraw origin.
       const world = worldMatrix(base);
-      const rotation = new Matrix4().makeRotationFromEuler(new Euler(x * Math.PI / 180, 0, z * Math.PI / 180, "XYZ"));
-      world.premultiply(rotation);
+      const origin = new Vector3().setFromMatrixPosition(world);
+      if (rotationY) world.premultiply(importedYawMatrix(rotationY));
+      if (x || z) world.premultiply(new Matrix4().makeRotationFromEuler(new Euler(x * Math.PI / 180, 0, z * Math.PI / 180, "XYZ")));
+      world.setPosition(origin);
       matrix = affineFromWorldMatrix(world);
     }
-    return { ...instance, tiltX: x, tiltZ: z, tiltBaseMatrix: [...base] as Affine, matrix };
+    let tiltBaseMatrix = [...base] as Affine;
+    if (rotationY !== 0) {
+      try { tiltBaseMatrix = applyImportedYaw(model, instance.reference, base, rotationY); }
+      catch {
+        const world = worldMatrix(base);
+        const origin = new Vector3().setFromMatrixPosition(world);
+        world.premultiply(importedYawMatrix(rotationY));
+        world.setPosition(origin);
+        tiltBaseMatrix = affineFromWorldMatrix(world);
+      }
+    }
+    return {
+      ...instance, tiltX: x, tiltZ: z,
+      ...(rotationY ? { rotationY, rotationBaseMatrix: [...base] as Affine } : {}),
+      tiltBaseMatrix, matrix,
+    };
+  });
+}
+export function setImportedRotation(document: BuilderDocument, id: string, rotationY: number): BuilderDocument {
+  if (!Number.isFinite(rotationY)) return document;
+  const model = document.imported;
+  if (!model) return document;
+  const angle = clampRotationAngle(rotationY);
+  return editImported(document, id, instance => {
+    const base = instance.rotationBaseMatrix ?? instance.tiltBaseMatrix ?? instance.matrix;
+    const tiltX = instance.tiltX ?? 0, tiltZ = instance.tiltZ ?? 0;
+    if (!angle && !tiltX && !tiltZ) {
+      const { rotationY: _rotation, rotationBaseMatrix: _rotationBase, tiltBaseMatrix: _tiltBase, tiltX: _x, tiltZ: _z, ...rest } = instance;
+      return { ...rest, matrix: [...base] as Affine };
+    }
+    let matrix: Affine, tiltBaseMatrix = [...base] as Affine;
+    try {
+      matrix = applyImportedTransform(model, instance.reference, base, angle, tiltX, tiltZ);
+      if (angle) tiltBaseMatrix = applyImportedYaw(model, instance.reference, base, angle);
+    } catch {
+      const world = worldMatrix(base);
+      const origin = new Vector3().setFromMatrixPosition(world);
+      if (angle) world.premultiply(importedYawMatrix(angle));
+      if (tiltX || tiltZ) world.premultiply(new Matrix4().makeRotationFromEuler(new Euler(tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ")));
+      world.setPosition(origin);
+      matrix = affineFromWorldMatrix(world);
+      if (angle) {
+        const yawWorld = worldMatrix(base), yawOrigin = new Vector3().setFromMatrixPosition(yawWorld);
+        yawWorld.premultiply(importedYawMatrix(angle));
+        yawWorld.setPosition(yawOrigin);
+        tiltBaseMatrix = affineFromWorldMatrix(yawWorld);
+      }
+    }
+    return {
+      ...instance, matrix, rotationY: angle || undefined,
+      ...(angle ? { rotationBaseMatrix: [...base] as Affine } : {}),
+      ...(angle || tiltX || tiltZ ? { tiltBaseMatrix } : {}),
+    };
   });
 }
 export function rotateImported(document: BuilderDocument, id: string): BuilderDocument {
-  const model = document.imported;
-  return editImported(document, id, instance => {
-    const base = rotateImportedBasisY(instance.tiltBaseMatrix ?? instance.matrix);
-    const tiltX = instance.tiltX ?? 0, tiltZ = instance.tiltZ ?? 0;
-    if (!tiltX && !tiltZ) return { ...instance, matrix: base };
-    let matrix = base;
-    if (model) {
-      try { matrix = applyImportedTilt(model, instance.reference, base, tiltX, tiltZ); }
-      catch {
-        const world = worldMatrix(base);
-        world.premultiply(new Matrix4().makeRotationFromEuler(new Euler(tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ")));
-        matrix = affineFromWorldMatrix(world);
-      }
-    }
-    return { ...instance, matrix, tiltBaseMatrix: base };
-  });
+  const current = document.imported?.instances.find(instance => instance.id === id);
+  return current ? setImportedRotation(document, id, ((current.rotationY ?? 0) + 90) % 360) : document;
 }
 export function moveImported(document: BuilderDocument, id: string, position: Position3, snapXZ = true, transform?: Affine): BuilderDocument {
   return editImported(document, id, instance => {
@@ -134,12 +187,17 @@ export function moveImported(document: BuilderDocument, id: string, position: Po
       matrix[7] = -position.y * 20;
       matrix[11] = (snapXZ ? Math.round(position.z * 2) / 2 : position.z) * 20;
     }
-    if (!instance.tiltBaseMatrix) return { ...instance, matrix };
-    const tiltBaseMatrix = [...instance.tiltBaseMatrix] as Affine;
-    tiltBaseMatrix[3] += matrix[3] - instance.matrix[3];
-    tiltBaseMatrix[7] += matrix[7] - instance.matrix[7];
-    tiltBaseMatrix[11] += matrix[11] - instance.matrix[11];
-    return { ...instance, matrix, tiltBaseMatrix };
+    const delta = [matrix[3] - instance.matrix[3], matrix[7] - instance.matrix[7], matrix[11] - instance.matrix[11]];
+    const translateBase = (source: Affine) => {
+      const updated = [...source] as Affine;
+      updated[3] += delta[0]; updated[7] += delta[1]; updated[11] += delta[2];
+      return updated;
+    };
+    return {
+      ...instance, matrix,
+      ...(instance.tiltBaseMatrix ? { tiltBaseMatrix: translateBase(instance.tiltBaseMatrix) } : {}),
+      ...(instance.rotationBaseMatrix ? { rotationBaseMatrix: translateBase(instance.rotationBaseMatrix) } : {}),
+    };
   });
 }
 export function placePreparedPart(document: BuilderDocument, prepared: PreparedPart, position: Position3, hex: string, code?: string): BuilderDocument {

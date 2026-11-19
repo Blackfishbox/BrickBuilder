@@ -10,7 +10,7 @@
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 200px; padding: 10px;
   border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; box-shadow: 0 4px 14px #27393024;
 }
-.tilt-panel strong, .tilt-panel small { grid-column: 1 / -1; }
+.tilt-panel strong, .tilt-panel small, .tilt-panel > label { grid-column: 1 / -1; }
 .tilt-panel small { color: #78867c; font-size: 10px; }
 .tilt-axis-control {
   display: grid; grid-column: 1 / -1; grid-template-columns: 58px minmax(80px, 1fr) 42px;

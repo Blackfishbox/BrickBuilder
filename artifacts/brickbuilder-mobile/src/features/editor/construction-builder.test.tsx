@@ -13,6 +13,7 @@ import { parseInventory } from "../inventory/import";
 import { allocatedCounts } from "../inventory/accounting";
 import { builderDatabase, loadProject } from "@/storage/database";
 import { brickBounds } from "./brick-transform";
+import { stackingBounds } from "../engine/stacking";
 
 vi.mock("../catalog/client", () => ({
   useCatalog: () => ({ status: "ready" }),
@@ -157,4 +158,61 @@ it("tilts selected local bricks, preserves undo and keeps the real bottom above 
   expect(brickBounds(editor.document.bricks[0]).min.y).toBeCloseTo(0);
   await act(async () => editor.save());
   expect((await loadProject(editor.document.id))!.bricks[0]).toEqual(editor.document.bricks[0]);
+});
+
+it("rotates local and imported selections with undo, redo, floor clamping, and saved angles", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const sourceText = "0 Rotation test\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 test.dat\n";
+  const imported: ImportedModel = {
+    version: 1, format: "ldr", sourceName: "rotation.ldr", sourceText,
+    originalBytes: Array.from(new TextEncoder().encode(sourceText)), ...parseLDraw(sourceText),
+    resources: { "parts/test.dat": { path: "parts/test.dat", author: "Fixture", license: "CC0-1.0",
+      sourceUrl: "https://example.invalid/test.dat", content: "0 Test geometry\n3 16 0 0 0 20 0 0 0 20 0\n" } },
+    legalDocuments: [],
+  };
+  imported.instances.forEach(instance => { instance.part.status = "resolved"; });
+  const importedId = imported.instances[0].id;
+  const importedFloor = stackingBounds(imported).get(importedId)!.min.y;
+  const sourceDocument = createEmptyDocument();
+  sourceDocument.bricks = [{ id: "local-rotation", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 }];
+  sourceDocument.imported = imported;
+  await act(async () => editor.importProject(sourceDocument));
+
+  await act(async () => editor.select("local-rotation"));
+  await act(async () => editor.setSelectedRotation(37.5));
+  await act(async () => editor.setSelectedTilt("x", 35));
+  await act(async () => editor.setSelectedTilt("z", -20));
+  expect(editor.bricks[0]).toMatchObject({ rotation: 37.5, tiltX: 35, tiltZ: -20 });
+  expect(brickBounds(editor.bricks[0]).min.y).toBeGreaterThanOrEqual(-1e-9);
+  await act(async () => editor.rotateSelected());
+  expect(editor.bricks[0].rotation).toBe(127.5);
+  await act(async () => editor.undo());
+  expect(editor.bricks[0].rotation).toBe(37.5);
+  await act(async () => editor.redo());
+  expect(editor.bricks[0].rotation).toBe(127.5);
+
+  await act(async () => editor.select(importedId));
+  await act(async () => editor.setSelectedRotation(47.25));
+  await act(async () => editor.setSelectedTilt("x", 20));
+  const edited = editor.imported!.instances.find(instance => instance.id === importedId)!;
+  expect(edited).toMatchObject({ rotationY: 47.25, tiltX: 20 });
+  expect(editor.imported!.sourceText).toBe(sourceText);
+  expect(stackingBounds(editor.imported!).get(importedId)!.min.y).toBeGreaterThanOrEqual(importedFloor - 1e-9);
+  const savedMatrix = [...edited.matrix];
+  await act(async () => editor.undo());
+  expect(editor.selectedInstance?.rotationY).toBe(47.25);
+  expect(editor.selectedInstance?.tiltX).toBeUndefined();
+  await act(async () => editor.redo());
+  expect(editor.selectedInstance?.matrix).toEqual(savedMatrix);
+  await act(async () => editor.save());
+  expect((await loadProject(editor.document.id))!.imported!.instances.find(instance => instance.id === importedId))
+    .toEqual(editor.selectedInstance);
 });

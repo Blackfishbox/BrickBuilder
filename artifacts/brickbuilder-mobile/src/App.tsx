@@ -338,7 +338,9 @@ function App() {
               <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               <button type="button" onClick={editor.rotateSelected} aria-label="Ausgewählten Stein drehen" data-testid="mobile-button-rotate"><RotateCw size={17} /></button>
               <TiltControls key={`tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
-                tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0} onTilt={editor.setSelectedTilt}
+                tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
+                rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
+                onRotate={editor.setSelectedRotation} onTilt={editor.setSelectedTilt}
                 onOpenChange={setTiltControlsOpen} />
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
@@ -401,7 +403,9 @@ function App() {
                   </button>
                 </div>
                 <TiltControls key={`desktop-tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
-                  tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0} onTilt={editor.setSelectedTilt}
+                  tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
+                  rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
+                  onRotate={editor.setSelectedRotation} onTilt={editor.setSelectedTilt}
                   onOpenChange={setTiltControlsOpen} />
                 <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>

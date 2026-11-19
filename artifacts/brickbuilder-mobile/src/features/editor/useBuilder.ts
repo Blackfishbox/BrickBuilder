@@ -4,6 +4,7 @@ import {
   BRICK_DEFINITIONS,
   BRICK_HEIGHT,
   createEmptyDocument,
+  clampRotationAngle,
   normalizeDocument,
   rotateQuarterTurn,
   snapPosition,
@@ -23,7 +24,7 @@ import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
-import { editImported, moveImported, placePreparedPart, placeInventoryPart, placeInventoryBatch, prepareLibraryPart, recolorImported, rotateImported, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, moveImported, placePreparedPart, placeInventoryPart, placeInventoryBatch, prepareLibraryPart, recolorImported, rotateImported, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
@@ -603,6 +604,36 @@ export function useBuilder() {
     });
   }, [constructionGround, selectedId, updateDocument]);
 
+  const setSelectedRotation = useCallback((angle: number) => {
+    if (!selectedId || !Number.isFinite(angle)) return;
+    const rotationY = clampRotationAngle(angle);
+    updateDocument(document => {
+      const imported = document.imported?.instances.find(instance => instance.id === selectedId);
+      if (imported && document.imported) {
+        if (rotationY === (imported.rotationY ?? 0)) return document;
+        const rotated = setImportedRotation(document, selectedId, rotationY);
+        const model = rotated.imported!;
+        const changed = model.instances.find(instance => instance.id === selectedId)!;
+        try {
+          const grounded = groundedTransform(model, selectedId,
+            { x: changed.matrix[3] / 20, y: -changed.matrix[7] / 20, z: changed.matrix[11] / 20 },
+            constructionGround(document.imported), changed.matrix);
+          return moveImported(rotated, selectedId,
+            { x: grounded[3] / 20, y: -grounded[7] / 20, z: grounded[11] / 20 }, false, grounded);
+        } catch {
+          return rotated;
+        }
+      }
+      const brick = document.bricks.find(value => value.id === selectedId);
+      if (!brick || rotationY === brick.rotation) return document;
+      const changed = clampBrickToGround({ ...brick, rotation: rotationY });
+      return {
+        ...document, updatedAt: new Date().toISOString(),
+        bricks: document.bricks.map(value => value.id === selectedId ? changed : value),
+      };
+    });
+  }, [constructionGround, selectedId, updateDocument]);
+
   const deleteSelected = useCallback(() => {
     if (selectedId) remove(selectedId);
   }, [remove, selectedId]);
@@ -718,6 +749,7 @@ export function useBuilder() {
     changeHeight,
     nudgeSelected,
     rotateSelected,
+    setSelectedRotation,
     setSelectedTilt,
     deleteSelected,
     undo: undoChange,
