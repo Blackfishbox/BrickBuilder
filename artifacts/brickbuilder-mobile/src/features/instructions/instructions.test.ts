@@ -337,7 +337,9 @@ describe("local construction instructions", () => {
       `1 4 ${index * 40} 0 0 1 0 0 0 1 0 0 0 1 test-part-${String(index).padStart(2, "0")}.dat`,
     ).join("\n");
     const doc = fixture(source), step = doc.instructions!.steps[0];
-    step.title = "Long continuation step";
+    const maxStepTitle = ["MaxTitle", ...Array.from({ length: 15 }, (_, index) => `Section${String(index + 1).padStart(2, "0")}`), "X"].join(" ");
+    expect(maxStepTitle).toHaveLength(160);
+    step.title = maxStepTitle;
     step.notes = Array.from({ length: 37 }, (_, index) =>
       `NOTE-CONTENT-${String(index).padStart(3, "0")} continues beyond the diagram and must remain readable.`,
     ).join(" ");
@@ -366,15 +368,47 @@ describe("local construction instructions", () => {
         const bytes = Buffer.from(stream[2], "latin1");
         return Buffer.from(stream[1].includes("/FlateDecode") ? unzlibSync(bytes) : bytes).toString("latin1");
       });
+    const textY = (pageIndex: number, marker: string) => {
+      const block = pageTexts[pageIndex].match(/BT[\s\S]*?ET/g)?.find(candidate => candidate.includes(marker));
+      expect(block, `missing visible PDF text: ${marker}`).toBeDefined();
+      return Number(block!.match(/[\d.]+\s+([\d.]+)\s+Td/)?.[1]);
+    };
+    const stepTitleBottomY = (pageIndex: number) => {
+      const block = pageTexts[pageIndex].match(/BT[\s\S]*?ET/g)?.find(candidate =>
+        candidate.includes("(1. MaxTitle") && candidate.includes("Section15 X"),
+      );
+      expect(block, "missing the complete step title from a PDF page").toBeDefined();
+      const startY = Number(block!.match(/[\d.]+\s+([\d.]+)\s+Td/)?.[1]);
+      const lineHeight = Number(block!.match(/([\d.]+)\s+TL/)?.[1]);
+      const lineCount = block!.match(/\) Tj/g)?.length ?? 1;
+      return startY - lineHeight * (lineCount - 1);
+    };
 
     expect(decode(bytes.slice(0, 8))).toContain("%PDF-1.");
     expect(output).toContain("/Count 6");
     expect(pageTexts).toHaveLength(6);
-    expect(pageTexts[0]).toContain("Long continuation step");
-    expect(pageTexts[1]).toContain("Long continuation step");
+    for (const pageText of pageTexts) {
+      let cursor = 0;
+      for (const word of maxStepTitle.split(" ")) {
+        const position = pageText.indexOf(word, cursor);
+        expect(position, `missing ${word} from a page's complete step title`).toBeGreaterThanOrEqual(cursor);
+        cursor = position + word.length;
+      }
+    }
+    const contentMarkers = [
+      "Teile und Baugruppen in diesem Schritt",
+      "NOTE-CONTENT-036",
+      "Callout 03",
+      "Callout 15",
+      "LDraw test-part-06",
+      "LDraw test-part-42",
+    ];
+    contentMarkers.forEach((marker, pageIndex) => {
+      expect(stepTitleBottomY(pageIndex) - textY(pageIndex, marker)).toBeGreaterThan(15);
+    });
+    expect(pageTexts[0]).toContain("Teile und Baugruppen in diesem Schritt");
     expect(pageTexts[1]).toContain("Hinweise \\(Fortsetzung\\)");
     expect(pageTexts[1]).toContain("NOTE-CONTENT-036");
-    expect(pageTexts[2]).toContain("Long continuation step");
     expect(pageTexts[2]).toContain("Baugruppen \\(Fortsetzung\\)");
     expect(pageTexts[2]).toContain("Callout 03");
     const longNameWords = longCalloutName.split(" ").slice(2);
@@ -382,14 +416,11 @@ describe("local construction instructions", () => {
     expect(longNamePositions.every(position => position >= 0)).toBe(true);
     expect(longNamePositions).toEqual([...longNamePositions].sort((left, right) => left - right));
     expect(pageTexts[2]).toContain("Callout 14");
-    expect(pageTexts[3]).toContain("Long continuation step");
     expect(pageTexts[3]).toContain("Baugruppen \\(Fortsetzung\\)");
     expect(pageTexts[3]).toContain("Callout 15");
-    expect(pageTexts[4]).toContain("Long continuation step");
     expect(pageTexts[4]).toContain("Teile \\(Fortsetzung\\)");
     expect(pageTexts[4]).toContain("LDraw test-part-06");
     expect(pageTexts[4]).toContain("LDraw test-part-41");
-    expect(pageTexts[5]).toContain("Long continuation step");
     expect(pageTexts[5]).toContain("Teile \\(Fortsetzung\\)");
     expect(pageTexts[5]).toContain("LDraw test-part-42");
     expect(pageTexts[5]).toContain("LDraw test-part-49");
