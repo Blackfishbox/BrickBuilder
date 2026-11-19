@@ -414,6 +414,15 @@ describe("frame-coalesced drag transactions", () => {
     expect(element.querySelector("[aria-label='Verbindungsvorschau anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Schwebewarnung anzeigen']")).toBeNull();
   });
+  it("hides construction controls in view-only mode", () => {
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "view" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    expect(element.querySelector("[data-testid='construction-controls']")).toBeNull();
+    expect(element.querySelector("[aria-label='Verbindungen anzeigen']")).toBeNull();
+    expect(element.querySelector("[aria-label='Verbindungsvorschau anzeigen']")).toBeNull();
+    expect(element.querySelector("[aria-label='Schwebewarnung anzeigen']")).toBeNull();
+  });
   it("drags real catalog plate geometry onto both rows with live contacts and identical committed rendering", async () => {
     const snapshot = JSON.parse(new TextDecoder().decode(gunzipSync(readFileSync(resolve("public/parts/import-geometry-2026-10-31.bin")))));
     const sourceText = "1 4 0 -8 0 1 0 0 0 1 0 0 0 1 3795.dat\n1 7 80 -8 0 1 0 0 0 1 0 0 0 1 3023b.dat";
