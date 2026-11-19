@@ -15,7 +15,7 @@ afterEach(() => {
   host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); vi.clearAllMocks();
 });
 
-it("exposes independent free X and Z angle fields and commits decimal degrees", () => {
+it("exposes independent free X and Z angle fields and commits whole degrees", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const onTilt = vi.fn();
   host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
@@ -23,7 +23,7 @@ it("exposes independent free X and Z angle fields and commits decimal degrees", 
 
   act(() => {
     const x = host!.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')!;
-    x.value = "27,5";
+    x.value = "27";
     x.dispatchEvent(new Event("input", { bubbles: true }));
     x.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     const z = host!.querySelector<HTMLInputElement>('[data-testid="input-tilt-z"]')!;
@@ -31,7 +31,7 @@ it("exposes independent free X and Z angle fields and commits decimal degrees", 
     z.dispatchEvent(new Event("input", { bubbles: true }));
     z.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
   });
-  expect(onTilt.mock.calls).toEqual([["x", 27.5], ["z", -12]]);
+  expect(onTilt.mock.calls).toEqual([["x", 27], ["z", -12]]);
   expect(host.querySelector('[aria-label="Drehung und Neigung einstellen"]')).toBeTruthy();
 });
 
@@ -67,10 +67,10 @@ it("keeps an active numeric draft when the other axis changes externally", () =>
   act(() => {
     const x = host!.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')!;
     x.focus();
-    setInputValue(x, "27,5");
+    setInputValue(x, "27");
   });
   act(() => root!.render(<TiltControls tiltX={0} tiltZ={30} onTilt={onTilt} />));
-  expect(host.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')?.value).toBe("27,5");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')?.value).toBe("27");
   expect(host.querySelector<HTMLInputElement>('[data-testid="input-tilt-z"]')?.value).toBe("30");
   expect(host.querySelector('[data-testid="value-tilt-z"]')?.textContent).toBe("30°");
 });
@@ -84,15 +84,15 @@ it("commits an active field before the same axis is adjusted with the slider", (
   act(() => {
     const x = host!.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')!;
     x.focus();
-    setInputValue(x, "20,5");
+    setInputValue(x, "20");
     const slider = host!.querySelector<HTMLInputElement>('[data-testid="slider-tilt-x"]')!;
     slider.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     setInputValue(slider, "-12");
   });
-  expect(onTilt.mock.calls).toEqual([["x", 20.5], ["x", -12]]);
+  expect(onTilt.mock.calls).toEqual([["x", 20], ["x", -12]]);
 });
 
-it("supports a free Y rotation from 0 to 360 degrees with precise input", () => {
+it("supports a free Y rotation from 0 to 360 degrees using whole degrees", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const onRotate = vi.fn();
   const onTilt = vi.fn();
@@ -104,12 +104,29 @@ it("supports a free Y rotation from 0 to 360 degrees with precise input", () => 
   expect(slider.max).toBe("360");
   expect(host.querySelector('[data-testid="value-rotation-y"]')?.textContent).toBe("90°");
 
+  expect(slider.step).toBe("1");
+  expect(host.querySelector('[data-testid="input-rotation-y"]')?.getAttribute("step")).toBe("1");
+  expect(host.textContent).not.toContain("Hochachse");
+
   act(() => setInputValue(slider, "137.5"));
-  expect(onRotate).toHaveBeenLastCalledWith(137.5);
+  expect(onRotate.mock.calls.every(([angle]) => Number.isInteger(angle))).toBe(true);
+  expect(onRotate).toHaveBeenLastCalledWith(138);
+  act(() => setInputValue(slider, "138"));
+  expect(onRotate).toHaveBeenLastCalledWith(138);
 
   act(() => root!.render(<TiltControls rotationY={137.5} tiltX={12} tiltZ={-24} onRotate={onRotate} onTilt={onTilt} />));
-  expect(host.querySelector<HTMLInputElement>('[data-testid="input-rotation-y"]')?.value).toBe("137.5");
-  expect(host.querySelector('[data-testid="value-rotation-y"]')?.textContent).toBe("137.5°");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-rotation-y"]')?.value).toBe("138");
+  expect(host.querySelector('[data-testid="value-rotation-y"]')?.textContent).toBe("138°");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-rotation-y"]')?.getAttribute("inputmode")).toBe("numeric");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')?.getAttribute("step")).toBe("1");
+
+  act(() => {
+    const input = host!.querySelector<HTMLInputElement>('[data-testid="input-rotation-y"]')!;
+    input.focus();
+    setInputValue(input, "138.5");
+    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+  });
+  expect(onRotate).toHaveBeenLastCalledWith(138);
 
   act(() => {
     const input = host!.querySelector<HTMLInputElement>('[data-testid="input-rotation-y"]')!;
@@ -126,5 +143,29 @@ it("supports a free Y rotation from 0 to 360 degrees with precise input", () => 
     setInputValue(input, "-2");
     input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
   });
-  expect(onRotate).toHaveBeenLastCalledWith(0);
+  expect(onRotate).toHaveBeenLastCalledWith(360);
+});
+
+it("rejects fractional X and Z tilt values in numeric fields and rounds old values for display", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const onTilt = vi.fn();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls tiltX={27.5} tiltZ={-12.4} onTilt={onTilt} />));
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')?.value).toBe("28");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-tilt-z"]')?.value).toBe("-12");
+  expect(host.querySelector('[data-testid="value-tilt-x"]')?.textContent).toBe("28°");
+
+  act(() => {
+    const x = host!.querySelector<HTMLInputElement>('[data-testid="input-tilt-x"]')!;
+    x.focus();
+    setInputValue(x, "28.5");
+    x.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    const z = host!.querySelector<HTMLInputElement>('[data-testid="input-tilt-z"]')!;
+    z.focus();
+    setInputValue(z, "-12.5");
+    z.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+  });
+  expect(onTilt.mock.calls.every(([, angle]) => Number.isInteger(angle))).toBe(true);
+  expect(host.querySelector('[data-testid="value-tilt-x"]')?.textContent).toBe("28°");
+  expect(host.querySelector('[data-testid="value-tilt-z"]')?.textContent).toBe("-12°");
 });
