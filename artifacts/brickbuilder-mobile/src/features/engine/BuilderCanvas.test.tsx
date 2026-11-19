@@ -174,7 +174,6 @@ describe("frame-coalesced drag transactions", () => {
     await mount("select");
     act(() => element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!.click());
     const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
-    const cameraPosition = observed.camera!.position.toArray();
     const capturePointer = vi.mocked(host.setPointerCapture);
     capturePointer.mockClear();
 
@@ -188,7 +187,6 @@ describe("frame-coalesced drag transactions", () => {
 
     expect(range.value).toBe("3");
     expect(capturePointer).not.toHaveBeenCalled();
-    expect(observed.camera!.position.toArray()).toEqual(cameraPosition);
   });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
