@@ -39,7 +39,10 @@ import { reuseGeometryCache } from "./ldraw-geometry";
 import { importedSelectionBounds, pickSoftwareInstance } from "./imported-selection";
 import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftware, applySoftwareInstructionFocus, INTERACTIVE_TRIANGLE_BUDGET, type SoftwareScene } from "./software-scene";
 import { InstanceIndex, instanceIndex } from "./instance-index";
-import { activeConnections, magneticConstructionTransform, hasUsableConnections } from "../connections/engine";
+import {
+  activeConnections, magneticConstructionTransform, hasUsableConnections,
+  previewConnections, CONNECTION_PREVIEW_STUDS,
+} from "../connections/engine";
 import type { MagneticLatch } from "../connections/engine";
 import { ConnectionOverlay } from "../connections/overlay";
 import type { InstructionCamera } from "../instructions/types";
@@ -472,6 +475,14 @@ export function BuilderCanvas({
   const attemptRef = useRef(-1);
   const overlayRef = useRef<ConnectionOverlay | null>(null);
   const [showConnections, setShowConnections] = useState(true);
+  const showConnectionsRef = useRef(true);
+  showConnectionsRef.current = showConnections;
+  const [showConnectionPreview, setShowConnectionPreview] = useState(false);
+  const showConnectionPreviewRef = useRef(false);
+  showConnectionPreviewRef.current = showConnectionPreview;
+  const [connectionPreviewRange, setConnectionPreviewRange] = useState(CONNECTION_PREVIEW_STUDS);
+  const connectionPreviewRangeRef = useRef(connectionPreviewRange);
+  connectionPreviewRangeRef.current = connectionPreviewRange;
   const [connectionStatus, setConnectionStatus] = useState("");
   const [floatingCount, setFloatingCount] = useState(0);
   const [showFloating, setShowFloating] = useState(false);
@@ -503,8 +514,9 @@ export function BuilderCanvas({
     refreshFloating();
     const overlay = overlayRef.current, model = propsRef.current.imported, id = propsRef.current.selectedId;
     if (!overlay) return;
-    if (model !== sceneModelRef.current) { overlay.contacts = []; setConnectionStatus(""); return; }
+    if (model !== sceneModelRef.current) { overlay.contacts = []; overlay.previews = []; setConnectionStatus(""); return; }
     overlay.contacts = model && id ? activeConnections(model, id) : [];
+    overlay.previews = [];
     const instance = model?.instances.find(value => value.id === id);
     setConnectionStatus(overlay.contacts.length ? `${overlay.contacts.length} geprüfte Verbindung${overlay.contacts.length === 1 ? "" : "en"}` :
       instance && model ? hasUsableConnections(model, instance.id) ? "Keine aktive Verbindung" : "Keine nutzbaren Verbindungsdaten · freie Platzierung" : "");
@@ -1013,6 +1025,10 @@ export function BuilderCanvas({
     if (overlayRef.current) overlayRef.current.visible = showConnections;
     invalidatorRef.current?.();
   }, [showConnections]);
+  useEffect(() => {
+    if (!showConnectionPreview && overlayRef.current) overlayRef.current.previews = [];
+    invalidatorRef.current?.();
+  }, [showConnectionPreview]);
 
   useEffect(() => { updateImportedSelection(); }, [selectedId]);
   useEffect(() => { refreshFloating(); }, [bricks]);
@@ -1186,7 +1202,10 @@ export function BuilderCanvas({
       previewBrickRef.current = null;
       dragRef.current = null; clickRef.current = null;
       refreshConstructionAreaRef.current?.();
-      if (overlayRef.current) overlayRef.current.contacts = [];
+      if (overlayRef.current) {
+        overlayRef.current.contacts = [];
+        overlayRef.current.previews = [];
+      }
       setConnectionStatus("");
       updateImportedSelection();
     };
@@ -1205,13 +1224,25 @@ export function BuilderCanvas({
       if (!drag.destination || !drag.needsSnap) return;
       if (drag.matrix && propsRef.current.imported) {
         const offset = importedOffsetRef.current;
+        const requested = { ...drag.destination, y: drag.destination.y - offset };
         const magnetic = magneticConstructionTransform(propsRef.current.imported, drag.id,
-          { ...drag.destination, y: drag.destination.y - offset }, drag.magneticLatch);
+          requested, drag.magneticLatch);
         drag.magneticLatch = magnetic.latch;
         const result = magnetic.transform;
         drag.connection = result;
-        if (overlayRef.current) overlayRef.current.contacts = result.contacts;
-        setConnectionStatus(result.status === "candidate" ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen` :
+        const suggestions = !showConnectionPreviewRef.current || !showConnectionsRef.current
+          ? [] : previewConnections(propsRef.current.imported, drag.id, requested, connectionPreviewRangeRef.current).filter(suggestion =>
+            !result.contacts.some(contact => contact.targetId === suggestion.targetId &&
+              contact.targetConnectorId === suggestion.targetConnectorId &&
+              contact.movingConnectorId === suggestion.movingConnectorId));
+        if (overlayRef.current) {
+          overlayRef.current.contacts = result.contacts;
+          overlayRef.current.previews = suggestions;
+        }
+        setConnectionStatus(result.status === "candidate" && result.contacts.length
+          ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen${suggestions.length ? ` · ${suggestions.length} weitere Vorschläge` : ""}` :
+          suggestions.length ? `${suggestions.length} passende Verbindung${suggestions.length === 1 ? "" : "en"} in Reichweite · noch nicht eingerastet` :
+          result.status === "candidate" ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen` :
           result.status === "no-data" ? "Keine nutzbaren Verbindungsdaten · freie Platzierung" : "Keine passende Verbindung · freie Platzierung");
         const position = { x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20 };
         drag.destination = { ...position, y: position.y + offset };
@@ -1508,6 +1539,20 @@ export function BuilderCanvas({
         onClick={() => setShowConnections(value => !value)}>
         Verbindungen {showConnections ? "an" : "aus"}
       </button>
+      <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
+        aria-pressed={showConnectionPreview} aria-label="Verbindungsvorschau anzeigen"
+        onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+        onClick={() => setShowConnectionPreview(value => !value)}>
+        Vorschläge {showConnectionPreview ? "an" : "aus"}
+      </button>
+      {showConnectionPreview && <label className="connection-preview-setting">
+        <span>Suchabstand für Verbindungsvorschläge</span>
+        <input type="range" min="0.5" max="4" step="0.25" value={connectionPreviewRange}
+          aria-label="Suchabstand für Verbindungsvorschläge" data-testid="connection-preview-range"
+          onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+          onChange={event => setConnectionPreviewRange(Number(event.currentTarget.value))} />
+        <output data-testid="connection-preview-range-value">bis {connectionPreviewRange.toLocaleString("de-DE")} Noppen</output>
+      </label>}
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showFloating} aria-label="Schwebewarnung anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}

@@ -135,12 +135,45 @@ describe("frame-coalesced drag transactions", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(element.querySelector("[data-testid='floating-warning']")).toBeNull();
   });
+  it("keeps connection suggestions optional and independently toggleable", () => {
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!;
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  });
+  it("shows the labeled suggestion search distance only while suggestions are enabled", () => {
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
+    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!;
+    act(() => toggle.click());
+    const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
+    expect(range.value).toBe("1.5");
+    expect(range.getAttribute("aria-label")).toBe("Suchabstand für Verbindungsvorschläge");
+    expect(element.querySelector(".connection-preview-setting > span")?.textContent).toBe("Suchabstand für Verbindungsvorschläge");
+    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 1,5 Noppen");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
+      range.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(range.value).toBe("3");
+    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 3 Noppen");
+    act(() => toggle.click());
+    expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
+  });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
       toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), showConstructionControls: false };
     act(() => root.render(<BuilderCanvas {...props} />));
     expect(element.querySelector("[data-testid='construction-controls']")).toBeNull();
     expect(element.querySelector("[aria-label='Verbindungen anzeigen']")).toBeNull();
+    expect(element.querySelector("[aria-label='Verbindungsvorschau anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Schwebewarnung anzeigen']")).toBeNull();
   });
   it("hides construction controls in view-only mode", () => {
@@ -168,11 +201,21 @@ describe("frame-coalesced drag transactions", () => {
     host = element.querySelector("[data-testid='canvas-3d']")!;
     flushFrame();
     const project = catalogProjection(), start = project(4, 0.4, 0), end = project(0.03, 0.4, 0.52);
+    const suggestions = vi.spyOn(snapping, "previewConnections");
+    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!.click());
+    const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
+      range.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     const search = vi.spyOn(snapping, "magneticConstructionTransform");
     pointer("pointerdown", start.x, start.y);
     pointer("pointermove", end.x, end.y);
     flushFrame();
     expect(search).toHaveBeenCalledOnce();
+    expect(suggestions).toHaveBeenCalledOnce();
+    expect(suggestions.mock.calls[0][3]).toBe(3);
+    expect(search.mock.calls[0]).toEqual([model, id, expect.any(Object), undefined]);
     const transform = search.mock.results[0].value.transform;
     expect(transform.contacts).toHaveLength(2);
     expect(transform.matrix).toEqual([1, 0, 0, 0, 0, 1, 0, -16, 0, 0, 1, 10]);

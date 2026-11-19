@@ -12,7 +12,9 @@ import { matingVolume, surfacesObstruct } from "./obstruction";
  * rather than leaving dead zones around each grid intersection. */
 export const MAGNET_CAPTURE_STUDS = 0.75;
 export const MAGNET_RELEASE_STUDS = 0.95;
+export const CONNECTION_PREVIEW_STUDS = 1.5;
 const CELL = 80, REACH = MAGNET_CAPTURE_STUDS * 20, EPS = 1e-4, MAX_CONTACTS = 64;
+const MAX_PREVIEWS = 12;
 interface Entry { id: string; instance: ImportedInstance; connectors: Connector[]; box: Box3 }
 interface Index { entries: Map<string, Entry>; cells: Map<string, Set<Entry>>; wide: Entry[] }
 const indexes = new WeakMap<ImportedModel, Index>();
@@ -216,6 +218,60 @@ export function activeConnections(model: ImportedModel, id: string): Contact[] {
 }
 export function hasUsableConnections(model: ImportedModel, id: string): boolean {
   return !!indexFor(model).entries.get(id)?.connectors.length && stackingBounds(model).has(id);
+}
+
+/** Nearby compatible contacts are display-only suggestions; they never move
+ * the part or participate in magnetic snapping. */
+export function previewConnections(
+  model: ImportedModel, id: string, desired: Position3, rangeStuds = CONNECTION_PREVIEW_STUDS,
+): Contact[] {
+  const index = indexFor(model), original = index.entries.get(id), instance = original?.instance;
+  if (!instance || !original.connectors.length) return [];
+  const reach = Math.max(0, Number.isFinite(rangeStuds) ? rangeStuds : CONNECTION_PREVIEW_STUDS) * 20;
+  const matrix = [...instance.matrix] as Affine;
+  matrix[3] = desired.x * 20; matrix[7] = -desired.y * 20; matrix[11] = desired.z * 20;
+  const moving = describeConnections(instance.reference, model).connectors
+    .map(c => transformConnector(c, matrix)).filter((c): c is Connector => !!c);
+  const query = original.box.clone()
+    .translate(new Vector3(matrix[3] - instance.matrix[3], matrix[7] - instance.matrix[7], matrix[11] - instance.matrix[11]))
+    .expandByScalar(reach);
+  const near = neighbours(index, query, id), result: Contact[] = [], seen = new Set<string>();
+  for (const a of moving) for (const entry of near) for (const b of entry.connectors) {
+    if (!potentialPair(a, b) || occupied(index, b, entry.id, id, a)) continue;
+    const aa = axes(a), bb = axes(b), direction = aa.y.dot(bb.y) >= 0 ? 1 : -1;
+    const genericFree = a.family === "generic" && a.placement === "free" && b.placement === "free";
+    if (!genericFree && Math.abs(aa.y.dot(bb.y)) < Math.cos(Math.PI / 12)) continue;
+    const planar = aa.position.clone().sub(bb.position);
+    planar.addScaledVector(bb.y, -planar.dot(bb.y));
+    if (planar.length() > reach) continue;
+
+    const ai = intervals(a), bi = intervals(b), offsets = new Set<number>();
+    if (a.family === "generic") offsets.add(0);
+    else for (const x of ai.flatMap(s => [s.lo * direction, s.hi * direction]))
+      for (const y of bi.flatMap(s => [s.lo, s.hi])) offsets.add(y - x);
+    let bestOffset: number | undefined, bestDistance = Infinity;
+    const currentOffset = aa.position.clone().sub(bb.position).dot(bb.y);
+    for (const offset of offsets) {
+      const roll = aa.x.dot(bb.x);
+      if (!profileOverlap(a, b, offset, direction, roll)) continue;
+      const wanted = bb.position.clone().addScaledVector(bb.y, offset);
+      const delta = wanted.clone().sub(aa.position);
+      if (Math.hypot(delta.x, delta.z) > reach || Math.abs(delta.y) > reach) continue;
+      const distance = Math.abs(offset - currentOffset) + delta.length() * 0.001;
+      if (distance < bestDistance) { bestOffset = offset; bestDistance = distance; }
+    }
+    if (bestOffset === undefined) continue;
+    const alignedFrame = matrix4(a.frame).setPosition(bb.position.clone()
+      .addScaledVector(bb.y, bestOffset));
+    const suggestion = contact({ ...a, frame: affine(alignedFrame) }, b, id, entry.id, "candidate");
+    if (!suggestion) continue;
+    const key = `${suggestion.targetId}|${suggestion.targetConnectorId}|${suggestion.movingConnectorId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(suggestion);
+    if (result.length >= MAX_PREVIEWS) return result;
+  }
+  return result;
 }
 
 export function snapConnection(model: ImportedModel, id: string, desired: Position3): ConnectionTransform | null {
