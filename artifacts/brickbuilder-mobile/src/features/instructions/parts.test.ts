@@ -135,7 +135,7 @@ describe("step parts illustrations", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("carries step highlighting into every PDF model image and explains the colors", async () => {
+  it("highlights PDF steps except the first and omits the unsolicited color legend", async () => {
     const doc = createEmptyDocument("Highlighted steps");
     doc.bricks = ["old", "new"].map((id, index) => ({
       id, type: "brick-1x2" as const, color: "#d75b3f", x: index * 2, y: 0, z: 0, rotation: 0 as const,
@@ -154,8 +154,8 @@ describe("step parts illustrations", () => {
     await exportInstructionPDF(doc, plan, { highlight: true }, async () => ({
       image: renderModel, dispose: vi.fn(),
     }));
-    expect(focusSets).toEqual([new Set(["old"]), new Set(["new"])]);
-    expect(pdfTexts).toContain("Türkis: neue Teile und einzusetzende Baugruppen · Hellgrau: bereits verbaute Teile");
+    expect(focusSets).toEqual([undefined, new Set(["new"])]);
+    expect(pdfTexts.some(text => typeof text === "string" && /Türkis|Hellgrau/.test(text))).toBe(false);
   });
 
   it("exports subassembly callouts as rendered Baugruppen boxes", async () => {
