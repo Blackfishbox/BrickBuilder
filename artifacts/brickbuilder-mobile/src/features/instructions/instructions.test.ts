@@ -73,6 +73,8 @@ function rasterCanvas(width: number, height: number) {
   const context = {
     get fillStyle() { return fillStyle; }, set fillStyle(value: string) { fillStyle = value; },
     get globalAlpha() { return globalAlpha; }, set globalAlpha(value: number) { globalAlpha = value; },
+    strokeStyle: "", lineWidth: 0,
+    save() {}, restore() {}, stroke() {},
     fillRect(x: number, y: number, w: number, h: number) {
       const rgba = color();
       for (let py = Math.max(0, Math.floor(y)); py < Math.min(height, Math.ceil(y + h)); py++) {
@@ -486,7 +488,7 @@ describe("local construction instructions", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it("keeps official transparent LDraw geometry visible and blended in the PDF diagram", async () => {
+  it("keeps resolved transparent LDraw parts visible in highlighted PDF steps", async () => {
     const manifest = PART_PACKAGES.find(pkg => pkg.id === "ldraw-default-details")!;
     const bytes = readFileSync(new URL(`../../../public/${manifest.url}`, import.meta.url));
     const parsed = JSON.parse(new TextDecoder().decode(
@@ -497,11 +499,20 @@ describe("local construction instructions", () => {
     const doc = fixture(source);
     doc.imported!.resources = Object.fromEntries(packageData.files.map(file => [file.path, file]));
     for (const part of doc.imported!.instances) part.part.status = "resolved";
+    doc.bricks.push({
+      id: "earlier-solid", type: "brick-1x2", color: "#d75b3f",
+      x: -3, y: 0, z: 0, rotation: 0,
+    });
+    const glassId = doc.imported!.instances[0].id;
     doc.instructions = {
       version: 1, edited: false, source: "manual", warnings: [],
-      steps: [{ id: "transparent-glass", title: "Glass", notes: "", partIds: [doc.imported!.instances[0].id] }],
+      steps: [
+        { id: "base", title: "Base", notes: "", partIds: ["earlier-solid"] },
+        { id: "transparent-glass", title: "Glass", notes: "", partIds: [glassId] },
+      ],
     };
     const canvases: ReturnType<typeof rasterCanvas>[] = [];
+    const highlightSets: (ReadonlySet<string> | undefined)[] = [];
     vi.stubGlobal("document", {
       createElement: () => {
         const rendered = rasterCanvas(240, 182);
@@ -510,8 +521,16 @@ describe("local construction instructions", () => {
       },
     });
     try {
-      const pdf = await exportInstructionPDF(doc, doc.instructions!, {}, (document, signal) =>
-        createSoftwareInstructionRenderer(document, signal, { width: 240, height: 182 }),
+      const pdf = await exportInstructionPDF(doc, doc.instructions!, { highlight: true }, async (document, signal) => {
+        const renderer = await createSoftwareInstructionRenderer(document, signal, { width: 240, height: 182 });
+        return {
+          image(visible, step, highlightIds) {
+            highlightSets.push(highlightIds);
+            return renderer.image(visible, step, highlightIds);
+          },
+          dispose: () => renderer.dispose(),
+        };
+      },
       );
       const output = Buffer.from(pdf).toString("latin1");
       const glass = packageData.files.find(file => file.path === "parts/2494.dat")!;
@@ -519,10 +538,12 @@ describe("local construction instructions", () => {
       expect(glass.content).toContain("0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt");
       expect(decode(pdf.slice(0, 8))).toContain("%PDF-1.");
       expect(output).toContain("/Subtype /Image");
+      expect(output).toContain("/Count 2");
       expect(canvases.length).toBeGreaterThanOrEqual(2);
       expect(canvases[0].filledTriangles).toBeGreaterThan(0);
       expect(canvases[0].triangleAlphas).toContain(128 / 255);
       expect(canvases[0].pixels.some((value, index) => index % 4 !== 3 && value < 250)).toBe(true);
+      expect(highlightSets).toEqual([undefined, new Set([glassId])]);
     } finally { vi.unstubAllGlobals(); }
   });
 
