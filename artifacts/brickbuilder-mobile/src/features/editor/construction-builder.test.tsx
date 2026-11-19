@@ -12,6 +12,7 @@ import type { ImportedModel } from "../formats/types";
 import { parseInventory } from "../inventory/import";
 import { allocatedCounts } from "../inventory/accounting";
 import { builderDatabase, loadProject } from "@/storage/database";
+import { brickBounds } from "./brick-transform";
 
 vi.mock("../catalog/client", () => ({
   useCatalog: () => ({ status: "ready" }),
@@ -120,6 +121,10 @@ it("clamps legacy saved bricks and allows fine steps without grid rounding", asy
   legacyDocument.bricks = [{ id: "legacy", type: "brick-1x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 }];
   await act(async () => editor.importProject(legacyDocument));
   await act(async () => editor.select("legacy"));
+  await act(async () => editor.setSelectedRotation(37.5));
+  expect(editor.document.bricks[0].rotation).toBe(38);
+  await act(async () => editor.undo());
+  expect(editor.document.bricks[0].rotation).toBe(0);
   const before = editor.document;
   await act(async () => editor.changeHeight(-0.4));
   expect(editor.document).toBe(before);
@@ -127,4 +132,33 @@ it("clamps legacy saved bricks and allows fine steps without grid rounding", asy
   expect(editor.document.bricks[0]).toMatchObject({ x: 0.05, y: 0.05, z: -0.05 });
   await act(async () => editor.changeHeight(-0.4));
   expect(editor.document.bricks[0].y).toBe(0);
+});
+
+it("tilts selected local bricks, preserves undo and keeps the real bottom above ground", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+  const sourceDocument = createEmptyDocument();
+  sourceDocument.bricks = [{ id: "tilt-me", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 }];
+  await act(async () => editor.importProject(sourceDocument));
+  await act(async () => editor.select("tilt-me"));
+  await act(async () => editor.setSelectedTilt("x", 35));
+  await act(async () => editor.setSelectedTilt("z", -20));
+
+  const tilted = editor.document.bricks[0];
+  expect(tilted).toMatchObject({ tiltX: 35, tiltZ: -20 });
+  expect(brickBounds(tilted).min.y).toBeCloseTo(0);
+  await act(async () => editor.undo());
+  expect(editor.document.bricks[0]).toMatchObject({ tiltX: 35 });
+  expect(editor.document.bricks[0].tiltZ).toBeUndefined();
+  await act(async () => editor.redo());
+  await act(async () => editor.changeHeight(-0.4));
+  expect(brickBounds(editor.document.bricks[0]).min.y).toBeCloseTo(0);
+  await act(async () => editor.save());
+  expect((await loadProject(editor.document.id))!.bricks[0]).toEqual(editor.document.bricks[0]);
 });

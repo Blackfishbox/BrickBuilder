@@ -187,6 +187,56 @@
 .dark .mobile-selection-actions > button:last-child,
 .dark .ins-ghost.is-danger,
 .dark .ins-danger { color: hsl(var(--destructive)); }
+.dark .mobile-selection-actions > button:not(:last-child) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.dark .mobile-selection-actions > button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.dark .mobile-selection-actions > button:last-child {
+  background: hsl(var(--destructive) / .12);
+}
+.dark .mobile-selection-actions .fine-position summary {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.dark .mobile-selection-actions .fine-position-panel,
+.dark .mobile-selection-actions .fine-position-grid button {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+.dark .mobile-selection-actions .fine-position-panel small { color: hsl(var(--muted-foreground)); }
+.dark .mobile-selection-actions .fine-position summary:hover,
+.dark .mobile-selection-actions .fine-position-grid button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.dark .fine-position summary {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.dark .fine-position-panel {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+.dark .fine-position-panel small { color: hsl(var(--muted-foreground)); }
+.dark .fine-position-grid button {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.dark .fine-position summary:hover,
+.dark .fine-position-grid button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
 .dark .ins-shell {
   background: hsl(var(--background));
   color: hsl(var(--foreground));

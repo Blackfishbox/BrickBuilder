@@ -1,4 +1,5 @@
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type Brick } from "../editor/model";
+import { BRICK_HEIGHT, type Brick } from "../editor/model";
+import { brickBounds } from "../editor/brick-transform";
 
 interface AnalyzeRequest {
   requestId: number;
@@ -40,14 +41,11 @@ workerScope.addEventListener("message", (event) => {
   const overlaps = new Set<string>();
 
   for (const brick of bricks) {
-    const definition = BRICK_DEFINITIONS[brick.type];
-    const rotated = Math.abs(brick.rotation % 180) === 90;
-    const width = rotated ? definition.studsZ : definition.studsX;
-    const depth = rotated ? definition.studsX : definition.studsZ;
-    const left = brick.x - width / 2;
-    const right = brick.x + width / 2;
-    const front = brick.z - depth / 2;
-    const back = brick.z + depth / 2;
+    const bounds = brickBounds(brick);
+    const left = bounds.min.x;
+    const right = bounds.max.x;
+    const front = bounds.min.z;
+    const back = bounds.max.z;
 
     minX = Math.min(minX, left);
     maxX = Math.max(maxX, right);
@@ -58,15 +56,18 @@ workerScope.addEventListener("message", (event) => {
     const maxCellX = Math.round(right * 2);
     const minCellZ = Math.round(front * 2);
     const maxCellZ = Math.round(back * 2);
-    const layer = Math.round(brick.y / BRICK_HEIGHT);
-    for (let x = minCellX; x < maxCellX; x += 1) {
-      for (let z = minCellZ; z < maxCellZ; z += 1) {
-        const key = `${layer}:${x}:${z}`;
-        const existing = occupied.get(key);
-        if (existing && existing !== brick.id) {
-          overlaps.add([existing, brick.id].sort().join(":"));
-        } else {
-          occupied.set(key, brick.id);
+    const minLayer = Math.floor(bounds.min.y / BRICK_HEIGHT);
+    const maxLayer = Math.floor((bounds.max.y - 1e-9) / BRICK_HEIGHT);
+    for (let layer = minLayer; layer <= maxLayer; layer += 1) {
+      for (let x = minCellX; x < maxCellX; x += 1) {
+        for (let z = minCellZ; z < maxCellZ; z += 1) {
+          const key = `${layer}:${x}:${z}`;
+          const existing = occupied.get(key);
+          if (existing && existing !== brick.id) {
+            overlaps.add([existing, brick.id].sort().join(":"));
+          } else {
+            occupied.set(key, brick.id);
+          }
         }
       }
     }

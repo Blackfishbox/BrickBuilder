@@ -1,5 +1,6 @@
 import { Box3, BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
 import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor/model";
+import { brickTransformMatrix } from "../editor/brick-transform";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
@@ -54,8 +55,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   for (const part of document.bricks) {
     signal?.throwIfAborted();
     const def = BRICK_DEFINITIONS[part.type];
-    const matrix = new Matrix4().makeRotationY(part.rotation * Math.PI / 180);
-    matrix.setPosition(part.x, part.y, part.z);
+    const matrix = brickTransformMatrix(part);
     addGeometry(part.id, new BoxGeometry(def.studsX * 0.96, BRICK_HEIGHT, def.studsZ * 0.96),
       matrix.clone().multiply(new Matrix4().makeTranslation(0, BRICK_HEIGHT / 2, 0)), part.color);
     for (let x = 0; x < def.studsX; x++) for (let z = 0; z < def.studsZ; z++) {
