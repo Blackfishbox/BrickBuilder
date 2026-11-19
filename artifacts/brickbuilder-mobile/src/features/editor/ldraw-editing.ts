@@ -1,4 +1,4 @@
-import { Box3, Vector3 } from "three";
+import { Box3, Matrix4, Vector3 } from "three";
 import type { BuilderDocument, Position3 } from "./model";
 import type { ImportedInstance, ImportedModel, Affine } from "../formats/types";
 import type { LibraryPart } from "../parts/types";
@@ -55,11 +55,48 @@ export function recolorImported(document: BuilderDocument, id: string, hex: stri
   const colorCode = appearanceCode(hex, code);
   return editImported(document, id, instance => ({ ...instance, colorCode, color: resolveColor(colorCode) }));
 }
+function affineFromWorldMatrix(matrix: Matrix4): Affine {
+  const e = matrix.elements, scale = 20;
+  const clean = (value: number) => Object.is(value, -0) ? 0 : value;
+  return [
+    clean(e[0] * scale), clean(e[4] * scale), clean(e[8] * scale), clean(e[12] * scale),
+    clean(-e[1] * scale), clean(-e[5] * scale), clean(-e[9] * scale), clean(-e[13] * scale),
+    clean(e[2] * scale), clean(e[6] * scale), clean(e[10] * scale), clean(e[14] * scale),
+  ];
+}
+function yawMatrix(angle: number): Matrix4 {
+  const radians = angle * Math.PI / 180;
+  const cosine = Math.abs(Math.cos(radians)) < 1e-12 ? 0 : Math.cos(radians);
+  const sine = Math.abs(Math.sin(radians)) < 1e-12 ? 0 : Math.sin(radians);
+  return new Matrix4().set(cosine, 0, sine, 0, 0, 1, 0, 0, -sine, 0, cosine, 0, 0, 0, 0, 1);
+}
+export function setImportedRotation(document: BuilderDocument, id: string, rotationY: number): BuilderDocument {
+  if (!Number.isFinite(rotationY) || !document.imported) return document;
+  const angle = Math.max(0, Math.min(360, Math.round(rotationY)));
+  return editImported(document, id, instance => {
+    const base = instance.rotationBaseMatrix ?? instance.matrix;
+    if (angle === 0) {
+      const { rotationY: _angle, rotationBaseMatrix: _base, ...rest } = instance;
+      return { ...rest, matrix: [...base] as Affine };
+    }
+    const world = worldMatrix(base);
+    const origin = new Vector3().setFromMatrixPosition(world);
+    world.premultiply(yawMatrix(angle));
+    world.setPosition(origin);
+    return {
+      ...instance,
+      matrix: affineFromWorldMatrix(world),
+      rotationY: angle,
+      rotationBaseMatrix: [...base] as Affine,
+    };
+  });
+}
 export function rotateImported(document: BuilderDocument, id: string): BuilderDocument {
+  const current = document.imported?.instances.find(instance => instance.id === id);
+  if (!current) return document;
+  if (current.rotationY !== undefined) return setImportedRotation(document, id, (current.rotationY + 90) % 360);
   return editImported(document, id, instance => {
     const m = instance.matrix;
-    // Left-multiply the local basis by a quarter-turn around world Y while
-    // leaving translation, reflection, shear and original pivot intact.
     const matrix: Affine = [m[8], m[9], m[10], m[3], m[4], m[5], m[6], m[7], -m[0], -m[1], -m[2], m[11]];
     return { ...instance, matrix };
   });
@@ -70,11 +107,17 @@ export function moveImported(document: BuilderDocument, id: string, position: Po
     const matrix = [...(transform ?? instance.matrix)] as Affine;
     // Do not divide and multiply the source LDU translation through UI units:
     // that changes exact off-grid coefficients by floating-point roundoff.
-    if (transform) return { ...instance, matrix };
-    matrix[3] = (snapXZ ? Math.round(position.x * 2) / 2 : position.x) * 20;
-    matrix[7] = -position.y * 20;
-    matrix[11] = (snapXZ ? Math.round(position.z * 2) / 2 : position.z) * 20;
-    return { ...instance, matrix };
+    if (!transform) {
+      matrix[3] = (snapXZ ? Math.round(position.x * 2) / 2 : position.x) * 20;
+      matrix[7] = -position.y * 20;
+      matrix[11] = (snapXZ ? Math.round(position.z * 2) / 2 : position.z) * 20;
+    }
+    if (!instance.rotationBaseMatrix) return { ...instance, matrix };
+    const rotationBaseMatrix = [...instance.rotationBaseMatrix] as Affine;
+    rotationBaseMatrix[3] += matrix[3] - instance.matrix[3];
+    rotationBaseMatrix[7] += matrix[7] - instance.matrix[7];
+    rotationBaseMatrix[11] += matrix[11] - instance.matrix[11];
+    return { ...instance, matrix, rotationBaseMatrix };
   });
 }
 export function placePreparedPart(document: BuilderDocument, prepared: PreparedPart, position: Position3, hex: string, code?: string): BuilderDocument {

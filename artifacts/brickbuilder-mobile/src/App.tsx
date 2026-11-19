@@ -3,6 +3,7 @@ import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
 import { useBuilder } from '@/features/editor/useBuilder';
 import FinePositionControls from '@/features/editor/FinePositionControls';
+import RotationControls from '@/features/editor/RotationControls';
 import {
   BRICK_DEFINITIONS,
   type BrickType,
@@ -24,7 +25,6 @@ import {
   PackageOpen,
   Palette,
   Plus,
-  RotateCw,
   Save,
   Settings2,
   Trash2,
@@ -333,7 +333,7 @@ function App() {
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
               <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
-              <button type="button" onClick={editor.rotateSelected} aria-label="Ausgewählten Stein drehen" data-testid="mobile-button-rotate"><RotateCw size={17} /></button>
+              <RotationControls rotation={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0} onChange={editor.setSelectedRotation} />
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
           )}
@@ -387,13 +387,11 @@ function App() {
                 <div className="selection-actions">
                   <button type="button" className="selection-action" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher">↑ Höher</button>
                   <button type="button" className="selection-action" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer">↓ Tiefer</button>
-                  <button type="button" className="selection-action" onClick={editor.rotateSelected} data-testid="button-rotate">
-                    <RotateCw size={16} /><span>Drehen</span>
-                  </button>
                   <button type="button" className="selection-action danger-action" onClick={editor.deleteSelected} data-testid="button-delete-selected">
                     <Trash2 size={16} /><span>Entfernen</span>
                   </button>
                 </div>
+                <RotationControls rotation={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0} onChange={editor.setSelectedRotation} />
                 <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>
             ) : (

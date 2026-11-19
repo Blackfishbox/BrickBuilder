@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ray, Vector3 } from "three";
 import { createEmptyDocument } from "./model";
 import { commit, createHistory, redo, undo } from "./history";
-import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, setImportedRotation, type PreparedPart } from "./ldraw-editing";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
 import { exportLDR } from "../formats/ldraw/export";
@@ -49,6 +49,22 @@ describe("editable imported LDraw instances", () => {
     const before = [...document.imported.instances[0].matrix];
     for (let i = 0; i < 4; i++) document = rotateImported(document, document.imported.instances[0].id) as typeof document;
     expect(document.imported.instances[0].matrix).toEqual(before);
+  });
+  it("sets whole-degree yaw from the stable source matrix and preserves moved pivots", () => {
+    const original = fixture(), id = original.imported.instances[0].id;
+    const source = original.imported.instances[0].matrix;
+    const yawed = setImportedRotation(original, id, 37.5);
+    expect(yawed.imported!.instances[0].rotationY).toBe(38);
+    expect(yawed.imported!.instances[0].matrix.slice(3, 4)).toEqual(source.slice(3, 4));
+    expect(yawed.imported!.instances[0].matrix.slice(7, 8)).toEqual(source.slice(7, 8));
+    const moved = moveImported(yawed, id, { x: 2.5, y: 0.8, z: -1.25 }, false);
+    const rotatedAgain = setImportedRotation(moved, id, 82.4).imported!.instances[0];
+    expect(rotatedAgain.rotationY).toBe(82);
+    expect(rotatedAgain.matrix.slice(3, 4)).toEqual(moved.imported!.instances[0].matrix.slice(3, 4));
+    expect(rotatedAgain.matrix.slice(7, 8)).toEqual(moved.imported!.instances[0].matrix.slice(7, 8));
+    const restored = setImportedRotation({ ...moved, imported: { ...moved.imported!, instances: [rotatedAgain, ...moved.imported!.instances.slice(1)] } }, id, 0);
+    expect(restored.imported!.instances[0].matrix).toEqual(moved.imported!.instances[0].rotationBaseMatrix);
+    expect(importInternal(exportInternal(yawed)).imported!.instances[0]).toMatchObject({ rotationY: 38 });
   });
   it("restores imported deletion, colors and transforms with undo/redo", () => {
     const document = fixture(), id = document.imported.instances[0].id;
