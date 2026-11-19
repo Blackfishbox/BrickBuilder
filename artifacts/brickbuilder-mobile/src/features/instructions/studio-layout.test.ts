@@ -89,6 +89,17 @@ describe("source-preserving Studio layout edits", () => {
     expect(result.status, result.stderr.toString() || result.stdout.toString()).toBe(0);
   }, 15000);
 
+  it("imports valid Studio instructions at the XML size limit within a bounded process", () => {
+    const worker = fileURLToPath(new URL("../malformed-xml-import-worker.ts", import.meta.url));
+    const packageRoot = fileURLToPath(new URL("../../../", import.meta.url));
+    const tsx = fileURLToPath(new URL("../../../node_modules/.bin/tsx", import.meta.url));
+    const result = spawnSync(tsx, [worker, "studio-valid"], {
+      cwd: packageRoot, timeout: 30000, maxBuffer: 16 * 1024,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr.toString() || result.stdout.toString()).toBe(0);
+  }, 40000);
+
   it("exports layout-only changes without rewriting models, source layout or image resources", () => {
     const doc = fixture(), before = readZip(new Uint8Array(doc.imported!.originalBytes));
     const layout = doc.instructions!.studioLayout!, image = inspectStudioLayout(layout).pages[0].items.find(item => item.imagePath)!;
