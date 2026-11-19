@@ -101,6 +101,9 @@ overrides:
   esbuild>@esbuild/win32-arm64: '-'
   esbuild>@esbuild/win32-ia32: '-'
   esbuild>@esbuild/win32-x64: '-'
+  fast-xml-parser: ^5.12.1
+  # Workbox 7.4.1 uses only globSync; use its patched compatible implementation.
+  workbox-build>glob: ^14.0.6
   fast-uri@^3: ^3.1.9
   # Orval's older exact js-yaml pin needs the CVE fix (>=4.3.2).
   js-yaml: 4.3.2

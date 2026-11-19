@@ -90,7 +90,7 @@
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/share": "^8.0.3",
     "dexie": "^4.4.7",
-    "fast-xml-parser": "^5.11.2",
+    "fast-xml-parser": "^5.12.1",
     "fflate": "^0.8.3",
     "jspdf": "^4.2.1",
     "three": "^0.187.0",
