@@ -137,7 +137,7 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
   vi.mocked(resolveStoredInventory).mockImplementation(async inventory => ({
     inventory,
     resolutions: Object.fromEntries(inventory.rows.map(row => [row.id, {
-      parts: [{ ldrawId: row.partId === "3002" ? "test-two" : "test", name: "Synthetic" }],
+      parts: [{ ldrawId: row.partId === "3002" || row.partId === "3003" ? "test-two" : "test", name: "Synthetic" }],
       colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }],
     }])),
   }));
@@ -155,10 +155,10 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
   const source = createEmptyDocument("Parts already on the surface");
   source.bricks.push({ id: "existing", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 });
   await act(async () => editor.importProject(source));
-  const inventory = parseInventory("part_id,color_id,quantity\n3001,5,2\n3002,5,1", "batch.csv");
+  const inventory = parseInventory("part_id,color_id,quantity\n3001,5,2\n3002,5,1\n3003,5,2", "batch.csv");
   await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
   const requests = inventory.rows.map((row, index) => ({
-    choice: { listId: inventory.id, rowId: row.id, ldrawId: index === 1 ? "test-two" : "test", colorCode: "4" },
+    choice: { listId: inventory.id, rowId: row.id, ldrawId: index === 0 ? "test" : "test-two", colorCode: "4" },
     quantity: row.quantity,
   }));
   const part = { id: "test", packageId: "test", ldrawId: "test", name: "Synthetic", category: "", keywords: [], file: "parts/test.dat" };
@@ -179,19 +179,44 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
   };
 
   vi.mocked(prepareLibraryPart).mockReset();
-  vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockRejectedValueOnce(new Error("Geometry failed"));
+  vi.mocked(prepareLibraryPart).mockRejectedValueOnce(new Error("First geometry failed"))
+    .mockRejectedValueOnce(new Error("Second geometry failed"));
+  let allFailed!: { placed: number; skipped: number; deferred: number; failures: unknown[] };
   await act(async () => {
-    await expect(editor.spreadInventoryParts(requests, () => {}, new AbortController().signal))
-      .rejects.toThrow("Geometry failed");
+    allFailed = await editor.spreadInventoryParts(requests, () => {}, new AbortController().signal);
+  });
+  expect(allFailed).toEqual({
+    placed: 0, skipped: 5, deferred: 0,
+    failures: [
+      { ldrawId: "test", quantity: 2, reason: "First geometry failed" },
+      { ldrawId: "test-two", quantity: 3, reason: "Second geometry failed" },
+    ],
   });
   expect(editor.document.imported).toBeUndefined();
   expect(allocatedCounts(editor.document).size).toBe(0);
+
+  let finishAfterInventoryChange!: (value: PreparedPart) => void;
+  vi.mocked(prepareLibraryPart).mockReset();
+  vi.mocked(prepareLibraryPart).mockImplementationOnce(() => new Promise(resolve => { finishAfterInventoryChange = resolve; }));
+  let staleInventory!: Promise<{ placed: number; skipped: number; deferred: number; failures: unknown[] }>;
+  await act(async () => { staleInventory = editor.spreadInventoryParts(requests, () => {}, new AbortController().signal); });
+  await vi.waitFor(() => expect(prepareLibraryPart).toHaveBeenCalledOnce(), { timeout: 15_000 });
+  const replacement = parseInventory("part_id,color_id,quantity\n3003,5,1", "replacement.csv");
+  await act(async () => editor.replacePartsInventory(replacement, editor.document.id));
+  finishAfterInventoryChange(prepared);
+  await act(async () => {
+    await expect(staleInventory).rejects.toThrow("gewechselt");
+  });
+  expect(editor.document.imported).toBeUndefined();
+  expect(editor.document.inventory).toEqual(replacement);
+  expect(allocatedCounts(editor.document).size).toBe(0);
+  await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
 
   let finishPreparation!: (value: PreparedPart) => void;
   vi.mocked(prepareLibraryPart).mockReset();
   vi.mocked(prepareLibraryPart).mockImplementationOnce(() => new Promise(resolve => { finishPreparation = resolve; }));
   const controller = new AbortController();
-  let cancelled!: Promise<{ placed: number; deferred: number }>;
+  let cancelled!: Promise<{ placed: number; skipped: number; deferred: number; failures: unknown[] }>;
   await act(async () => { cancelled = editor.spreadInventoryParts(requests, () => {}, controller.signal); });
   await vi.waitFor(() => expect(prepareLibraryPart).toHaveBeenCalledOnce(), { timeout: 15_000 });
   controller.abort();
@@ -203,17 +228,25 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
   expect(allocatedCounts(editor.document).size).toBe(0);
 
   vi.mocked(prepareLibraryPart).mockReset();
-  vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockResolvedValueOnce(preparedTwo);
-  let result!: { placed: number; deferred: number };
+  vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockRejectedValueOnce(new Error("Geometry failed"));
+  let result!: { placed: number; skipped: number; deferred: number; failures: unknown[] };
   await act(async () => { result = await editor.spreadInventoryParts(requests, () => {}, new AbortController().signal); });
-  expect(result).toEqual({ placed: 3, deferred: 0 });
+  expect(result).toEqual({
+    placed: 2, skipped: 3, deferred: 0,
+    failures: [{ ldrawId: "test-two", quantity: 3, reason: "Geometry failed" }],
+  });
+  expect(prepareLibraryPart).toHaveBeenCalledTimes(2);
   const imported = editor.document.imported!;
-  expect(imported.instances).toHaveLength(3);
-  expect(imported.instances.map(instance => instance.part.ldrawId)).toEqual(["test", "test", "test-two"]);
+  expect(imported.instances).toHaveLength(2);
+  expect(imported.instances.map(instance => instance.part.ldrawId)).toEqual(["test", "test"]);
   expect(imported.instances.map(instance => instance.allocation?.rowId)).toEqual([
-    inventory.rows[0].id, inventory.rows[0].id, inventory.rows[1].id,
+    inventory.rows[0].id, inventory.rows[0].id,
   ]);
   expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(2);
+  expect(allocatedCounts(editor.document).has(inventory.rows[1].id)).toBe(false);
+  expect(allocatedCounts(editor.document).has(inventory.rows[2].id)).toBe(false);
+  expect(container.querySelector(`[data-testid="row-inventory-${inventory.rows[1].id}"]`)).not.toBeNull();
+  expect(container.querySelector(`[data-testid="row-inventory-${inventory.rows[2].id}"]`)).not.toBeNull();
   const batchBounds = [...stackingBounds(imported).values()];
   const existingBounds = brickBounds(source.bricks[0]);
   for (const bounds of batchBounds) {
@@ -229,7 +262,7 @@ it("prepares inventory geometry before one undoable, separated bulk placement", 
   expect(editor.document.imported).toBeUndefined();
   expect(editor.document.inventory).toEqual(inventory);
   await act(async () => editor.redo());
-  expect(editor.document.imported!.instances).toHaveLength(3);
+  expect(editor.document.imported!.instances).toHaveLength(2);
 
   editor.setToolMode("select");
   const selected = editor.document.imported!.instances[0];

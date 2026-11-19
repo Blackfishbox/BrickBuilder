@@ -30,7 +30,7 @@ import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
 import { groundedTransform, modelGround } from "./positioning";
 import type { Inventory, InventoryChoice } from "../inventory/types";
-import { MAX_INVENTORY_SPREAD_UNITS, replaceInventory, requireAvailable, type InventorySpreadRequest } from "../inventory/accounting";
+import { MAX_INVENTORY_SPREAD_UNITS, replaceInventory, requireAvailable, type InventorySpreadRequest, type InventorySpreadResult } from "../inventory/accounting";
 import {
   listProjectSummaries,
   type ProjectSummary,
@@ -338,14 +338,21 @@ export function useBuilder() {
     requests: InventorySpreadRequest[],
     onProgress: (progress: { stage: "mapping" | "geometry" | "placing"; completed: number; total: number }) => void,
     signal?: AbortSignal,
-  ): Promise<{ placed: number; deferred: number }> => {
+  ): Promise<InventorySpreadResult> => {
     if (requests.some(request => !Number.isSafeInteger(request.quantity) || request.quantity < 1)) {
       throw new Error("Ungültige Stückzahl für die Sammelplatzierung.");
     }
     const initial = documentRef.current;
     const projectId = initial.id;
-    const inventoryId = initial.inventory?.id;
-    if (!inventoryId) throw new Error("Keine Teileliste mehr vorhanden.");
+    const initialInventory = initial.inventory;
+    const inventoryId = initialInventory?.id;
+    if (!initialInventory || !inventoryId) throw new Error("Keine Teileliste mehr vorhanden.");
+    const assertCurrentProjectAndInventory = () => {
+      const current = documentRef.current;
+      if (current.id !== projectId || current.inventory !== initialInventory || current.inventory?.id !== inventoryId) {
+        throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
+      }
+    };
     if (!requests.length) throw new Error("Es gibt keine eindeutig zugeordneten, verfügbaren Teile zum Verteilen.");
     const controller = new AbortController();
     spreadControllerRef.current?.abort();
@@ -358,9 +365,7 @@ export function useBuilder() {
       onProgress({ stage: "mapping", completed: 0, total: requests.length });
       const preview = await resolveStoredInventory(initial.inventory!);
       controller.signal.throwIfAborted();
-      if (documentRef.current.id !== projectId || documentRef.current.inventory?.id !== inventoryId) {
-        throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
-      }
+      assertCurrentProjectAndInventory();
       const totalRequested = requests.reduce((sum, request) => sum + request.quantity, 0);
       const limit = Math.min(totalRequested, MAX_INVENTORY_SPREAD_UNITS);
       let remainingLimit = limit;
@@ -385,33 +390,55 @@ export function useBuilder() {
       onProgress({ stage: "mapping", completed: accepted.length, total: accepted.length });
       const partIds = [...new Set(accepted.map(request => request.choice.ldrawId))];
       const preparedByPart = new Map<string, PreparedPart>();
+      const failedByPart = new Map<string, string>();
       onProgress({ stage: "geometry", completed: 0, total: partIds.length });
       for (const [index, ldrawId] of partIds.entries()) {
         controller.signal.throwIfAborted();
+        assertCurrentProjectAndInventory();
         const mapped = accepted.find(request => request.choice.ldrawId === ldrawId)!;
         const row = initial.inventory!.rows.find(value => value.id === mapped.choice.rowId)!;
         const part = preview.resolutions[row.id].parts.find(value => value.ldrawId === ldrawId)!;
-        const prepared = await prepareLibraryPart({
-          id: `inventory:${inventoryId}:${row.id}`, packageId: "catalog", ldrawId,
-          brickLinkId: row.partId, name: part.name, category: "Teileliste", keywords: [],
-          file: `parts/${ldrawId}.dat`,
-        }, controller.signal);
-        controller.signal.throwIfAborted();
-        preparedByPart.set(ldrawId, prepared);
+        try {
+          const prepared = await prepareLibraryPart({
+            id: `inventory:${inventoryId}:${row.id}`, packageId: "catalog", ldrawId,
+            brickLinkId: row.partId, name: part.name, category: "Teileliste", keywords: [],
+            file: `parts/${ldrawId}.dat`,
+          }, controller.signal);
+          controller.signal.throwIfAborted();
+          assertCurrentProjectAndInventory();
+          preparedByPart.set(ldrawId, prepared);
+        } catch (error) {
+          controller.signal.throwIfAborted();
+          assertCurrentProjectAndInventory();
+          if (error && typeof error === "object" && "name" in error && error.name === "AbortError") throw error;
+          failedByPart.set(ldrawId, error instanceof Error ? error.message : String(error));
+        }
         onProgress({ stage: "geometry", completed: index + 1, total: partIds.length });
         await new Promise<void>(resolve => setTimeout(resolve, 0));
       }
       controller.signal.throwIfAborted();
-      onProgress({ stage: "placing", completed: 0, total: accepted.reduce((sum, request) => sum + request.quantity, 0) });
-      updateDocument(document => {
-        if (document.id !== projectId || document.inventory?.id !== inventoryId) {
-          throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
-        }
-        return placeInventoryBatch(document, accepted, preparedByPart);
-      });
-      const placed = accepted.reduce((sum, request) => sum + request.quantity, 0);
-      onProgress({ stage: "placing", completed: placed, total: placed });
-      return { placed, deferred: totalRequested - placed };
+      assertCurrentProjectAndInventory();
+      const placeable = accepted.filter(request => !failedByPart.has(request.choice.ldrawId));
+      const placed = placeable.reduce((sum, request) => sum + request.quantity, 0);
+      const skipped = accepted.reduce((sum, request) =>
+        sum + (failedByPart.has(request.choice.ldrawId) ? request.quantity : 0), 0);
+      const failures = [...failedByPart].map(([ldrawId, reason]) => ({
+        ldrawId,
+        quantity: accepted.reduce((sum, request) =>
+          sum + (request.choice.ldrawId === ldrawId ? request.quantity : 0), 0),
+        reason,
+      }));
+      if (placeable.length) {
+        onProgress({ stage: "placing", completed: 0, total: placed });
+        updateDocument(document => {
+          if (document.id !== projectId || document.inventory !== initialInventory) {
+            throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
+          }
+          return placeInventoryBatch(document, placeable, preparedByPart);
+        });
+        onProgress({ stage: "placing", completed: placed, total: placed });
+      }
+      return { placed, skipped, deferred: totalRequested - limit, failures };
     } finally {
       signal?.removeEventListener("abort", abort);
       if (spreadControllerRef.current === controller) spreadControllerRef.current = null;

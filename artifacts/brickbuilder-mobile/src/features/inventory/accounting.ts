@@ -14,6 +14,17 @@ export function allocatedCounts(document: BuilderDocument): Map<string, number> 
 }
 export interface InventorySpreadRequest { choice: InventoryChoice; quantity: number }
 export interface InventorySpreadPick { ldrawId?: string; colorCode?: string }
+export interface InventorySpreadFailure {
+  ldrawId: string;
+  quantity: number;
+  reason: string;
+}
+export interface InventorySpreadResult {
+  placed: number;
+  skipped: number;
+  deferred: number;
+  failures: InventorySpreadFailure[];
+}
 export interface InventorySpreadCandidate {
   rowId: string;
   partId: string;

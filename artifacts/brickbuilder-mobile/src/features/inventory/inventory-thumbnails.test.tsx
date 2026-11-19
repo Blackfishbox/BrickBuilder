@@ -71,7 +71,7 @@ async function mount(csv: string, resolution: (id: string, colorId: string) => I
   const onSelected = vi.fn();
   const render = async () => {
     await act(async () => root!.render(<InventoryPanel document={document} selected={selected}
-      onSelect={onSelect} onSpread={async () => ({ placed: 0, deferred: 0 })}
+      onSelect={onSelect} onSpread={async () => ({ placed: 0, skipped: 0, deferred: 0, failures: [] })}
       onReplace={() => {}} onSelected={onSelected} />));
   };
   await render();

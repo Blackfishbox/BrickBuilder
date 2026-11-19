@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Download, FileUp, LoaderCircle, RotateCw, Search, X } from 'lucide-react';
 import type { BuilderDocument } from '@/features/editor/model';
 import { previewInventory, resolveStoredInventory } from '@/features/catalog/client';
-import { allocatedCounts, inventorySpreadCandidates, MAX_INVENTORY_SPREAD_UNITS, type InventorySpreadRequest } from './accounting';
+import { allocatedCounts, inventorySpreadCandidates, MAX_INVENTORY_SPREAD_UNITS, type InventorySpreadRequest, type InventorySpreadResult } from './accounting';
 import InventoryThumbnail from './InventoryThumbnail';
 import { MAX_LIST_BYTES, MAX_ROWS, type Inventory, type InventoryChoice, type InventoryPreview, type InventoryRow } from './types';
 import './inventory.css';
@@ -17,7 +17,7 @@ interface Props {
   document: BuilderDocument;
   selected: InventoryChoice | null;
   onSelect(choice: InventoryChoice): Promise<boolean>;
-  onSpread(requests: InventorySpreadRequest[], onProgress: (progress: { stage: 'mapping' | 'geometry' | 'placing'; completed: number; total: number }) => void, signal: AbortSignal): Promise<{ placed: number; deferred: number }>;
+  onSpread(requests: InventorySpreadRequest[], onProgress: (progress: { stage: 'mapping' | 'geometry' | 'placing'; completed: number; total: number }) => void, signal: AbortSignal): Promise<InventorySpreadResult>;
   onReplace(inventory: Inventory, expectedProjectId: string): void;
   onSelected(): void;
 }
@@ -161,7 +161,20 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     setSpreading(true); setSpreadProgress(null); setSpreadMessage('');
     try {
       const result = await onSpread(spreadRequests, setSpreadProgress, controller.signal);
-      setSpreadMessage(`${result.placed} Teile auf der Baufläche verteilt.${result.deferred ? ` ${result.deferred} weitere bleiben für den nächsten Durchgang verfügbar.` : ''}`);
+      const message = [
+        `${result.placed} Teile auf der Baufläche verteilt.`,
+        result.skipped ? `${result.skipped} wegen nicht geladener Geometrie übersprungen; diese Teile bleiben verfügbar.` : '',
+        result.deferred ? `${result.deferred} weitere bleiben für den nächsten Durchgang verfügbar.` : '',
+      ].filter(Boolean);
+      const detailLimit = 3;
+      const details = result.failures.slice(0, detailLimit).map(failure => {
+        const reason = failure.reason.replace(/\s+/g, ' ').trim();
+        const shortReason = reason.length > 160 ? `${reason.slice(0, 157)}…` : reason;
+        return `${failure.ldrawId} (${failure.quantity}): ${shortReason}`;
+      });
+      if (result.failures.length > detailLimit) details.push(`und ${result.failures.length - detailLimit} weitere Geometrien`);
+      if (details.length) message.push(`Fehlerdetails: ${details.join('; ')}.`);
+      setSpreadMessage(message.join(' '));
     } catch (error) {
       setSpreadMessage(controller.signal.aborted
         ? 'Verteilen abgebrochen. Das Modell blieb unverändert.'

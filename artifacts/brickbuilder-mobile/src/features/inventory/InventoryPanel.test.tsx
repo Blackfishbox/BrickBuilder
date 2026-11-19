@@ -42,7 +42,7 @@ function consume(document: BuilderDocument, indexes: number[]) {
     ...parsed, resources: {}, legalDocuments: [],
   } };
 }
-async function panel(onSpread = vi.fn(async () => ({ placed: 0, deferred: 0 })), onReplace = vi.fn()) {
+async function panel(onSpread = vi.fn(async () => ({ placed: 0, skipped: 0, deferred: 0, failures: [] })), onReplace = vi.fn()) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = window.document.createElement("div");
   root = createRoot(container);
@@ -143,7 +143,10 @@ it("offers bulk distribution for remaining stock and excludes ambiguous or unres
   document.inventory!.rows[1].partId = "unknown";
   document.inventory!.rows[2].quantity = 2;
   const consumed = consume(document, [2]);
-  const onSpread = vi.fn(async () => ({ placed: 1, deferred: 0 }));
+  const onSpread = vi.fn(async () => ({
+    placed: 1, skipped: 2, deferred: 4,
+    failures: [{ ldrawId: "broken-part", quantity: 2, reason: "Geometrie fehlt" }],
+  }));
   const view = await panel(onSpread);
   await view.render(consumed);
   expect(view.container.querySelector('[data-testid="status-inventory-spread-issues"]')?.textContent)
@@ -158,4 +161,10 @@ it("offers bulk distribution for remaining stock and excludes ambiguous or unres
   ], expect.any(Function), expect.any(AbortSignal));
   expect(view.container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
     .toContain("1 Teile auf der Baufläche verteilt");
+  expect(view.container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
+    .toContain("2 wegen nicht geladener Geometrie übersprungen");
+  expect(view.container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
+    .toContain("4 weitere bleiben für den nächsten Durchgang verfügbar");
+  expect(view.container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
+    .toContain("broken-part (2): Geometrie fehlt");
 });
