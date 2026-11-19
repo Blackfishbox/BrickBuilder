@@ -79,12 +79,52 @@ function App() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
   const [additionalColorIds, setAdditionalColorIds] = useState<string[]>([]);
+  const [additionalRotationIds, setAdditionalRotationIds] = useState<string[]>([]);
+  const [rotationTargetQuery, setRotationTargetQuery] = useState("");
   const [colorTargetsOpen, setColorTargetsOpen] = useState(false);
   const [colorTargetQuery, setColorTargetQuery] = useState("");
   useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setTiltControlsOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
+  useEffect(() => { setAdditionalRotationIds([]); setRotationTargetQuery(""); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { applyColorTheme(theme); }, [theme]);
+  const availableRotationTargets = [
+    ...editor.document.bricks.map((brick, index) => ({
+      id: brick.id, label: `#${index + 1} · ${BRICK_DEFINITIONS[brick.type].label} · lokal`,
+    })),
+    ...(editor.imported?.instances ?? []).map((instance, index) => ({
+      id: instance.id, label: `#${index + 1} · LDraw ${instance.part.ldrawId}${instance.part.name ? ` · ${instance.part.name}` : ""}`,
+    })),
+  ];
+  const availableRotationIds = new Set(availableRotationTargets.map(target => target.id));
+  const rotationTargetIds = editor.selectedId
+    ? [editor.selectedId, ...additionalRotationIds.filter(id => id !== editor.selectedId && availableRotationIds.has(id))]
+    : [];
+  const rotationSelection = (mobile = false) => (
+    <details className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}>
+      <summary>{mobile ? `Gruppe${rotationTargetIds.length > 1 ? ` · ${rotationTargetIds.length}` : ""}`
+        : `Weitere Teile gemeinsam drehen${rotationTargetIds.length > 1 ? ` (${rotationTargetIds.length} ausgewählt)` : ""}`}</summary>
+      <div className="rotation-selection-panel">
+        <label className="rotation-selection-search">
+          <span className="sr-only">Teile zum gemeinsamen Drehen suchen</span>
+          <input aria-label="Teile zum gemeinsamen Drehen suchen" value={rotationTargetQuery}
+            onChange={event => setRotationTargetQuery(event.target.value)} placeholder="LDraw-ID oder Teilname" />
+        </label>
+        <p>{rotationTargetIds.length} Teile ausgewählt. Die Auswahl dreht sich gemeinsam um ihren Mittelpunkt.</p>
+        <div className="rotation-selection-list">
+          {availableRotationTargets.filter(target => target.id !== editor.selectedId &&
+            target.label.toLowerCase().includes(rotationTargetQuery.trim().toLowerCase())).map(target => (
+            <label key={target.id}>
+              <input type="checkbox" checked={additionalRotationIds.includes(target.id)}
+                onChange={event => setAdditionalRotationIds(ids => event.target.checked
+                  ? [...ids, target.id] : ids.filter(id => id !== target.id))} />
+              <span>{target.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
   const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
@@ -337,10 +377,12 @@ function App() {
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
               <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
+              {rotationSelection(true)}
               <TiltControls key={`tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                 tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                 rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                onRotate={editor.setSelectedRotation} onTilt={editor.setSelectedTilt}
+                onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
+                onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                 onOpenChange={setTiltControlsOpen} />
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
@@ -399,10 +441,12 @@ function App() {
                     <Trash2 size={16} /><span>Entfernen</span>
                   </button>
                 </div>
+                {rotationSelection()}
                 <TiltControls key={`desktop-tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                   tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                   rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                  onRotate={editor.setSelectedRotation} onTilt={editor.setSelectedTilt}
+                  onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
+                  onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                   onOpenChange={setTiltControlsOpen} />
                 <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>

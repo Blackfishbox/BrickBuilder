@@ -176,6 +176,101 @@ export function rotateImported(document: BuilderDocument, id: string): BuilderDo
   const current = document.imported?.instances.find(instance => instance.id === id);
   return current ? setImportedRotation(document, id, ((current.rotationY ?? 0) + 90) % 360) : document;
 }
+export function rotateSelection(
+  document: BuilderDocument,
+  ids: Iterable<string>,
+  primaryId: string,
+  targetAngle: number,
+  importedFloor = 0,
+): BuilderDocument {
+  if (!Number.isFinite(targetAngle) || !Number.isFinite(importedFloor)) return document;
+  const requested = new Set(ids);
+  requested.add(primaryId);
+  const members = [
+    ...document.bricks.filter(brick => requested.has(brick.id)).map(brick => ({
+      id: brick.id, x: brick.x, z: brick.z, angle: brick.rotation, kind: "brick" as const,
+    })),
+    ...(document.imported?.instances ?? []).filter(instance => requested.has(instance.id)).map(instance => ({
+      id: instance.id, x: instance.matrix[3] / 20, z: instance.matrix[11] / 20,
+      angle: instance.rotationY ?? 0, kind: "imported" as const,
+    })),
+  ];
+  const primary = members.find(member => member.id === primaryId);
+  if (!primary || members.length === 0) return document;
+
+  const angle = clampRotationAngle(Math.round(targetAngle));
+  const delta = angle - primary.angle;
+  if (Math.abs(delta) < 1e-9) return document;
+  const pivot = {
+    x: members.reduce((sum, member) => sum + member.x, 0) / members.length,
+    z: members.reduce((sum, member) => sum + member.z, 0) / members.length,
+  };
+  const radians = delta * Math.PI / 180, cosine = Math.cos(radians), sine = Math.sin(radians);
+  const wrapAngle = (value: number) => ((value % 360) + 360) % 360;
+  const rotatedPosition = (x: number, z: number) => ({
+    x: pivot.x + cosine * (x - pivot.x) + sine * (z - pivot.z),
+    z: pivot.z - sine * (x - pivot.x) + cosine * (z - pivot.z),
+  });
+  const nextAngles = new Map(members.map(member => [
+    member.id, member.id === primaryId ? angle : wrapAngle(member.angle + delta),
+  ]));
+
+  let next: BuilderDocument = document;
+  for (const member of members) {
+    const position = rotatedPosition(member.x, member.z);
+    if (member.kind === "brick") {
+      const selectedAngle = nextAngles.get(member.id)!;
+      next = {
+        ...next,
+        bricks: next.bricks.map(brick => brick.id === member.id
+          ? { ...brick, x: position.x, z: position.z, rotation: selectedAngle }
+          : brick),
+      };
+    } else {
+      const selectedAngle = nextAngles.get(member.id)!;
+      next = setImportedRotation(next, member.id, selectedAngle);
+      const instance = next.imported?.instances.find(value => value.id === member.id);
+      if (instance) next = moveImported(next, member.id, {
+        x: position.x, y: -instance.matrix[7] / 20, z: position.z,
+      });
+    }
+  }
+
+  // Lift the group by one shared amount so grounding cannot change its internal spacing.
+  let lift = 0;
+  for (const member of members) {
+    const brick = next.bricks.find(value => value.id === member.id);
+    if (brick) {
+      lift = Math.max(lift, -brickBounds(brick).min.y);
+      continue;
+    }
+    const instance = next.imported?.instances.find(value => value.id === member.id);
+    if (!instance || !next.imported) continue;
+    try {
+      const bounds = localPartBounds(next.imported, instance.reference)
+        .clone().applyMatrix4(worldMatrix(instance.matrix));
+      if (!bounds.isEmpty()) lift = Math.max(lift, importedFloor - bounds.min.y);
+    } catch {
+      // Unresolved imported geometry has no measurable bounds; its transform is still preserved.
+    }
+  }
+  lift = Math.max(0, lift);
+  if (lift > 1e-9) {
+    for (const member of members) {
+      const brick = next.bricks.find(value => value.id === member.id);
+      if (brick) {
+        next = { ...next, bricks: next.bricks.map(value => value.id === member.id
+          ? { ...value, y: value.y + lift } : value) };
+      } else {
+        const instance = next.imported?.instances.find(value => value.id === member.id);
+        if (instance) next = moveImported(next, member.id, {
+          x: instance.matrix[3] / 20, y: -instance.matrix[7] / 20 + lift, z: instance.matrix[11] / 20,
+        });
+      }
+    }
+  }
+  return next === document ? document : { ...next, updatedAt: new Date().toISOString() };
+}
 export function moveImported(document: BuilderDocument, id: string, position: Position3, snapXZ = true, transform?: Affine): BuilderDocument {
   return editImported(document, id, instance => {
     if (transform && (transform.length !== 12 || !transform.every(Number.isFinite))) throw new Error("Ungültige Verbindungstransformation.");

@@ -59,6 +59,24 @@ it("sends slider changes as whole-degree values", () => {
   expect(onTilt.mock.calls).toEqual([["x", 49], ["z", -36]]);
 });
 
+it("brackets Y-rotation pointer gestures so the editor can save them as one history step", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const onRotateStart = vi.fn(), onRotateEnd = vi.fn();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls tiltX={0} tiltZ={0} onRotateStart={onRotateStart} onRotateEnd={onRotateEnd} onTilt={vi.fn()} />));
+
+  const ySlider = host.querySelector<HTMLInputElement>('[data-testid="slider-rotation-y"]')!;
+  const xSlider = host.querySelector<HTMLInputElement>('[data-testid="slider-tilt-x"]')!;
+  act(() => {
+    dispatchTouchPointer(ySlider, "pointerdown");
+    dispatchTouchPointer(ySlider, "pointerup");
+    dispatchTouchPointer(xSlider, "pointerdown");
+    dispatchTouchPointer(xSlider, "pointerup");
+  });
+  expect(onRotateStart).toHaveBeenCalledTimes(1);
+  expect(onRotateEnd).toHaveBeenCalledTimes(1);
+});
+
 it("resets the double-tapped rotation or tilt slider without affecting the others", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const onRotate = vi.fn(), onTilt = vi.fn();

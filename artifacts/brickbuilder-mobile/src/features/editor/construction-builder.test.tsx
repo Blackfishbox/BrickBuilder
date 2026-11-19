@@ -220,3 +220,57 @@ it("rotates local and imported selections with undo, redo, floor clamping, and s
   expect((await loadProject(editor.document.id))!.imported!.instances.find(instance => instance.id === importedId))
     .toEqual(editor.selectedInstance);
 });
+
+it("applies one Y rotation to a selected local and imported group", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const sourceText = "0 Group rotation test\n1 4 400 0 0 1 0 0 0 1 0 0 0 1 test.dat\n";
+  const imported: ImportedModel = {
+    version: 1, format: "ldr", sourceName: "group.ldr", sourceText,
+    originalBytes: Array.from(new TextEncoder().encode(sourceText)), ...parseLDraw(sourceText),
+    resources: { "parts/test.dat": { path: "parts/test.dat", author: "Fixture", license: "CC0-1.0",
+      sourceUrl: "https://example.invalid/test.dat", content: "0 Test geometry\n3 16 0 0 0 20 0 0 0 20 0\n" } },
+    legalDocuments: [],
+  };
+  imported.instances.forEach(instance => { instance.part.status = "resolved"; });
+  const first = { id: "group-a", type: "brick-2x2" as const, color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };
+  const second = { id: "group-b", type: "brick-1x2" as const, color: "#B40000", x: 10, y: 0, z: 0, rotation: 0 };
+  const sourceDocument = { ...createEmptyDocument(), bricks: [first, second], imported };
+  const importedId = imported.instances[0].id;
+  await act(async () => editor.importProject(sourceDocument));
+  await act(async () => editor.select(first.id));
+  await act(async () => {
+    editor.beginSelectedRotationEdit();
+    editor.setSelectedRotation(45, [first.id, second.id, importedId]);
+    editor.setSelectedRotation(90, [first.id, second.id, importedId]);
+    expect(editor.canUndo).toBe(false);
+    editor.endSelectedRotationEdit();
+  });
+
+  expect(editor.bricks.map(brick => [brick.x, brick.z, brick.rotation])).toEqual([
+    [10, 10, 90], [10, 0, 90],
+  ]);
+  const changedInstance = editor.imported!.instances[0];
+  expect(changedInstance.rotationY).toBe(90);
+  expect(changedInstance.matrix[3] / 20).toBeCloseTo(10);
+  expect(changedInstance.matrix[11] / 20).toBeCloseTo(-10);
+  expect(editor.canUndo).toBe(true);
+  await act(async () => editor.save());
+  const saved = await loadProject(editor.document.id);
+  expect(saved?.bricks).toEqual(editor.bricks);
+  expect(saved?.imported?.instances[0]).toEqual(changedInstance);
+
+  await act(async () => editor.undo());
+  expect(editor.bricks).toEqual([first, second]);
+  expect(editor.imported!.instances[0].matrix).toEqual(imported.instances[0].matrix);
+  await act(async () => editor.redo());
+  expect(editor.bricks.map(brick => brick.rotation)).toEqual([90, 90]);
+  expect(editor.imported!.instances[0].rotationY).toBe(90);
+});

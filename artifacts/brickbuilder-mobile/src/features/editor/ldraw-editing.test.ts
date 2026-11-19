@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ray, Vector3 } from "three";
 import { createEmptyDocument } from "./model";
+import { brickBounds } from "./brick-transform";
 import { commit, createHistory, redo, undo } from "./history";
-import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
 import { exportLDR } from "../formats/ldraw/export";
@@ -87,6 +88,57 @@ describe("editable imported LDraw instances", () => {
     expect(setImportedRotation(original, id, 360).imported!.instances[0].matrix).toEqual(source.matrix);
     expect(setImportedRotation(original, id, 361).imported!.instances[0].rotationY).toBe(360);
     expect(setImportedRotation(original, id, -1).imported!.instances[0].rotationY).toBeUndefined();
+  });
+  it("rotates a mixed selection around its shared center and records one restorable edit", async () => {
+    const document = fixture();
+    const localA = { id: "local-a", type: "brick-2x4" as const, color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };
+    const localB = { id: "local-b", type: "brick-2x2" as const, color: "#B40000", x: 10, y: 0, z: 0, rotation: 30 };
+    document.bricks = [localA, localB];
+    const importedA = document.imported!.instances[0], importedB = document.imported!.instances[1];
+    importedB.matrix = [...importedB.matrix] as typeof importedB.matrix;
+    importedB.matrix[3] = 100;
+    const selectedIds = [localA.id, localB.id, importedB.id];
+    const rotated = rotateSelection(document, selectedIds, localA.id, 90);
+
+    expect(rotated.bricks.map(brick => brick.rotation)).toEqual([90, 120]);
+    expect(rotated.bricks[0].x).toBeCloseTo(5);
+    expect(rotated.bricks[0].z).toBeCloseTo(5);
+    expect(rotated.bricks[1].x).toBeCloseTo(5);
+    expect(rotated.bricks[1].z).toBeCloseTo(-5);
+    const movedImported = rotated.imported!.instances.find(instance => instance.id === importedB.id)!;
+    expect(movedImported.rotationY).toBe(90);
+    expect(movedImported.matrix[3] / 20).toBeCloseTo(5);
+    expect(movedImported.matrix[11] / 20).toBeCloseTo(0);
+    expect(rotated.imported!.instances.find(instance => instance.id === importedA.id)).toEqual(importedA);
+
+    const oneEdit = commit(createHistory(document), rotated);
+    expect(oneEdit.past).toHaveLength(1);
+    expect(undo(oneEdit).document.bricks).toEqual(document.bricks);
+    expect(undo(oneEdit).document.imported!.instances).toEqual(document.imported!.instances);
+    expect(redo(undo(oneEdit)).document).toEqual(rotated);
+    await builderDatabase.open();
+    await saveProject(rotated);
+    const saved = await loadProject(rotated.id);
+    expect(saved?.bricks).toEqual(rotated.bricks);
+    expect(saved?.imported).toEqual(rotated.imported);
+  });
+  it("lifts a rotated tilted group above the floor without changing its vertical spacing", () => {
+    const tilted = {
+      id: "tilted", type: "brick-2x4" as const, color: "#B40000",
+      x: 0, y: 1, z: 0, rotation: 90, tiltX: 45,
+    };
+    const upright = {
+      id: "upright", type: "brick-2x2" as const, color: "#B40000",
+      x: 4, y: 0, z: 0, rotation: 0,
+    };
+    const document = { ...createEmptyDocument(), bricks: [tilted, upright] };
+    const rotated = rotateSelection(document, [tilted.id, upright.id], tilted.id, 0);
+    const movedTilted = rotated.bricks.find(brick => brick.id === tilted.id)!;
+    const movedUpright = rotated.bricks.find(brick => brick.id === upright.id)!;
+    expect(brickBounds(movedTilted).min.y).toBeGreaterThanOrEqual(-1e-9);
+    expect(brickBounds(movedUpright).min.y).toBeGreaterThanOrEqual(-1e-9);
+    expect(movedTilted.y - tilted.y).toBeGreaterThan(0);
+    expect(movedTilted.y - tilted.y).toBeCloseTo(movedUpright.y - upright.y);
   });
   it("restores imported deletion, colors and transforms with undo/redo", () => {
     const document = fixture(), id = document.imported.instances[0].id;

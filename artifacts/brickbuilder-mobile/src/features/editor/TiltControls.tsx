@@ -15,6 +15,8 @@ type SliderTap = { axis: SliderAxis; x: number; y: number; at: number };
 export default function TiltControls({
   rotationY = 0,
   onRotate,
+  onRotateStart,
+  onRotateEnd,
   tiltX,
   tiltZ,
   onTilt,
@@ -22,6 +24,8 @@ export default function TiltControls({
 }: {
   rotationY?: number;
   onRotate?(angle: number): void;
+  onRotateStart?(): void;
+  onRotateEnd?(): void;
   tiltX: number;
   tiltZ: number;
   onTilt(axis: "x" | "z", angle: number): void;
@@ -90,10 +94,19 @@ export default function TiltControls({
   };
 
   const sliderEvents = (axis: SliderAxis) => ({
-    onPointerDown: (event: ReactPointerEvent<HTMLInputElement>) => beginTouch(axis, event),
+    onPointerDown: (event: ReactPointerEvent<HTMLInputElement>) => {
+      beginTouch(axis, event);
+      if (axis === "y") onRotateStart?.();
+    },
     onPointerMove: (event: ReactPointerEvent<HTMLInputElement>) => moveTouch(axis, event),
-    onPointerUp: (event: ReactPointerEvent<HTMLInputElement>) => endTouch(axis, event),
-    onPointerCancel: endTouchSequence,
+    onPointerUp: (event: ReactPointerEvent<HTMLInputElement>) => {
+      endTouch(axis, event);
+      if (axis === "y") onRotateEnd?.();
+    },
+    onPointerCancel: () => {
+      endTouchSequence();
+      if (axis === "y") onRotateEnd?.();
+    },
     onDoubleClick: (event: React.MouseEvent<HTMLInputElement>) => doubleClick(axis, event),
     title: "Doppeltippen zum Zurücksetzen",
   });
