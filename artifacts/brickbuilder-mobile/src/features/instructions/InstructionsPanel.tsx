@@ -4,6 +4,11 @@ import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
 import { effectiveInstructions, instructionView } from "./model";
 import type { InstructionPlan, InstructionStep } from "./types";
+import {
+  DEFAULT_INSTRUCTION_PHI,
+  DEFAULT_INSTRUCTION_THETA,
+  instructionRotationFromCameraPose,
+} from "../engine/instruction-camera";
 import StudioLayoutEditor from "./StudioLayoutEditor";
 import StepPartsBox from "./StepPartsBox";
 import { instructionHighlightIds } from "./callouts";
@@ -94,14 +99,27 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   };
   const toggle = (id: string) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const rotation = step.rotation ?? [0, 0, 0];
+  const rotation = useMemo(() => instructionRotationFromCameraPose(
+    step.camera?.theta ?? DEFAULT_INSTRUCTION_THETA,
+    step.camera?.phi ?? DEFAULT_INSTRUCTION_PHI,
+    step.rotation,
+  ), [step.camera?.theta, step.camera?.phi, step.rotation]);
   const setRotation = (axis: number, raw: string) => {
     const value = Number(raw.replace(",", "."));
     if (!Number.isFinite(value)) return;
     const next = [...rotation] as [number, number, number];
     next[axis] = value;
-    patchStep({ rotation: next });
+    const camera = step.camera ? {
+      ...step.camera,
+      theta: DEFAULT_INSTRUCTION_THETA,
+      phi: DEFAULT_INSTRUCTION_PHI,
+    } : undefined;
+    patchStep({ rotation: next, camera });
   };
+  const resetRotation = () => patchStep({
+    rotation: undefined,
+    camera: step.camera ? { ...step.camera, theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI } : undefined,
+  });
 
   const exportPdf = async () => {
     const controller = new AbortController();
@@ -172,7 +190,10 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
               viewRotation={step.rotation}
               viewStepId={step.id}
               viewCamera={step.camera}
-              onViewCameraChange={camera => patchStep({ camera })}
+              onViewCameraChange={(camera, rotation) => patchStep({
+                camera,
+                ...(rotation ? { rotation } : {}),
+              })}
               instructionFocusIds={focusIds}
               projectId={`${document.id}-instructions`}
               bricks={view.bricks}
@@ -238,9 +259,11 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
                     aria-label={`Drehung ${axis} in Grad`} data-testid={`input-instructions-rotation-${axis.toLowerCase()}`} />
                 </label>
               ))}
-              {step.rotation && <button className="ins-ghost" onClick={() => patchStep({ rotation: undefined })} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>}
+              {(step.rotation || rotation.some(angle => Math.abs(angle) > 0.0001)) && (
+                <button className="ins-ghost" onClick={resetRotation} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>
+              )}
             </fieldset>
-            <p className="ins-hint">Die gespeicherte Schrittdrehung wird direkt in der 3D-Ansicht und im PDF gezeigt; zusätzlich kannst du die Ansicht per Touch bewegen. Geänderte Schritte erhalten beim MPD-/IO-Export vorkommensspezifische Untermodelle und eingebettete Flächen. IO-Seiten werden einfach neu erzeugt; originale Studio-Daten bleiben als Sicherung erhalten. Eine verlustfreie Studio-Seitengestaltung ist nicht zugesichert.</p>
+            <p className="ins-hint">Die X-/Y-/Z-Werte zeigen die aktuelle Schrittansicht. Touch-Drehungen werden übernommen; Zoom und Verschiebung bleiben getrennt pro Schritt gespeichert. Vorschau, PDF und BrickBuilder-Schrittdaten verwenden dieselbe Ansicht. Geänderte Schritte erhalten beim MPD-/IO-Export vorkommensspezifische Untermodelle und eingebettete Flächen. IO-Seiten werden einfach neu erzeugt; originale Studio-Daten bleiben als Sicherung erhalten. Eine verlustfreie Studio-Seitengestaltung ist nicht zugesichert.</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> Schritt danach</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label="Schritt nach vorne verschieben" data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
