@@ -1,7 +1,7 @@
 import { Box3, BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
 import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor/model";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
-import { instructionDisplayColor } from "../engine/instruction-focus";
+import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
 
