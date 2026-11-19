@@ -12,6 +12,14 @@ import { exportMPD } from "../formats/mpd/export";
 import { instructionPlanSchema } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { instructionCalloutPartIds, instructionHighlightIds } from "./callouts";
+import { OrthographicCamera, PerspectiveCamera, Vector3 } from "three";
+import {
+  applyInstructionCameraRotation,
+  DEFAULT_INSTRUCTION_PHI,
+  DEFAULT_INSTRUCTION_THETA,
+  instructionRotationFromCameraPose,
+} from "../engine/instruction-camera";
+import { applyPdfStepCamera } from "./camera";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -172,6 +180,56 @@ describe("local construction instructions", () => {
     expect(counts).toEqual([1, 2]);
     expect(dispose).toHaveBeenCalledOnce();
     expect(progress).toHaveBeenLastCalledWith(2, 2);
+  });
+
+  it("renders the final repeated touch rotation without changing PDF zoom or target", async () => {
+    const doc = fixture();
+    const camera = {
+      theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI,
+      distance: 12.5, target: [1, 2, 3] as [number, number, number],
+      referenceDistance: 17, referenceTarget: [0, 0, 0] as [number, number, number],
+    };
+    let rotation: [number, number, number] | undefined;
+    let finalTheta = DEFAULT_INSTRUCTION_THETA, finalPhi = DEFAULT_INSTRUCTION_PHI;
+    let expectedView: PerspectiveCamera | undefined;
+    const pose = (theta: number, phi: number, pivot?: [number, number, number]) => {
+      const view = new PerspectiveCamera(), target = new Vector3();
+      view.position.set(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta));
+      view.lookAt(target);
+      applyInstructionCameraRotation(view, target, pivot);
+      return view;
+    };
+    for (let gesture = 0; gesture < 160; gesture++) {
+      finalTheta = DEFAULT_INSTRUCTION_THETA + 0.08;
+      finalPhi = gesture % 2 === 0 ? 0.25 : 1.42;
+      expectedView = pose(finalTheta, finalPhi, rotation);
+      rotation = instructionRotationFromCameraPose(finalTheta, finalPhi, rotation);
+    }
+    doc.instructions!.steps[0] = {
+      ...doc.instructions!.steps[0], rotation, camera: structuredClone(camera),
+    };
+    const renderedSteps: typeof doc.instructions!.steps = [];
+    const png = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    await exportInstructionPDF(doc, doc.instructions!, {}, async () => ({
+      image: (_visible, step) => { renderedSteps.push(structuredClone(step)); return png; },
+      dispose: vi.fn(),
+    }));
+
+    const renderedStep = renderedSteps[0];
+    expect(renderedStep?.rotation).toEqual(rotation);
+    expect(renderedStep?.camera).toEqual(camera);
+    const renderedView = pose(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, renderedStep?.rotation);
+    expect(renderedView.quaternion.angleTo(expectedView!.quaternion)).toBeLessThan(0.00001);
+
+    const pdfCamera = new OrthographicCamera(-5, 5, 4, -4, 0.01, 1000);
+    applyPdfStepCamera(pdfCamera, 5, renderedStep?.camera);
+    expect(pdfCamera.zoom).toBeCloseTo(camera.referenceDistance / camera.distance);
+    const target = new Vector3(...camera.target)
+      .sub(new Vector3(...camera.referenceTarget))
+      .multiplyScalar((5 * 4) / camera.referenceDistance);
+    const towardTarget = target.clone().sub(pdfCamera.position).normalize();
+    expect(pdfCamera.position.distanceTo(target)).toBeCloseTo(5 * 4);
+    expect(pdfCamera.getWorldDirection(new Vector3()).dot(towardTarget)).toBeCloseTo(1);
   });
 
   it("cancels PDF generation without saving partial output and releases rendering resources", async () => {
