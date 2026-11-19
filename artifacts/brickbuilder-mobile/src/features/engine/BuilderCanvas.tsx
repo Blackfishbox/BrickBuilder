@@ -1312,7 +1312,9 @@ export function BuilderCanvas({
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Element && event.target.closest("button")) return;
+      // Overlay form controls (especially the range slider) must keep their
+      // pointer gestures instead of starting a camera drag on the canvas host.
+      if (event.target instanceof Element && event.target.closest("button, input, select, textarea")) return;
       event.preventDefault();
       host.setPointerCapture(event.pointerId);
       const point = { x: event.clientX, y: event.clientY };
