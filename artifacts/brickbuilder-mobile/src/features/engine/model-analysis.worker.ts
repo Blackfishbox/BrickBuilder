@@ -1,5 +1,5 @@
-import { BRICK_HEIGHT, type Brick } from "../editor/model";
-import { brickBounds } from "../editor/brick-transform";
+import type { Brick } from "../editor/model";
+import { brickVolume, countBrickOverlaps } from "./brick-collision";
 
 interface AnalyzeRequest {
   requestId: number;
@@ -37,11 +37,9 @@ workerScope.addEventListener("message", (event) => {
   let maxX = Number.NEGATIVE_INFINITY;
   let minZ = Number.POSITIVE_INFINITY;
   let maxZ = Number.NEGATIVE_INFINITY;
-  const occupied = new Map<string, string>();
-  const overlaps = new Set<string>();
+  const volumes = bricks.map(brickVolume);
 
-  for (const brick of bricks) {
-    const bounds = brickBounds(brick);
+  for (const { bounds } of volumes) {
     const left = bounds.min.x;
     const right = bounds.max.x;
     const front = bounds.min.z;
@@ -52,31 +50,12 @@ workerScope.addEventListener("message", (event) => {
     minZ = Math.min(minZ, front);
     maxZ = Math.max(maxZ, back);
 
-    const minCellX = Math.round(left * 2);
-    const maxCellX = Math.round(right * 2);
-    const minCellZ = Math.round(front * 2);
-    const maxCellZ = Math.round(back * 2);
-    const minLayer = Math.floor(bounds.min.y / BRICK_HEIGHT);
-    const maxLayer = Math.floor((bounds.max.y - 1e-9) / BRICK_HEIGHT);
-    for (let layer = minLayer; layer <= maxLayer; layer += 1) {
-      for (let x = minCellX; x < maxCellX; x += 1) {
-        for (let z = minCellZ; z < maxCellZ; z += 1) {
-          const key = `${layer}:${x}:${z}`;
-          const existing = occupied.get(key);
-          if (existing && existing !== brick.id) {
-            overlaps.add([existing, brick.id].sort().join(":"));
-          } else {
-            occupied.set(key, brick.id);
-          }
-        }
-      }
-    }
   }
 
   workerScope.postMessage({
     requestId,
     count: bricks.length,
     bounds: { minX, maxX, minZ, maxZ },
-    overlapCount: overlaps.size,
+    overlapCount: countBrickOverlaps(volumes),
   });
 });
