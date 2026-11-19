@@ -6,13 +6,14 @@ import { effectiveInstructions, instructionView } from "./model";
 import type { InstructionPlan, InstructionStep } from "./types";
 import StudioLayoutEditor from "./StudioLayoutEditor";
 import StepPartsBox from "./StepPartsBox";
+import { instructionHighlightIds } from "./callouts";
 import "./instructions.css";
 
 interface Props {
   document: BuilderDocument;
   onChange: (plan: InstructionPlan) => void;
   onClose: () => void;
-  onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal) => Promise<void>;
+  onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
 }
 
 interface PartInfo { id: string; label: string; color: string }
@@ -27,7 +28,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
   const [highlight, setHighlight] = useState(false);
   const current = Math.min(index, plan.steps.length - 1);
   const step = plan.steps[current];
-  const focusIds = useMemo(() => highlight ? new Set(step.partIds) : undefined, [highlight, step.partIds]);
+  const focusIds = useMemo(() => highlight ? instructionHighlightIds(document, step) : undefined, [highlight, document, step]);
   const [scope, setScope] = useState<"step" | "all">("step");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -110,7 +111,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
       // Release the interactive preview before allocating the PDF renderer.
       await new Promise(resolve => setTimeout(resolve, 0));
       controller.signal.throwIfAborted();
-      await onExportPDF(plan, (done, total) => setExporting({ done, total }), controller.signal);
+      await onExportPDF(plan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
     } catch (error) {
       if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : "PDF-Export fehlgeschlagen.");
     } finally {
@@ -154,7 +155,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
 
       <div className="ins-body">
         <section className="ins-preview" aria-label={`Vorschau bis ${step.title || `Schritt ${current + 1}`}`}>
-          <StepPartsBox document={document} partIds={step.partIds} paused={Boolean(exporting)} />
+          <StepPartsBox document={document} partIds={step.partIds} callouts={step.callouts} paused={Boolean(exporting)} />
           <div className="ins-model">
           {exporting ? (
             <div className="ins-empty" role="status">PDF wird erzeugt. Die 3D-Vorschau wird dafür kurz pausiert.</div>
@@ -213,8 +214,8 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
               Neue Teile hervorheben: {highlight ? "Ein" : "Aus"}
             </button>
             {highlight && <p className="ins-hint" data-testid="text-instructions-highlight-legend">
-              Türkis: aktueller Schritt ({step.partIds.length} Teile). Hellgrau: bereits verbaut.
-              Nur die 3D-Vorschau wird markiert; Teile ohne Geometrie bleiben in der Teileliste.
+              Türkis: neue Teile und einzusetzende Baugruppen. Hellgrau: bereits verbaute Teile.
+              Diese Hervorhebung wird auch in die PDF übernommen. Teile ohne Geometrie bleiben in der Teileliste.
             </p>}
             <div className="ins-row">
               <label className="ins-field ins-grow">

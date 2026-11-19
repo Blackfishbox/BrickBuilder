@@ -6,6 +6,7 @@ import { instructionPartDocument, instructionPartGroups } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { drawInstructionPartBox } from "./pdf-parts";
 import { exportInstructionPDF } from "./pdf";
+import type { InstructionPlan, InstructionStep } from "./types";
 import { sourceInstructionPlan } from "./model";
 import { readFileSync } from "node:fs";
 
@@ -132,5 +133,48 @@ describe("step parts illustrations", () => {
     expect(strings).not.toContain("Teile in diesem Schritt · vollständige Angaben");
     expect(strings.every(value => !/^\\d+ × LDraw \\d+ · /.test(value))).toBe(true);
     expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("carries step highlighting into every PDF model image and explains the colors", async () => {
+    const doc = createEmptyDocument("Highlighted steps");
+    doc.bricks = ["old", "new"].map((id, index) => ({
+      id, type: "brick-1x2" as const, color: "#d75b3f", x: index * 2, y: 0, z: 0, rotation: 0 as const,
+    }));
+    const plan: InstructionPlan = { version: 1, source: "manual", edited: true, warnings: [], steps: [
+      { id: "one", title: "One", notes: "", partIds: ["old"] },
+      { id: "two", title: "Two", notes: "", partIds: ["new"] },
+    ] };
+    const image = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    const focusSets: (ReadonlySet<string> | undefined)[] = [];
+    const renderModel = vi.fn((_visible: Set<string>, _step: InstructionStep, focus?: ReadonlySet<string>) => {
+      focusSets.push(focus);
+      return image;
+    });
+    pdfTexts.length = 0;
+    await exportInstructionPDF(doc, plan, { highlight: true }, async () => ({
+      image: renderModel, dispose: vi.fn(),
+    }));
+    expect(focusSets).toEqual([new Set(["old"]), new Set(["new"])]);
+    expect(pdfTexts).toContain("Türkis: neue Teile und einzusetzende Baugruppen · Hellgrau: bereits verbaute Teile");
+  });
+
+  it("exports subassembly callouts as rendered Baugruppen boxes", async () => {
+    const doc = createEmptyDocument("Callout");
+    const callout = { id: "0/31", title: "window", occurrence: [0, 31] };
+    const plan: InstructionPlan = {
+      version: 1, source: "ldraw", edited: false, warnings: [],
+      steps: [{ id: "insert", title: "Baugruppe einsetzen", notes: "", partIds: [], callouts: [callout] }],
+    };
+    const image = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    const renderCallout = vi.fn(async () => image);
+    const modelRenderer = { image: vi.fn(() => image), dispose: vi.fn() };
+    pdfTexts.length = 0;
+    const bytes = await exportInstructionPDF(doc, plan, {}, async () => modelRenderer, undefined, renderCallout);
+    const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
+      .filter((value): value is string => typeof value === "string");
+    expect(renderCallout).toHaveBeenCalledWith(doc, callout, expect.any(AbortSignal));
+    expect(strings).toContain("Teile und Baugruppen in diesem Schritt");
+    expect(strings).toContain("window");
+    expect(new TextDecoder().decode(bytes)).toContain("%PDF-1.");
   });
 });

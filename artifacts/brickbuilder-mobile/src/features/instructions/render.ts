@@ -7,9 +7,57 @@ import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
+import { instructionDisplayColor } from "./highlight-color";
+
+const FOCUS_ATTRIBUTE = "instructionFocus";
+const FOCUS_VERTEX_HEADER = "attribute float instructionFocus;\nvarying float vInstructionFocus;\n";
+const FOCUS_FRAGMENT_HEADER = "varying float vInstructionFocus;\n";
+const FOCUS_VERTEX = "vInstructionFocus = instructionFocus;";
+const FOCUS_FRAGMENT = `
+  if (vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
+    float grey = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    gl_FragColor.rgb = mix(vec3(grey), vec3(0.72), 0.65);
+  } else if (vInstructionFocus > 1.5) {
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0, 0.65, 0.5), 0.65);
+  }
+`;
+
+function instructionFocusAttribute(mesh: InstancedMesh): InstancedBufferAttribute {
+  let attribute = mesh.geometry.getAttribute(FOCUS_ATTRIBUTE) as InstancedBufferAttribute | undefined;
+  if (attribute) return attribute;
+  attribute = new InstancedBufferAttribute(new Float32Array(mesh.count), 1);
+  mesh.geometry.setAttribute(FOCUS_ATTRIBUTE, attribute);
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const material of materials) {
+    const compile = material.onBeforeCompile;
+    material.onBeforeCompile = (shader, renderer) => {
+      compile.call(material, shader, renderer);
+      shader.vertexShader = FOCUS_VERTEX_HEADER + shader.vertexShader.replace(
+        "#include <begin_vertex>", `#include <begin_vertex>\n${FOCUS_VERTEX}`,
+      );
+      shader.fragmentShader = FOCUS_FRAGMENT_HEADER + shader.fragmentShader.replace(
+        "#include <colorspace_fragment>", `${FOCUS_FRAGMENT}\n#include <colorspace_fragment>`,
+      );
+    };
+    const cacheKey = material.customProgramCacheKey.bind(material);
+    material.customProgramCacheKey = () => `${cacheKey()}|instruction-focus-v1`;
+  }
+  return attribute;
+}
+
+function applyPdfInstructionFocus(root: Group | undefined, highlightIds?: ReadonlySet<string>): void {
+  root?.traverse(object => {
+    if (!(object instanceof InstancedMesh)) return;
+    const ids = object.userData.brickIds as string[] | undefined;
+    if (!ids) return;
+    const attribute = instructionFocusAttribute(object);
+    ids.forEach((id, index) => attribute.setX(index, highlightIds === undefined ? 0 : highlightIds.has(id) ? 2 : 1));
+    attribute.needsUpdate = true;
+  });
+}
 
 export interface InstructionImageRenderer {
-  image(visible: Set<string>, step: InstructionStep): string;
+  image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>): string;
   dispose(): void;
 }
 
@@ -31,6 +79,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   light.position.set(10, 18, 12); scene.add(light);
   const camera = new OrthographicCamera(-10, 10, 7.6, -7.6, 0.01, 100000);
   let imported: Group | undefined;
+  const brickColors = new Map<string, Color>();
+  const brickMaterials = new Map<string, MeshLambertMaterial>();
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
@@ -40,6 +90,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       const definition = BRICK_DEFINITIONS[part.type], group = new Group();
       group.userData.partId = part.id;
       const material = new MeshLambertMaterial({ color: new Color(part.color) });
+      brickColors.set(part.id, material.color.clone());
+      brickMaterials.set(part.id, material);
       const box = new Mesh(new BoxGeometry(definition.studsX * 0.96, BRICK_HEIGHT, definition.studsZ * 0.96), material);
       box.position.y = BRICK_HEIGHT / 2; group.add(box);
       for (let x = 0; x < definition.studsX; x++) for (let z = 0; z < definition.studsZ; z++) {
@@ -71,10 +123,15 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     });
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
     return {
-      image(visible, step) {
+      image(visible, step, highlightIds) {
         signal?.throwIfAborted();
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
+        for (const [id, material] of brickMaterials) {
+          material.color.copy(brickColors.get(id)!);
+          if (highlightIds !== undefined) instructionDisplayColor(material.color, highlightIds.has(id));
+        }
+        applyPdfInstructionFocus(imported, highlightIds);
         assembly.traverse(object => {
           if (object.userData.partId) object.visible = visible.has(object.userData.partId as string);
           const ids = object.userData.brickIds as string[] | undefined;

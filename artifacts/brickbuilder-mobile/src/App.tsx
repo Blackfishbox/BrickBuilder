@@ -522,11 +522,11 @@ function App() {
       {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">Bauanleitung wird geladen …</div>}>
         <InstructionsPanel document={editor.document} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
-          onExportPDF={async (plan, onProgress, signal) => {
+          onExportPDF={async (plan, onProgress, signal, highlight) => {
             const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
               import('@/features/instructions/pdf'), import('@/platform/export-file'),
             ]);
-            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal });
+            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal, highlight });
             signal.throwIfAborted();
             const name = editor.document.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "Modell";
             await exportFile(bytes, `${name}-Bauanleitung.pdf`, "application/pdf");
