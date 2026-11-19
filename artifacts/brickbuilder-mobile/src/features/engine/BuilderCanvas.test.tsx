@@ -391,19 +391,26 @@ describe("frame-coalesced drag transactions", () => {
     act(() => toggle.click());
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
   });
-  it("shows and updates the suggestion range without changing magnetic placement", () => {
+  it("shows the labeled suggestion search distance only while suggestions are enabled", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
       toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
     act(() => root.render(<BuilderCanvas {...props} />));
+    expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
+    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!;
+    act(() => toggle.click());
     const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
     expect(range.value).toBe("1.5");
-    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("1,5 Noppen");
+    expect(range.getAttribute("aria-label")).toBe("Suchabstand für Verbindungsvorschläge");
+    expect(element.querySelector(".connection-preview-setting > span")?.textContent).toBe("Suchabstand für Verbindungsvorschläge");
+    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 1,5 Noppen");
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
       range.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(range.value).toBe("3");
-    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("3 Noppen");
+    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 3 Noppen");
+    act(() => toggle.click());
+    expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
   });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",

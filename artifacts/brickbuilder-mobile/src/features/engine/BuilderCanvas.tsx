@@ -1564,14 +1564,14 @@ export function BuilderCanvas({
         onClick={() => setShowConnectionPreview(value => !value)}>
         Vorschläge {showConnectionPreview ? "an" : "aus"}
       </button>
-      <label className="pointer-events-auto flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 text-xs shadow-sm">
-        <span>Reichweite</span>
+      {showConnectionPreview && <label className="connection-preview-setting">
+        <span>Suchabstand für Verbindungsvorschläge</span>
         <input type="range" min="0.5" max="4" step="0.25" value={connectionPreviewRange}
-          aria-label="Reichweite der Vorschläge" data-testid="connection-preview-range"
+          aria-label="Suchabstand für Verbindungsvorschläge" data-testid="connection-preview-range"
           onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
           onChange={event => setConnectionPreviewRange(Number(event.currentTarget.value))} />
-        <output data-testid="connection-preview-range-value">{connectionPreviewRange.toLocaleString("de-DE")} Noppen</output>
-      </label>
+        <output data-testid="connection-preview-range-value">bis {connectionPreviewRange.toLocaleString("de-DE")} Noppen</output>
+      </label>}
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showFloating} aria-label="Schwebewarnung anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}

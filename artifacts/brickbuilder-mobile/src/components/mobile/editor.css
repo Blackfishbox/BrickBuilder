@@ -110,6 +110,33 @@
 .mobile-selection-actions { display: none; }
 .canvas-hint { pointer-events: none; position: absolute; left: 50%; top: 51%; display: flex; flex-direction: column; align-items: center; gap: 8px; transform: translate(-50%, 62px); color: #88928a; font: 10px var(--app-font-mono); text-align: center; white-space: nowrap; opacity: .8; }
 .hint-cross { display: grid; place-items: center; width: 21px; height: 21px; border: 1px solid #aebbb1; border-radius: 50%; color: #809186; font-size: 16px; }
+.connection-preview-setting {
+  pointer-events: auto;
+  display: flex;
+  flex: 1 1 255px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 10px;
+  max-width: 100%;
+  padding: 9px 12px;
+  border: 1px solid rgba(80, 95, 83, .24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .96);
+  color: #30463d;
+  box-shadow: 0 2px 7px rgba(34, 53, 47, .12);
+  font-size: 11px;
+}
+.connection-preview-setting > span { flex-basis: 100%; font-weight: 700; }
+.connection-preview-setting input[type="range"] {
+  flex: 1;
+  min-width: 105px;
+  accent-color: #d75b3f;
+}
+.connection-preview-setting output {
+  white-space: nowrap;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 
 .tool-rail {
   min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 25px; padding: 23px 18px 15px;
