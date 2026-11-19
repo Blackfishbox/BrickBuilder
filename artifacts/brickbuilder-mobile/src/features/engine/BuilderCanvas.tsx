@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Link2, TriangleAlert, Cloud } from "lucide-react";
+import { collisionWarnings } from "./collision-warning";
 import {
   BoxGeometry,
   Box3,
@@ -40,7 +42,6 @@ import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftw
 import { InstanceIndex, instanceIndex } from "./instance-index";
 import {
   activeConnections, magneticConstructionTransform, hasUsableConnections,
-  previewConnections, CONNECTION_PREVIEW_STUDS,
 } from "../connections/engine";
 import type { MagneticLatch } from "../connections/engine";
 import { ConnectionOverlay } from "../connections/overlay";
@@ -410,14 +411,14 @@ export function BuilderCanvas({
   const attemptRef = useRef(-1);
   const overlayRef = useRef<ConnectionOverlay | null>(null);
   const [showConnections, setShowConnections] = useState(true);
-  const showConnectionsRef = useRef(true);
-  showConnectionsRef.current = showConnections;
-  const [showConnectionPreview, setShowConnectionPreview] = useState(false);
-  const showConnectionPreviewRef = useRef(false);
-  showConnectionPreviewRef.current = showConnectionPreview;
-  const [connectionPreviewRange, setConnectionPreviewRange] = useState(CONNECTION_PREVIEW_STUDS);
-  const connectionPreviewRangeRef = useRef(connectionPreviewRange);
-  connectionPreviewRangeRef.current = connectionPreviewRange;
+  const [showCollisions, setShowCollisions] = useState(false);
+  const [collisionState, setCollisionState] = useState({ count: 0, uncertain: false, pending: false });
+  const [toggleToast, setToggleToast] = useState("");
+  useEffect(() => {
+    if (!toggleToast) return;
+    const timer = setTimeout(() => setToggleToast(""), 2200);
+    return () => clearTimeout(timer);
+  }, [toggleToast]);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [floatingCount, setFloatingCount] = useState(0);
   const [showFloating, setShowFloating] = useState(false);
@@ -964,9 +965,26 @@ export function BuilderCanvas({
     invalidatorRef.current?.();
   }, [showConnections]);
   useEffect(() => {
-    if (!showConnectionPreview && overlayRef.current) overlayRef.current.previews = [];
+    const controller = new AbortController();
+    if (overlayRef.current) overlayRef.current.collisions = new Map();
+    setCollisionState({ count: 0, uncertain: false, pending: showCollisions });
     invalidatorRef.current?.();
-  }, [showConnectionPreview]);
+    if (showCollisions) {
+      void collisionWarnings(bricks, imported, controller.signal).then(result => {
+        if (controller.signal.aborted) return;
+        if (overlayRef.current) overlayRef.current.collisions = result.boxes;
+        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false });
+        invalidatorRef.current?.();
+      }).catch(error => {
+        if (!controller.signal.aborted) {
+          setCollisionState({ count: 0, uncertain: true, pending: false });
+          setToggleToast("Kollisionsprüfung konnte nicht abgeschlossen werden");
+          console.error(error);
+        }
+      });
+    }
+    return () => controller.abort();
+  }, [showCollisions, bricks, imported, projectId, buildAttempt]);
 
   useEffect(() => { updateImportedSelection(); }, [selectedId]);
   useEffect(() => { refreshFloating(); }, [bricks]);
@@ -1174,18 +1192,11 @@ export function BuilderCanvas({
         drag.magneticLatch = magnetic.latch;
         const result = magnetic.transform;
         drag.connection = result;
-        const suggestions = !showConnectionPreviewRef.current || !showConnectionsRef.current
-          ? [] : previewConnections(propsRef.current.imported, drag.id, requested, connectionPreviewRangeRef.current).filter(suggestion =>
-            !result.contacts.some(contact => contact.targetId === suggestion.targetId &&
-              contact.targetConnectorId === suggestion.targetConnectorId &&
-              contact.movingConnectorId === suggestion.movingConnectorId));
         if (overlayRef.current) {
           overlayRef.current.contacts = result.contacts;
-          overlayRef.current.previews = suggestions;
         }
         setConnectionStatus(result.status === "candidate" && result.contacts.length
-          ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen${suggestions.length ? ` · ${suggestions.length} weitere Vorschläge` : ""}` :
-          suggestions.length ? `${suggestions.length} passende Verbindung${suggestions.length === 1 ? "" : "en"} in Reichweite · noch nicht eingerastet` :
+          ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen` :
           result.status === "candidate" ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen` :
           result.status === "no-data" ? "Keine nutzbaren Verbindungsdaten · freie Platzierung" : "Keine passende Verbindung · freie Platzierung");
         const position = { x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20 };
@@ -1472,6 +1483,12 @@ export function BuilderCanvas({
     ? "Kompatibilitätsansicht ohne WebGL: begrenzte Details bei großen Projekten; alle Steine bleiben gespeichert."
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
+    {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
+    {showCollisions && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
+      {collisionState.pending ? "Kollisionen werden geprüft …" : collisionState.count
+        ? `${collisionState.count} Teile ${collisionState.uncertain ? "kollidieren möglicherweise (Geometriegrenzen)" : "kollidieren"} · orange markiert`
+        : "Keine Kollisionen erkannt"}
+    </div>}
     {showFloating && floatingCount > 0 && <div role="status" aria-live="polite" data-testid="floating-warning"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg border border-red-300 bg-red-50/95 p-3 text-xs text-red-900 shadow"
       style={{ pointerEvents: "none", top: sceneStatus || renderWarning || compatibilityHint ? 100 : 8 }}>
@@ -1482,28 +1499,23 @@ export function BuilderCanvas({
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showConnections} aria-label="Verbindungen anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-        onClick={() => setShowConnections(value => !value)}>
-        Verbindungen {showConnections ? "an" : "aus"}
+        title={showConnections ? "Verbindungen aktiv" : "Verbindungen inaktiv"}
+        onClick={() => { setShowConnections(!showConnections); setToggleToast(`Verbindungen ${showConnections ? "inaktiv" : "aktiv"}`); }}>
+        <Link2 size={20} aria-hidden="true" />
       </button>
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
-        aria-pressed={showConnectionPreview} aria-label="Verbindungsvorschau anzeigen"
+        aria-pressed={showCollisions} aria-label="Kollisionswarnung anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-        onClick={() => setShowConnectionPreview(value => !value)}>
-        Vorschläge {showConnectionPreview ? "an" : "aus"}
+        title={showCollisions ? "Kollisionswarnung aktiv" : "Kollisionswarnung inaktiv"}
+        onClick={() => { setShowCollisions(!showCollisions); setToggleToast(`Kollisionswarnung ${showCollisions ? "inaktiv" : "aktiv"}`); }}>
+        <TriangleAlert size={20} aria-hidden="true" />
       </button>
-      {showConnectionPreview && <label className="connection-preview-setting">
-        <span>Suchabstand für Verbindungsvorschläge</span>
-        <input type="range" min="0.5" max="4" step="0.25" value={connectionPreviewRange}
-          aria-label="Suchabstand für Verbindungsvorschläge" data-testid="connection-preview-range"
-          onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-          onChange={event => setConnectionPreviewRange(Number(event.currentTarget.value))} />
-        <output data-testid="connection-preview-range-value">bis {connectionPreviewRange.toLocaleString("de-DE")} Noppen</output>
-      </label>}
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showFloating} aria-label="Schwebewarnung anzeigen"
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-        onClick={() => setShowFloating(value => !value)}>
-        Schwebewarnung {showFloating ? "an" : "aus"}
+        title={showFloating ? "Schwebewarnung aktiv" : "Schwebewarnung inaktiv"}
+        onClick={() => { setShowFloating(!showFloating); setToggleToast(`Schwebewarnung ${showFloating ? "inaktiv" : "aktiv"}`); }}>
+        <Cloud size={20} aria-hidden="true" />
       </button>
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
     </div>}

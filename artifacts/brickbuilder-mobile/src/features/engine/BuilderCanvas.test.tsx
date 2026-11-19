@@ -449,55 +449,54 @@ describe("frame-coalesced drag transactions", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(element.querySelector("[data-testid='floating-warning']")).toBeNull();
   });
-  it("keeps connection suggestions optional and independently toggleable", () => {
+  it("replaces suggestions with icon toggles and announces their current state", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
       toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
     act(() => root.render(<BuilderCanvas {...props} />));
-    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!;
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    act(() => toggle.click());
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    act(() => toggle.click());
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-  });
-  it("shows the labeled suggestion search distance only while suggestions are enabled", () => {
-    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
-      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
-    act(() => root.render(<BuilderCanvas {...props} />));
+    expect(element.querySelector("[aria-label='Verbindungsvorschau anzeigen']")).toBeNull();
     expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
-    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!;
-    act(() => toggle.click());
-    const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
-    expect(range.value).toBe("1.5");
-    expect(range.getAttribute("aria-label")).toBe("Suchabstand für Verbindungsvorschläge");
-    expect(element.querySelector(".connection-preview-setting > span")?.textContent).toBe("Suchabstand für Verbindungsvorschläge");
-    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 1,5 Noppen");
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
-      range.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(range.value).toBe("3");
-    expect(element.querySelector("[data-testid='connection-preview-range-value']")?.textContent).toBe("bis 3 Noppen");
-    act(() => toggle.click());
-    expect(element.querySelector("[data-testid='connection-preview-range']")).toBeNull();
+    for (const [label, name, initial] of [
+      ["Kollisionswarnung anzeigen", "Kollisionswarnung", false],
+      ["Schwebewarnung anzeigen", "Schwebewarnung", false],
+      ["Verbindungen anzeigen", "Verbindungen", true],
+    ] as const) {
+      const toggle = element.querySelector<HTMLButtonElement>(`[aria-label='${label}']`)!;
+      expect(toggle.textContent).toBe("");
+      expect(toggle.querySelector("svg")).not.toBeNull();
+      expect(toggle.getAttribute("aria-pressed")).toBe(String(initial));
+      act(() => toggle.click());
+      expect(element.querySelector("[data-testid='construction-toggle-toast']")?.textContent).toBe(`${name} ${initial ? "inaktiv" : "aktiv"}`);
+      act(() => toggle.click());
+      expect(toggle.getAttribute("aria-pressed")).toBe(String(initial));
+      expect(element.querySelector("[data-testid='construction-toggle-toast']")?.textContent).toBe(`${name} ${initial ? "aktiv" : "inaktiv"}`);
+    }
   });
-  it("keeps slider drags from starting a canvas camera gesture", async () => {
+  it("keeps icon toggle gestures from starting a canvas camera gesture", async () => {
     await mount("select");
-    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!.click());
-    const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
+    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!;
     const capturePointer = vi.mocked(host.setPointerCapture);
     capturePointer.mockClear();
 
-    pointerOn(range, "pointerdown", 120, 150);
-    pointerOn(range, "pointermove", 180, 150);
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
-      range.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    pointerOn(range, "pointerup", 180, 150);
+    pointerOn(toggle, "pointerdown", 120, 150);
+    pointerOn(toggle, "pointermove", 180, 150);
+    pointerOn(toggle, "pointerup", 180, 150);
 
-    expect(range.value).toBe("3");
     expect(capturePointer).not.toHaveBeenCalled();
+  });
+  it("shows collisions on demand and recalculates after moving and deleting parts", async () => {
+    const brick: Brick = { id: "a", type: "brick-1x2", color: "#fff", x: 0, y: 0, z: 0, rotation: 0 };
+    const props = { bricks: [brick, { ...brick, id: "b" }], selectedId: null, selectedType: "brick-1x2" as const,
+      selectedColor: "#fff", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    expect(element.querySelector("[data-testid='collision-warning']")).toBeNull();
+    await act(async () => element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!.click());
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("2 Teile kollidieren");
+    await act(async () => root.render(<BuilderCanvas {...props} bricks={[brick, { ...brick, id: "b", x: 10 }]} />));
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toBe("Keine Kollisionen erkannt");
+    await act(async () => root.render(<BuilderCanvas {...props} bricks={[brick]} />));
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toBe("Keine Kollisionen erkannt");
+    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!.click());
+    expect(element.querySelector("[data-testid='collision-warning']")).toBeNull();
   });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
@@ -506,6 +505,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(element.querySelector("[data-testid='construction-controls']")).toBeNull();
     expect(element.querySelector("[aria-label='Verbindungen anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Verbindungsvorschau anzeigen']")).toBeNull();
+    expect(element.querySelector("[aria-label='Kollisionswarnung anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Schwebewarnung anzeigen']")).toBeNull();
   });
   it("hides construction controls in view-only mode", () => {
@@ -515,6 +515,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(element.querySelector("[data-testid='construction-controls']")).toBeNull();
     expect(element.querySelector("[aria-label='Verbindungen anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Verbindungsvorschau anzeigen']")).toBeNull();
+    expect(element.querySelector("[aria-label='Kollisionswarnung anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Schwebewarnung anzeigen']")).toBeNull();
   });
   it("drags real catalog plate geometry onto both rows with live contacts and identical committed rendering", async () => {
@@ -533,20 +534,11 @@ describe("frame-coalesced drag transactions", () => {
     host = element.querySelector("[data-testid='canvas-3d']")!;
     flushFrame();
     const project = catalogProjection(), start = project(4, 0.4, 0), end = project(0.03, 0.4, 0.52);
-    const suggestions = vi.spyOn(snapping, "previewConnections");
-    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Verbindungsvorschau anzeigen']")!.click());
-    const range = element.querySelector<HTMLInputElement>("[data-testid='connection-preview-range']")!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(range, "3");
-      range.dispatchEvent(new Event("input", { bubbles: true }));
-    });
     const search = vi.spyOn(snapping, "magneticConstructionTransform");
     pointer("pointerdown", start.x, start.y);
     pointer("pointermove", end.x, end.y);
     flushFrame();
     expect(search).toHaveBeenCalledOnce();
-    expect(suggestions).toHaveBeenCalledOnce();
-    expect(suggestions.mock.calls[0][3]).toBe(3);
     expect(search.mock.calls[0]).toEqual([model, id, expect.any(Object), undefined]);
     const transform = search.mock.results[0].value.transform;
     expect(transform.contacts).toHaveLength(2);
