@@ -1,4 +1,5 @@
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "@/features/editor/model";
+import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model";
+import { brickLDrawMatrix } from "@/features/editor/brick-transform";
 
 export function exportLDR(document: BuilderDocument): Uint8Array {
   // Flat LDR preserves effective colors and complete matrices, not hierarchy.
@@ -8,8 +9,8 @@ export function exportLDR(document: BuilderDocument): Uint8Array {
     lines.push(`1 ${instance.colorCode} ${[m[3], m[7], m[11], m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]].join(" ")} ${instance.reference}`);
   }
   for (const brick of document.bricks) {
-    const angle = brick.rotation * Math.PI / 180, c = Math.cos(angle), s = Math.sin(angle);
-    lines.push(`1 0x2${brick.color.slice(1).toUpperCase()} ${brick.x * 20} ${-(brick.y + BRICK_HEIGHT) * 20} ${brick.z * 20} ${c} 0 ${s} 0 1 0 ${-s} 0 ${c} ${BRICK_DEFINITIONS[brick.type].ldrawId}.dat`);
+    const matrix = brickLDrawMatrix(brick);
+    lines.push(`1 0x2${brick.color.slice(1).toUpperCase()} ${matrix.join(" ")} ${BRICK_DEFINITIONS[brick.type].ldrawId}.dat`);
   }
   return new TextEncoder().encode(lines.join("\r\n") + "\r\n");
 }
