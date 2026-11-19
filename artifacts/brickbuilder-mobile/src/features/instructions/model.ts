@@ -1,7 +1,8 @@
 import type { BuilderDocument } from "../editor/model";
 import type { ImportedModel } from "../formats/types";
-import type { InstructionPlan, InstructionStep } from "./types";
+import type { InstructionCallout, InstructionPlan, InstructionStep } from "./types";
 import { readStudioInstructions } from "./studio";
+import { INSTRUCTION_ROOT } from "../formats/mpd/instruction-partition";
 
 const boundary = /^\s*0\s+(?:STEP|ROTSTEP)(?:\s|$)/i;
 
@@ -27,22 +28,38 @@ export function instructionStepsUnchanged(document: BuilderDocument): boolean {
 /** Resolve by occurrence, never by part number: identical parts may belong to different steps. */
 export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
   const steps: InstructionStep[] = [];
+  // Generated slices retain assembly nesting, but only the explicit root
+  // boundaries define construction steps, including deliberately empty ones.
+  const explicitRoot = model.sections[model.root]?.includes(INSTRUCTION_ROOT);
   const available = new Map(model.instances.map(part => [part.sourceOccurrence?.join("/"), part.id]));
+  const idsByPrefix = new Map<string, string[]>();
+  for (const part of model.instances) {
+    const path = part.sourceOccurrence;
+    if (!path) continue;
+    for (let depth = 1; depth <= path.length; depth++) {
+      const prefix = path.slice(0, depth).join("/");
+      const ids = idsByPrefix.get(prefix) ?? [];
+      ids.push(part.id); idsByPrefix.set(prefix, ids);
+    }
+  }
   let serializedIndex = 0;
   function visit(name: string, occurrence: number[], ancestors: string[]) {
     if (ancestors.includes(name) || ancestors.length > 48) throw new Error("Zyklische Anleitungshierarchie.");
     let parts: string[] = [];
+    let pendingCallouts: InstructionCallout[] = [];
     let title: string | undefined, notes = "";
     let rotation: [number, number, number] | undefined;
     const finish = (allowEmpty = false) => {
-      if (!parts.length && !allowEmpty) return;
+      if (!parts.length && !pendingCallouts.length && !allowEmpty) return;
       steps.push({
         id: `imported-step-${serializedIndex}`, title: title ?? `Schritt ${steps.length + 1}`,
         notes, partIds: parts, sourceIndex: serializedIndex++,
+        ...(pendingCallouts.length ? { callouts: [...pendingCallouts] } : {}),
         ...(rotation ? { rotation } : {}),
       });
-      parts = [];
+      parts = []; pendingCallouts = [];
       title = undefined; notes = "";
+      if (explicitRoot) rotation = undefined;
     };
     for (const [index, line] of (model.sections[name] ?? []).entries()) {
       const own = line.match(/^\s*0\s+!BRICKBUILDER\s+(TITLE|NOTE)\s+(.+)$/);
@@ -56,7 +73,7 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
         } catch { /* Preserve an unknown comment without interpreting it. */ }
         continue;
       }
-      if (boundary.test(line)) {
+      if (boundary.test(line) && (!explicitRoot || !occurrence.length)) {
         const match = line.match(/^\s*0\s+ROTSTEP\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/i);
         if (match) {
           const values = match.slice(1).map(Number);
@@ -68,14 +85,39 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
       if (!/^\s*1\s/.test(line)) continue;
       const path = [...occurrence, index], id = available.get(path.join("/"));
       if (id) { parts.push(id); continue; }
-      const target = line.trim().split(/\s+/).slice(14).join(" ").replaceAll("\\", "/").toLowerCase();
+      const reference = line.trim().split(/\s+/).slice(14).join(" ").replaceAll("\\", "/");
+      const target = reference.toLowerCase();
       if (Object.hasOwn(model.sections, target)) {
         // Build each subassembly before it is used by its parent occurrence.
-        if (parts.length) finish();
-        visit(target, path, [...ancestors, name]);
+        if (!explicitRoot && parts.length) finish();
+        if (explicitRoot) {
+          collect(target, path, [...ancestors, name], parts);
+        } else {
+          visit(target, path, [...ancestors, name]);
+          const descendantIds = idsByPrefix.get(path.join("/"));
+          if (descendantIds?.length) {
+            const file = reference.split("/").pop()?.replace(/\.ldr$/i, "") ?? target;
+            const label = file.split(" - ").at(-1)?.trim() || file;
+            pendingCallouts.push({ id: path.join("/"), title: label.slice(0, 160), occurrence: path });
+          }
+        }
       }
     }
     if (parts.length || !steps.length) finish(true);
+    if (pendingCallouts.length && occurrence.length) {
+      const last = steps.at(-1);
+      if (last) last.callouts = [...(last.callouts ?? []), ...pendingCallouts];
+    }
+  }
+  function collect(name: string, occurrence: number[], ancestors: string[], parts: string[]) {
+    if (ancestors.includes(name) || ancestors.length > 48) throw new Error("Zyklische Anleitungshierarchie.");
+    for (const [index, line] of (model.sections[name] ?? []).entries()) {
+      if (!/^\s*1\s/.test(line)) continue;
+      const path = [...occurrence, index], id = available.get(path.join("/"));
+      if (id) { parts.push(id); continue; }
+      const target = line.trim().split(/\s+/).slice(14).join(" ").replaceAll("\\", "/").toLowerCase();
+      if (Object.hasOwn(model.sections, target)) collect(target, path, [...ancestors, name], parts);
+    }
   }
   visit(model.root, [], []);
   const assigned = new Set(steps.flatMap(step => step.partIds));
