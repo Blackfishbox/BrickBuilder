@@ -22,6 +22,7 @@ import { parseLDraw } from "../formats/ldraw/parser";
 import type { ImportedModel } from "../formats/types";
 import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model";
 import { moveImported, tiltImported } from "../editor/ldraw-editing";
+import { commit, createHistory, redo, undo } from "../editor/history";
 import type { Affine } from "../formats/types";
 import { connectionFixture, partLine } from "../connections/fixtures";
 import { affine, describeConnections, matrix4, transformConnector } from "../connections/description";
@@ -820,6 +821,63 @@ describe("frame-coalesced drag transactions", () => {
   }
   for (const webgl of [true, false]) {
     const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`restores and re-expands the committed floor after undo and redo in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(2, 3);
+      const id = model.instances[1].id;
+      const initialDocument = { ...createEmptyDocument(), imported: model };
+      const movedDocument = moveImported(initialDocument, id, { x: 180, y: 0, z: -120 });
+      let history = createHistory(initialDocument);
+      const props = { projectId: `floor-history-${rendererName}`, bricks: [], selectedId: null,
+        selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      const renderHistory = async () => {
+        await act(async () => root.render(<BuilderCanvas {...props} imported={history.document.imported} />));
+        await act(async () => {
+          await vi.waitFor(() => expect(webgl ? instanceIndex(
+            observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group,
+          ) : observed.scene).toBeDefined());
+        });
+        flushFrame();
+      };
+
+      await renderHistory();
+      const initialBounds = currentImportedBounds(webgl);
+      const camera = { ...observed.cameraPose! };
+      const expectedBounds = (source: ImportedModel) => source.instances.reduce(
+        (bounds, instance) => bounds.union(transformedPartBounds(source, instance)),
+        new Box3(),
+      );
+      const expectedInitialBounds = expectedBounds(initialDocument.imported!);
+      expectConstructionArea(expectedInitialBounds);
+
+      const expectedMovedBounds = expectedBounds(movedDocument.imported!);
+      const initialArea = constructionArea(expectedInitialBounds);
+      const movedArea = constructionArea(expectedMovedBounds);
+      expect(movedArea.width).toBeGreaterThan(initialArea.width);
+      expect(movedArea.depth).toBeGreaterThan(initialArea.depth);
+      history = commit(history, movedDocument);
+      await renderHistory();
+      expectConstructionArea(expectedMovedBounds);
+      expect(currentImportedBounds(webgl).max.x).toBeGreaterThan(initialBounds.max.x + 100);
+      expect(currentImportedBounds(webgl).min.z).toBeLessThan(initialBounds.min.z - 100);
+      expectCameraPose(camera);
+
+      history = undo(history);
+      await renderHistory();
+      expectConstructionArea(expectedInitialBounds);
+      expect(currentImportedBounds(webgl).max.x).toBeCloseTo(initialBounds.max.x, 2);
+      expect(currentImportedBounds(webgl).min.z).toBeCloseTo(initialBounds.min.z, 2);
+      expectCameraPose(camera);
+
+      history = redo(history);
+      await renderHistory();
+      expectConstructionArea(expectedMovedBounds);
+      expect(currentImportedBounds(webgl).max.x).toBeGreaterThan(initialBounds.max.x + 100);
+      expect(currentImportedBounds(webgl).min.z).toBeLessThan(initialBounds.min.z - 100);
+      expectCameraPose(camera);
+    });
+
     it(`expands the floor for a drag preview and restores it on cancellation in ${rendererName}`, async () => {
       observed.webglEnabled = webgl;
       const model = engineFixture(1, 2);
