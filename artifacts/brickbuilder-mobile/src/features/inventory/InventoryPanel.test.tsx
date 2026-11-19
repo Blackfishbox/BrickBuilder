@@ -7,8 +7,10 @@ import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { parseInventory } from "./import";
 import { parseLDraw } from "../formats/ldraw/parser";
 import type { Inventory } from "./types";
+import { previewInventory, resolveStoredInventory } from "../catalog/client";
 
 vi.mock("../catalog/client", () => ({
+  previewInventory: vi.fn(),
   resolveStoredInventory: async (inventory: Inventory) => ({
     inventory, resolutions: Object.fromEntries(inventory.rows.map(row => [row.id, {
       parts: row.partId === "ambiguous"
@@ -40,7 +42,7 @@ function consume(document: BuilderDocument, indexes: number[]) {
     ...parsed, resources: {}, legalDocuments: [],
   } };
 }
-async function panel(onSpread = vi.fn(async () => ({ placed: 0, deferred: 0 }))) {
+async function panel(onSpread = vi.fn(async () => ({ placed: 0, deferred: 0 })), onReplace = vi.fn()) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = window.document.createElement("div");
   root = createRoot(container);
@@ -49,9 +51,10 @@ async function panel(onSpread = vi.fn(async () => ({ placed: 0, deferred: 0 })))
     render: async (document: BuilderDocument) => {
       await act(async () => root!.render(<InventoryPanel document={document} selected={null}
         onSelect={async () => true} onSpread={onSpread}
-        onReplace={() => {}} onSelected={() => {}} />));
+        onReplace={onReplace} onSelected={() => {}} />));
     },
     onSpread,
+    onReplace,
   };
 }
 it("filters exhausted rows before pagination and retains partially available rows", async () => {
@@ -64,6 +67,59 @@ it("filters exhausted rows before pagination and retains partially available row
   expect(view.container.querySelector(`[data-testid="row-inventory-${document.inventory!.rows[30].id}"]`)?.textContent).toContain("Übrig 1");
   await view.render(consume(document, Array.from({ length: 29 }, (_, i) => i + 1)));
   expect(view.container.querySelector(`[data-testid="row-inventory-${document.inventory!.rows[0].id}"]`)).not.toBeNull();
+});
+
+async function upload(container: HTMLElement) {
+  const input = container.querySelector('[data-testid="input-inventory-file"]') as HTMLInputElement;
+  Object.defineProperty(input, "files", { configurable: true, value: [new File(["<INVENTORY/>"], "parts.xml")] });
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+}
+
+it("shows import errors with the filename and lets the user retry without losing the old list", async () => {
+  const doc = fixture(1);
+  vi.mocked(previewInventory).mockRejectedValueOnce(new Error("Katalog offline."));
+  const view = await panel();
+  await view.render(doc);
+  await upload(view.container);
+  expect(view.container.querySelector('[role="alert"]')?.textContent).toContain("parts.xml");
+  expect(view.container.textContent).toContain("Katalog offline.");
+  expect(view.onReplace).not.toHaveBeenCalled();
+  expect(view.container.querySelectorAll(".inv-row")).toHaveLength(1);
+});
+
+it("shows a preview and explicit success for a 213-position wanted list", async () => {
+  const doc = fixture(213);
+  doc.inventory!.rows[0].quantity = 592; // 804 pieces in total.
+  vi.mocked(previewInventory).mockResolvedValueOnce(await resolveStoredInventory(doc.inventory!));
+  const view = await panel();
+  await view.render(createEmptyDocument());
+  await upload(view.container);
+  expect(view.container.querySelector('[data-testid="inventory-preview"]')?.textContent).toContain("804");
+  const preview = view.container.querySelector('[data-testid="inventory-preview"]')!;
+  expect([...preview.children].indexOf(preview.querySelector('.inv-actions')!))
+    .toBeLessThan([...preview.children].indexOf(preview.querySelector('.inv-preview-rows')!));
+  await act(async () => (view.container.querySelector('[data-testid="button-inventory-preview-confirm"]') as HTMLButtonElement).click());
+  expect(view.onReplace).toHaveBeenCalledWith(doc.inventory, expect.any(String));
+  expect(view.container.textContent).toContain("213 Positionen mit 804 Teilen übernommen");
+});
+
+it("turns a stalled import into an actionable error and ignores late results", async () => {
+  const preview = await resolveStoredInventory(fixture(1).inventory!);
+  let finish!: (value: typeof preview) => void;
+  vi.mocked(previewInventory).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  const view = await panel();
+  await view.render(createEmptyDocument());
+  vi.useFakeTimers();
+  try {
+    await upload(view.container);
+    await act(async () => vi.advanceTimersByTimeAsync(90_000));
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain("90 Sekunden");
+    await act(async () => finish(preview));
+    expect(view.container.querySelector('[data-testid="inventory-preview"]')).toBeNull();
+    expect(view.onReplace).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 it("clamps the page when stock shrinks and does not jump back after a deleted part returns", async () => {
   const document = fixture(31);

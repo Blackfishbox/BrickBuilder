@@ -5,6 +5,7 @@ import evidenceManifest from "./color-evidence-manifest.json";
 import { getColorEvidenceState, subscribeColorEvidence, updateColorEvidenceState } from "./color-evidence-state";
 import type { Inventory, InventoryPreview } from "../inventory/types";
 import { MAX_LIST_BYTES } from "../inventory/types";
+import { readInventoryFile } from "../inventory/read-file";
 import { getCatalogState, subscribeCatalog, updateCatalogState as update } from "./state";
 import { loadSnapshot } from "./load-snapshot";
 export { getCatalogState, installCatalogIndex } from "./state";
@@ -106,10 +107,13 @@ export async function searchBuildingCatalog(query: string, offset = 0, category 
   const response = await request({ type: "search-page", query, offset, category });
   return { results: response.results, total: response.total };
 }
-export async function previewInventory(file: File): Promise<InventoryPreview> {
+export async function previewInventory(file: File, onProgress?: (message: string) => void): Promise<InventoryPreview> {
   if (file.size > MAX_LIST_BYTES) throw new Error("Teileliste ist größer als 2 MiB.");
+  onProgress?.("Datei wird gelesen …");
+  const text = await readInventoryFile(file);
+  onProgress?.("Teilekatalog wird geladen …");
   await ensureCatalog();
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+  onProgress?.("Teile und Farben werden zugeordnet …");
   return (await request({ type: "inventory", text, name: file.name })).preview;
 }
 export async function resolveStoredInventory(inventory: Inventory): Promise<InventoryPreview> {

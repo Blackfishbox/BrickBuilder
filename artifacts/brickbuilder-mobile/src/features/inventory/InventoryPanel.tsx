@@ -44,6 +44,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
   const [preview, setPreview] = useState<InventoryPreview | null>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
+  const [importStatus, setImportStatus] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [picks, setPicks] = useState<Record<string, Pick>>({});
@@ -65,7 +66,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     mounted.current = true;
     return () => { mounted.current = false; token.current++; };
   }, []);
-  useEffect(() => { token.current++; retryFile.current = undefined; setPreview(null); setImporting(false); setImportError(''); setPicks({}); }, [projectId]);
+  useEffect(() => { token.current++; retryFile.current = undefined; setPreview(null); setImporting(false); setImportError(''); setImportStatus(''); setPicks({}); }, [projectId]);
   useEffect(() => { setPicks({}); setRowError(''); setBusyRow(''); setPage(0); }, [inventory?.id]);
 
   useEffect(() => {
@@ -82,29 +83,40 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     if (!file) return;
     retryFile.current = file;
     const my = ++token.current; const pid = projectId;
-    setImportError(''); setPreview(null);
+    setImportError(''); setImportStatus('Datei wird gelesen …'); setPreview(null);
     if (!/\.(xml|csv)$/i.test(file.name)) { setImportError('Nur .xml (BrickLink) oder .csv werden unterstützt.'); return; }
     if (file.size > MAX_LIST_BYTES) { setImportError('Teileliste ist größer als 2 MiB.'); return; }
     setImporting(true);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const p = await previewInventory(file);
+      const p = await Promise.race([
+        previewInventory(file, message => {
+          if (mounted.current && my === token.current) setImportStatus(message);
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Der Import hat nach 90 Sekunden nicht geantwortet. Prüfe den Teilekatalog und versuche es erneut. Die bisherige Teileliste bleibt unverändert.')), 90_000);
+        }),
+      ]);
       if (!mounted.current || my !== token.current || pid !== projectRef.current) return;
       previewProjectRef.current = pid;
       setPreview(p);
     } catch (e) {
       if (!mounted.current || my !== token.current || pid !== projectRef.current) return;
-      setImportError(e instanceof Error ? e.message : String(e));
+      const message = e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e || 'Unbekannter Fehler');
+      setImportError(`„${file.name}“ konnte nicht importiert werden: ${message}`);
     } finally {
+      if (timer) clearTimeout(timer);
       if (mounted.current && my === token.current) setImporting(false);
     }
   };
 
-  const cancelImport = () => { token.current++; setImporting(false); setPreview(null); setImportError(''); if (fileRef.current) fileRef.current.value = ''; };
+  const cancelImport = () => { token.current++; setImporting(false); setPreview(null); setImportError(''); setImportStatus('Import abgebrochen. Die bisherige Teileliste bleibt unverändert.'); if (fileRef.current) fileRef.current.value = ''; };
 
   const confirmImport = () => {
     if (!preview) return;
     try {
       onReplace(preview.inventory, previewProjectRef.current);
+      setImportStatus(`${preview.inventory.rows.length} Positionen mit ${preview.inventory.rows.reduce((sum, row) => sum + row.quantity, 0)} Teilen übernommen. Die Liste wird automatisch auf diesem Gerät gespeichert.`);
       setPreview(null); setPicks({}); setPage(0); setQuery('');
       if (fileRef.current) fileRef.current.value = '';
     } catch (e) { setImportError(e instanceof Error ? e.message : String(e)); }
@@ -183,6 +195,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
           <label className={`inv-file ${hasAllocations ? 'disabled' : ''}`}>
             <FileUp size={15} /> {inventory ? 'Ersetzen' : 'Importieren'}
             <input ref={fileRef} type="file" accept={importFileAccept('inventory')} disabled={hasAllocations || importing}
+              onClick={e => { e.currentTarget.value = ''; }}
               onChange={e => void pickFile(e.target.files?.[0])} data-testid="input-inventory-file" />
           </label>
         </div>
@@ -191,7 +204,8 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
           <code>part_id,color_id,quantity<br />3001,5,2</code>
           <button type="button" onClick={downloadTemplate} data-testid="button-inventory-template"><Download size={14} /> CSV-Vorlage</button>
         </div>
-        {importing && <div className="inv-status" role="status"><LoaderCircle className="spin" size={15} /> Liste wird geprüft … <button type="button" onClick={cancelImport} data-testid="button-inventory-cancel-loading">Abbrechen</button></div>}
+        {importing && <div className="inv-status" role="status"><LoaderCircle className="spin" size={15} /> {importStatus} <button type="button" onClick={cancelImport} data-testid="button-inventory-cancel-loading">Abbrechen</button></div>}
+        {!importing && !preview && !importError && importStatus && <p role="status">{importStatus}</p>}
         {importError && <div className="inv-error" role="alert" data-testid="status-inventory-import-error">{importError}<button type="button" onClick={() => void pickFile(retryFile.current)} data-testid="button-inventory-import-retry"><RotateCw size={13} /> Erneut prüfen</button><button type="button" onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}>Andere Datei</button></div>}
         {preview && <ImportPreview preview={preview} onCancel={cancelImport} onConfirm={confirmImport} replacing={!!inventory} />}
       </section>
@@ -323,6 +337,11 @@ function ImportPreview({ preview, onCancel, onConfirm, replacing }: { preview: I
         <span><b>{ambiguous.length}</b> mehrdeutig</span>
       </div>
       {rows.length >= MAX_ROWS && <p className="inv-note">Maximal {MAX_ROWS} Zeilen.</p>}
+      <p className="inv-note">Die Datei ist geprüft. Tippe auf „{replacing ? 'Liste ersetzen' : 'Liste übernehmen'}“, um sie im Projekt zu verwenden. Die Zeilen darunter dienen zur Kontrolle.</p>
+      <div className="inv-actions">
+        <button type="button" className="cancel-button" onClick={onCancel} data-testid="button-inventory-preview-cancel">Abbrechen</button>
+        <button type="button" className="confirm-button" onClick={onConfirm} data-testid="button-inventory-preview-confirm">{replacing ? 'Liste ersetzen' : 'Liste übernehmen'}</button>
+      </div>
       <ul className="inv-preview-rows" aria-label="Geprüfte Importzeilen">
         {rows.slice(current * PAGE, current * PAGE + PAGE).map(row => {
           const res = preview.resolutions[row.id];
@@ -342,10 +361,6 @@ function ImportPreview({ preview, onCancel, onConfirm, replacing }: { preview: I
         <button type="button" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>Weiter</button>
       </div>}
       {ambiguous.length > 0 && <p className="inv-note">Mehrdeutige Zeilen brauchen vor dem Bauen eine ausdrückliche Teil- oder Farbauswahl.</p>}
-      <div className="inv-actions">
-        <button type="button" className="cancel-button" onClick={onCancel} data-testid="button-inventory-preview-cancel">Abbrechen</button>
-        <button type="button" className="confirm-button" onClick={onConfirm} data-testid="button-inventory-preview-confirm">{replacing ? 'Liste ersetzen' : 'Liste übernehmen'}</button>
-      </div>
     </div>
   );
 }
