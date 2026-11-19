@@ -1540,10 +1540,10 @@ export function BuilderCanvas({
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
-    {showCollisions && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
+    {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
       {collisionState.pending ? "Kollisionen werden geprüft …" : collisionState.count
         ? `${collisionState.count} Teile ${collisionState.uncertain ? "kollidieren möglicherweise (Geometriegrenzen)" : "kollidieren"} · orange markiert`
-        : "Keine Kollisionen erkannt"}
+        : collisionState.uncertain ? "Kollisionsprüfung nicht abgeschlossen" : "Keine Kollisionen erkannt"}
     </div>}
     {showFloating && floatingCount > 0 && <div role="status" aria-live="polite" data-testid="floating-warning"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg border border-red-300 bg-red-50/95 p-3 text-xs text-red-900 shadow"
