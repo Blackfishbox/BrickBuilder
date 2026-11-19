@@ -1,5 +1,6 @@
-import { Box3, Matrix4, Vector3 } from "three";
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type Brick } from "../editor/model";
+import { Box3 } from "three";
+import type { Brick } from "../editor/model";
+import { brickBounds } from "../editor/brick-transform";
 
 const CONTACT_TOLERANCE = 0.005; // 0.1 LDU: numerical tolerance, not a snapping radius.
 const CELL = 4;
@@ -45,14 +46,5 @@ export function floatingParts(boxes: ReadonlyMap<string, Box3>, floor: number): 
 }
 
 export function legacyBrickBounds(bricks: Brick[]): Map<string, Box3> {
-  return new Map(bricks.map(brick => {
-    const definition = BRICK_DEFINITIONS[brick.type];
-    const box = new Box3(
-      new Vector3(-definition.studsX / 2, 0, -definition.studsZ / 2),
-      new Vector3(definition.studsX / 2, BRICK_HEIGHT, definition.studsZ / 2),
-    );
-    box.applyMatrix4(new Matrix4().makeRotationY(brick.rotation * Math.PI / 180));
-    box.translate(new Vector3(brick.x, brick.y, brick.z));
-    return [brick.id, box];
-  }));
+  return new Map(bricks.map(brick => [brick.id, brickBounds(brick)]));
 }
