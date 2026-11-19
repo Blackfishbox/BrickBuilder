@@ -1,13 +1,14 @@
 import { readFileSync } from "node:fs";
-import { Matrix4 } from "three";
+import { Matrix4, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "../editor/model";
 import { moveImported, tiltImported } from "../editor/ldraw-editing";
 import { commit, createHistory, redo, undo } from "../editor/history";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
 import type { Affine, ImportedModel } from "../formats/types";
-import { affine, matrix4 } from "./description";
-import { activeConnections, constructionTransform, magneticConstructionTransform } from "./engine";
+import { affine, describeConnections, matrix4, transformConnector } from "./description";
+import { axes, intervals, potentialPair, profileOverlap } from "./profiles";
+import { activeConnections, constructionTransform, magneticConstructionTransform, snapConnection } from "./engine";
 import { connectionFixture, partLine } from "./fixtures";
 
 const plates = JSON.parse(readFileSync(new URL("../../../public/parts/ldraw-plates-2026-10-31.json", import.meta.url), "utf8"));
@@ -31,6 +32,66 @@ function tiltedPair(x: number, z: number, part = "3003") {
 const basis = (matrix: Affine) => matrix.filter((_, i) => ![3, 7, 11].includes(i));
 function expectMatrix(actual: Affine, expected: Affine) {
   actual.forEach((n, i) => expect(n, `matrix[${i}]`).toBeCloseTo(expected[i], 9));
+}
+
+function mechanicalPlacement(
+  targetPart: string, movingPart: string, x: number, z: number, extraRoll = 0,
+  orientationReference = targetPart, allowIncompatible = false, profileCase?: "axle" | "round-in-axle",
+) {
+  let document = { ...createEmptyDocument(), imported: connectionFixture([
+    partLine(orientationReference), partLine(movingPart, 160),
+  ].join("\n")) };
+  let model = document.imported;
+  const [target, moving] = model.instances;
+  const approach: Record<string, { x: number; y: number; z: number }> = {
+    "3700/2780": { x: 0.03, y: -0.5, z: 0.5 },
+    "32064/3705": { x: 0.02, y: -0.5, z: 0.02 },
+    "4085a/30374": { x: 0.02, y: -0.2, z: -1.02 },
+  };
+  const snap = snapConnection(model, moving.id, approach[`${orientationReference}/${movingPart}`]);
+  if (!snap) throw new Error(`Could not orient licensed example ${movingPart}/${orientationReference}`);
+  const aligned = matrix4(snap.matrix).setPosition(0, 0, 0);
+  if (extraRoll) {
+    const targetHole = describeConnections(`${targetPart}.dat`, model).connectors
+      .map(c => transformConnector(c, target.matrix)).find(c => c?.gender === "F" && c.sections.some(s => s.shape === "A"));
+    if (!targetHole) throw new Error(`No real axle hole found in ${targetPart}`);
+    aligned.premultiply(new Matrix4().makeRotationAxis(axes(targetHole).y, extraRoll * Math.PI / 180));
+  }
+  const orientedMoving = { ...moving, matrix: affine(aligned.setPosition(moving.matrix[3], moving.matrix[7], moving.matrix[11])) };
+  model = { ...model, instances: [target, orientedMoving] };
+  document = { ...document, imported: model };
+  document = tiltImported(document, target.id, x, z) as typeof document;
+  document = tiltImported(document, moving.id, x, z) as typeof document;
+  model = document.imported!;
+  const tiltedTarget = model.instances[0], tiltedMoving = model.instances[1];
+  const targets = describeConnections(`${targetPart}.dat`, model).connectors
+    .map(c => transformConnector(c, tiltedTarget.matrix)).filter((c): c is NonNullable<typeof c> => !!c);
+  const movers = describeConnections(`${movingPart}.dat`, model).connectors
+    .map(c => transformConnector(c, tiltedMoving.matrix)).filter((c): c is NonNullable<typeof c> => !!c);
+  for (const a of movers) for (const b of targets) {
+    if (!potentialPair(a, b)) continue;
+    if (profileCase === "axle" && (!a.sections.some(s => s.shape === "A") || !b.sections.some(s => s.shape === "A"))) continue;
+    if (profileCase === "round-in-axle" && (a.gender !== "M" || !a.sections.some(s => s.shape === "R") ||
+      b.gender !== "F" || !b.sections.some(s => s.shape === "A"))) continue;
+    const aa = axes(a), bb = axes(b), direction = aa.y.dot(bb.y) > 0 ? 1 : -1;
+    if (Math.abs(Math.abs(aa.y.dot(bb.y)) - 1) > 1e-4) continue;
+    const offsets = intervals(a).flatMap(s => [s.lo * direction, s.hi * direction])
+      .flatMap(m => intervals(b).flatMap(s => [s.lo - m, s.hi - m]));
+    for (const offset of offsets) {
+      if (!allowIncompatible && !extraRoll && !profileOverlap(a, b, offset, direction, aa.x.dot(bb.x))) continue;
+      const delta = bb.position.clone().addScaledVector(bb.y, offset).sub(aa.position);
+      return {
+        document, id: tiltedMoving.id, targetId: tiltedTarget.id, movingConnectorId: a.id,
+        targetConnectorId: b.id, offset, direction,
+        desired: {
+          x: (tiltedMoving.matrix[3] + delta.x) / 20,
+          y: -(tiltedMoving.matrix[7] + delta.y) / 20,
+          z: (tiltedMoving.matrix[11] + delta.z) / 20,
+        },
+      };
+    }
+  }
+  throw new Error(`No compatible source-profile pair found for ${movingPart}/${targetPart}`);
 }
 
 describe("tilted construction contacts", () => {
@@ -141,5 +202,78 @@ describe("tilted construction contacts", () => {
     expect(result.transform.matrix[3]).toBe(desired.x * 20);
     expect(result.transform.matrix[7]).toBe(-desired.y * 20);
     expect(result.transform.matrix[11]).toBe(desired.z * 20);
+  });
+
+  for (const [targetPart, movingPart] of [["3700", "2780"], ["32064", "3705"], ["4085a", "30374"]] as const) {
+    for (const [x, z] of [[30, 0], [0, -25], [27, -18]] as const) {
+      it(`snaps licensed ${movingPart}/${targetPart} profiles at X=${x}, Z=${z} without rotating them`, () => {
+        const pair = mechanicalPlacement(targetPart, movingPart, x, z);
+        const model = pair.document.imported!;
+        const moving = model.instances.find(i => i.id === pair.id)!;
+        const result = constructionTransform(model, pair.id, pair.desired);
+        expect(result.contacts.some(c => c.movingConnectorId === pair.movingConnectorId &&
+          c.targetConnectorId === pair.targetConnectorId), `${movingPart}/${targetPart}`).toBe(true);
+        expect(basis(result.matrix)).toEqual(basis(moving.matrix));
+        expect(moving.tiltX).toBe(x);
+        expect(moving.tiltZ).toBe(z);
+        const committed = { ...model, instances: model.instances.map(i =>
+          i.id === pair.id ? { ...i, matrix: result.matrix } : i) };
+        expect(activeConnections(committed, pair.id).some(c =>
+          c.movingConnectorId === pair.movingConnectorId && c.targetConnectorId === pair.targetConnectorId)).toBe(true);
+      });
+    }
+  }
+
+  it("rejects a tilted round pin in an axle hole and preserves exact free placement", () => {
+    const targetPart = "32064", movingPart = "2780";
+    const pair = mechanicalPlacement(targetPart, movingPart, 27, -18, 0, "3700", true, "round-in-axle");
+    const model = pair.document.imported!, a = describeConnections(`${movingPart}.dat`, model).connectors
+      .map(c => transformConnector(c, model.instances[1].matrix)).filter((c): c is NonNullable<typeof c> => !!c)
+      .find(c => c.id === pair.movingConnectorId)!;
+    const b = describeConnections(`${targetPart}.dat`, model).connectors
+      .map(c => transformConnector(c, model.instances[0].matrix)).filter((c): c is NonNullable<typeof c> => !!c)
+      .find(c => c.id === pair.targetConnectorId)!;
+    const aa = axes(a), bb = axes(b);
+    expect(Math.abs(Math.abs(aa.y.dot(bb.y)) - 1)).toBeLessThan(1e-4);
+    expect(profileOverlap(a, b, pair.offset, pair.direction, aa.x.dot(bb.x))).toBe(false);
+    const rejected = constructionTransform(model, pair.id, pair.desired);
+    expect(rejected.contacts.some(c => c.movingConnectorId === pair.movingConnectorId &&
+      c.targetConnectorId === pair.targetConnectorId)).toBe(false);
+    expect(basis(rejected.matrix)).toEqual(basis(model.instances[1].matrix));
+    const delta = bb.position.clone().sub(aa.position), freePosition = { x: 14.137, y: 9.432, z: -7.283 };
+    const desired = {
+      x: (model.instances[1].matrix[3] + delta.x) / 20 + freePosition.x,
+      y: -(model.instances[1].matrix[7] + delta.y) / 20,
+      z: (model.instances[1].matrix[11] + delta.z) / 20 + freePosition.z,
+    };
+    const result = constructionTransform(model, model.instances[1].id, desired);
+    expect(result.contacts).toHaveLength(0);
+    expect(basis(result.matrix)).toEqual(basis(model.instances[1].matrix));
+    expect(result.matrix[3]).toBe(desired.x * 20);
+    expect(result.matrix[7]).toBe(-desired.y * 20);
+    expect(result.matrix[11]).toBe(desired.z * 20);
+  });
+
+  it("rejects a tilted axle at an incompatible 45-degree roll but permits release", () => {
+    const pair = mechanicalPlacement("32064", "3705", 27, -18, 45, "32064", false, "axle");
+    const model = pair.document.imported!;
+    const axle = describeConnections("3705.dat", model).connectors
+      .map(c => transformConnector(c, model.instances[1].matrix)).find(c => c?.id === pair.movingConnectorId)!;
+    const hole = describeConnections("32064.dat", model).connectors
+      .map(c => transformConnector(c, model.instances[0].matrix)).find(c => c?.id === pair.targetConnectorId)!;
+    const aa = axes(axle), bb = axes(hole);
+    expect(Math.abs(Math.abs(aa.y.dot(bb.y)) - 1)).toBeLessThan(1e-4);
+    expect(profileOverlap(axle, hole, pair.offset, pair.direction, aa.x.dot(bb.x))).toBe(false);
+    const result = constructionTransform(model, pair.id, pair.desired);
+    expect(result.contacts).toHaveLength(0);
+    expect(basis(result.matrix)).toEqual(basis(model.instances[1].matrix));
+    expect(result.matrix.slice(0, 3)).toEqual(model.instances[1].matrix.slice(0, 3));
+    const released = magneticConstructionTransform(model, pair.id,
+      { x: 13.271, y: -4.613, z: 6.427 });
+    expect(released.latch).toBeUndefined();
+    expect(released.transform.contacts).toHaveLength(0);
+    expect(released.transform.matrix[3]).toBe(13.271 * 20);
+    expect(released.transform.matrix[7]).toBe(4.613 * 20);
+    expect(released.transform.matrix[11]).toBe(6.427 * 20);
   });
 });
