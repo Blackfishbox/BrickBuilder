@@ -440,6 +440,49 @@ describe("frame-coalesced drag transactions", () => {
       await renderStep({ ...moved, instances: moved.instances.filter(instance => instance.id !== "remote") });
     });
 
+    it(`combines and restores the floor for local and imported parts in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 3);
+      const importedAt = (source: ImportedModel, x: number, z: number): ImportedModel => ({
+        ...source,
+        instances: source.instances.map(instance => ({
+          ...instance,
+          matrix: [...instance.matrix.slice(0, 3), x * 20, ...instance.matrix.slice(4, 11), z * 20] as Affine,
+        })),
+      });
+      const localAt = (x: number, z = 0): Brick => ({
+        id: "mixed-local", type: "brick-2x4", color: "#B40000", x, y: 0, z, rotation: 0,
+      });
+      const expectedBounds = (bricks: Brick[], imported?: ImportedModel) => {
+        const bounds = bricks.reduce(
+          (result, brick) => result.union(brickConstructionBounds(brick)),
+          new Box3(),
+        );
+        for (const instance of imported?.instances ?? []) {
+          bounds.union(transformedPartBounds(imported!, instance));
+        }
+        return bounds;
+      };
+      const props = { projectId: `mixed-floor-${rendererName}`, bricks: [localAt(120)], imported: model,
+        selectedId: null, selectedType: "brick-2x4" as const, selectedColor: "#B40000",
+        toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      const renderStep = async (bricks: Brick[], imported?: ImportedModel) => {
+        await act(async () => root.render(<BuilderCanvas {...props} bricks={bricks} imported={imported} />));
+        flushFrame();
+        expectConstructionArea(expectedBounds(bricks, imported));
+      };
+
+      await renderStep(props.bricks, model);
+      await renderStep([localAt(-160)], model);
+      await renderStep([], model);
+
+      const movedLocal = [localAt(190, -120)];
+      await renderStep(movedLocal, model);
+      const movedImported = importedAt(model, -260, 180);
+      await renderStep(movedLocal, movedImported);
+      await renderStep(movedLocal, undefined);
+    });
+
     it(`keeps tilted and mirrored imported bounds current in ${rendererName}`, async () => {
       observed.webglEnabled = webgl;
       const model = engineFixture(1, 1);
