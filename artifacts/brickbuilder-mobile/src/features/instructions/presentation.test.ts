@@ -14,6 +14,7 @@ it("keeps new parts unchanged and fades old parts without removing their hue", (
     const faded = convert(original.clone(), false);
     expect(faded.r).toBeGreaterThan(faded.g);
     expect(faded.g).toBeGreaterThan(original.g);
+    expect(faded.g - original.g).toBeLessThan(0.2);
   }
 });
 
