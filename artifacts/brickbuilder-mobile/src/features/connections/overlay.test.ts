@@ -6,7 +6,8 @@ import type { Contact } from "./types";
 
 afterEach(() => vi.restoreAllMocks());
 it("bounds marker work and does not take pointer gestures in either renderer", () => {
-  const context = { clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn() };
+  const context = { clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
+    save: vi.fn(), restore: vi.fn(), setLineDash: vi.fn(), strokeRect: vi.fn() };
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
   const host = document.createElement("div"), overlay = new ConnectionOverlay(host), camera = new PerspectiveCamera(42, 1, 0.1, 100);
   camera.position.set(0, 0, 10); camera.lookAt(0, 0, 0);
@@ -15,11 +16,14 @@ it("bounds marker work and does not take pointer gestures in either renderer", (
     family: "cylinder", position: [0, 0, 0], state: "verified",
     orientation: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], evidence: [],
   } satisfies Contact));
+  overlay.previews = [{ ...overlay.contacts[0], id: "suggestion" }];
   overlay.draw(camera, 0, () => null);
-  expect(context.arc).toHaveBeenCalledTimes(MARKER_LIMIT);
+  expect(context.arc).toHaveBeenCalledTimes(MARKER_LIMIT + 1);
+  expect(context.setLineDash).toHaveBeenCalledWith([2, 2]);
+  expect(overlay.canvas.dataset.testid).toBe("connection-overlay");
   expect(overlay.canvas.style.pointerEvents).toBe("none");
   overlay.visible = false; overlay.draw(camera, 0, () => null);
-  expect(context.arc).toHaveBeenCalledTimes(MARKER_LIMIT);
+  expect(context.arc).toHaveBeenCalledTimes(MARKER_LIMIT + 1);
   overlay.dispose();
   expect(host.children).toHaveLength(0); expect(overlay.contacts).toHaveLength(0);
 });
