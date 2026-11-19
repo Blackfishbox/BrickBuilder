@@ -1,7 +1,9 @@
 import { Box3, PerspectiveCamera, Vector3 } from "three";
 import type { Contact } from "./types";
 
+/** Draw at most 32 suggested and 32 committed markers per frame (64 total). */
 export const MARKER_LIMIT = 32;
+const SUGGESTION_MARKER_CLEARANCE = 16;
 /** One small renderer-independent overlay. It never participates in picking,
  * instancing, source geometry, inventory or persistence.
  */
@@ -29,6 +31,36 @@ export class ConnectionOverlay {
       const p = point.project(camera);
       return { x: (p.x + 1) * width / 2, y: (1 - p.y) * height / 2, visible: p.z >= -1 && p.z <= 1 };
     };
+    const contacts = (this.visible ? this.contacts : []).slice(0, MARKER_LIMIT);
+    const committedPositions = contacts.flatMap(contact => {
+      const point = new Vector3(...contact.position); point.y += offset;
+      const p = project(point);
+      return p.visible ? [p] : [];
+    });
+    const previews: { contact: Contact; anchor: { x: number; y: number }; marker: { x: number; y: number } }[] = [];
+    for (const contact of (this.visible ? this.previews : []).slice(0, MARKER_LIMIT)) {
+      const point = new Vector3(...contact.position); point.y += offset;
+      const anchor = project(point);
+      if (!anchor.visible) continue;
+      const occupied = (candidate: { x: number; y: number }) =>
+        [...committedPositions, ...previews.map(preview => preview.marker)].some(position =>
+          Math.hypot(candidate.x - position.x, candidate.y - position.y) < SUGGESTION_MARKER_CLEARANCE);
+      let marker = { x: anchor.x, y: anchor.y };
+      if (occupied(marker)) {
+        // A deterministic screen-space spiral keeps dense suggestions readable
+        // without changing their world-space contact locations.
+        for (let attempt = 0; attempt < 128; attempt++) {
+          const angle = attempt * 2.399963229728653;
+          const radius = SUGGESTION_MARKER_CLEARANCE + 4 * Math.sqrt(attempt);
+          const candidate = {
+            x: anchor.x + Math.cos(angle) * radius,
+            y: anchor.y + Math.sin(angle) * radius,
+          };
+          if (!occupied(candidate)) { marker = candidate; break; }
+        }
+      }
+      previews.push({ contact, anchor, marker });
+    }
     // Always show floating warnings, independently of the connection toggle.
     context.strokeStyle = "#c52236"; context.lineWidth = 2;
     for (const [id, fallback] of this.floating) {
@@ -45,16 +77,19 @@ export class ConnectionOverlay {
       context.fillStyle = "#fff"; context.font = "bold 12px sans-serif"; context.fillText("!", x + 3, y - 5);
     }
     const outlined = new Set<string>();
-    for (const contact of (this.visible ? this.previews : []).slice(0, MARKER_LIMIT)) {
-      const point = new Vector3(...contact.position); point.y += offset;
-      const p = project(point); if (!p.visible) continue;
+    for (const { contact, anchor, marker } of previews) {
       context.save();
       context.strokeStyle = "#2878c7"; context.fillStyle = "#fff";
       context.lineWidth = 2; context.setLineDash([2, 2]);
-      context.beginPath(); context.arc(p.x, p.y, 7, 0, Math.PI * 2); context.fill(); context.stroke();
+      if (marker.x !== anchor.x || marker.y !== anchor.y) {
+        context.globalAlpha = 0.65; context.lineWidth = 1; context.setLineDash([1, 3]);
+        context.beginPath(); context.moveTo(anchor.x, anchor.y); context.lineTo(marker.x, marker.y); context.stroke();
+        context.globalAlpha = 1; context.lineWidth = 2; context.setLineDash([2, 2]);
+      }
+      context.beginPath(); context.arc(marker.x, marker.y, 7, 0, Math.PI * 2); context.fill(); context.stroke();
       context.setLineDash([]);
-      context.beginPath(); context.moveTo(p.x - 3, p.y); context.lineTo(p.x + 3, p.y);
-      context.moveTo(p.x, p.y - 3); context.lineTo(p.x, p.y + 3); context.stroke();
+      context.beginPath(); context.moveTo(marker.x - 3, marker.y); context.lineTo(marker.x + 3, marker.y);
+      context.moveTo(marker.x, marker.y - 3); context.lineTo(marker.x, marker.y + 3); context.stroke();
       context.restore();
       if (outlined.has(contact.targetId)) continue;
       outlined.add(contact.targetId);
