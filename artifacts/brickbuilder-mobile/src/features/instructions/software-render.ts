@@ -20,10 +20,15 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   canvas.width = size.width; canvas.height = size.height;
   const width = canvas.width, height = canvas.height, aspect = width / height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("PDF-Abbildungen sind nicht verfügbar: Weder WebGL noch die 2D-Ausgabe konnten gestartet werden.");
+  if (!context) {
+    canvas.width = 1; canvas.height = 1;
+    throw new Error("PDF-Abbildungen sind nicht verfügbar: Weder WebGL noch die 2D-Ausgabe konnten gestartet werden.");
+  }
   const faces: Face[] = [], bounds = new Box3(), vertex = new Vector3();
+  const dispose = () => { faces.length = 0; canvas.width = 1; canvas.height = 1; };
   const push = (id: string, positions: ArrayLike<number>, matrix: Matrix4, code: string) => {
     if (faces.length + positions.length / 9 > MAX_TRIANGLES) {
+      dispose();
       throw new Error("PDF: WebGL ist nicht verfügbar und dieses Modell ist für die vollständige Software-Abbildung zu groß. Bitte auf einem Gerät mit WebGL exportieren.");
     }
     const color = resolveColor(code);
@@ -47,9 +52,12 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   }
   const addGeometry = (id: string, geometry: BoxGeometry | CylinderGeometry, matrix: Matrix4, color: string) => {
     const flat = geometry.index ? geometry.toNonIndexed() : geometry;
-    push(id, flat.getAttribute("position").array, matrix, `0x2${color.slice(1)}`);
-    if (flat !== geometry) flat.dispose();
-    geometry.dispose();
+    try {
+      push(id, flat.getAttribute("position").array, matrix, `0x2${color.slice(1)}`);
+    } finally {
+      if (flat !== geometry) flat.dispose();
+      geometry.dispose();
+    }
   };
   for (const part of document.bricks) {
     signal?.throwIfAborted();
@@ -112,6 +120,6 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
       if (outlines.size) drawInstructionOutlines(context, camera, outlines.values(), width, height);
       return canvas.toDataURL("image/jpeg", 0.84);
     },
-    dispose() { faces.length = 0; canvas.width = 1; canvas.height = 1; },
+    dispose,
   };
 }

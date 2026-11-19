@@ -546,6 +546,31 @@ describe("local construction instructions", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
+  it("rejects oversized PDF fallback diagrams clearly and releases the canvas", async () => {
+    const doc = fixture("1 4 0 0 0 1 0 0 0 1 0 0 0 1 oversized.dat\n");
+    const part = doc.imported!.instances[0];
+    part.part.status = "resolved";
+    const triangle = "3 16 0 0 0 20 0 0 0 20 0";
+    const quad = "4 16 0 0 0 20 0 0 20 20 0 0 20 0";
+    doc.imported!.resources["parts/oversized.dat"] = {
+      path: "parts/oversized.dat", sourceUrl: "https://example.invalid/oversized", author: "Test", license: "CC0-1.0",
+      content: `${Array.from({ length: 60_000 }, () => quad).join("\n")}\n${triangle}`,
+    };
+    const context = {
+      fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(),
+    };
+    const canvas = { width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,test" };
+    vi.stubGlobal("document", { createElement: () => canvas });
+    try {
+      await expect(exportInstructionPDF(doc, doc.instructions!, {}, (document, signal) =>
+        createSoftwareInstructionRenderer(document, signal),
+      )).rejects.toThrow("PDF: WebGL ist nicht verfügbar und dieses Modell ist für die vollständige Software-Abbildung zu groß.");
+      expect(canvas.width).toBe(1);
+      expect(canvas.height).toBe(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("renders the complete visible source triangle in the software PDF fallback", async () => {
     const doc = fixture(), part = doc.imported!.instances[0];
     part.part.status = "resolved";
