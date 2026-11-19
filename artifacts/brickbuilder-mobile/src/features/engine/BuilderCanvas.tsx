@@ -9,6 +9,7 @@ import {
   EdgesGeometry,
   GridHelper,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   LineBasicMaterial,
   LineSegments,
@@ -27,6 +28,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { instructionDisplayColor } from "../instructions/highlight-color";
 import { applyInstructionCameraRotation } from "./instruction-camera";
 import { createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
@@ -58,6 +60,7 @@ interface BuilderCanvasProps {
   showConstructionControls?: boolean;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
+  instructionFocusIds?: ReadonlySet<string>;
   projectId?: string;
   bricks: Brick[];
   imported?: ImportedModel;
@@ -123,6 +126,7 @@ class FallbackRenderer {
     imported?: SoftwareScene,
     importOffset = 0,
     interactive = false,
+    instructionFocusIds?: ReadonlySet<string>,
   ): void {
     const context = this.context;
     if (!context) return;
@@ -185,6 +189,7 @@ class FallbackRenderer {
     // or allocate millions of world-space vectors for a camera movement.
     if (imported) {
       const faces: { points: ProjectedPoint[]; depth: number; color: string; alpha: number; selected: boolean }[] = [];
+      const sourceColor = new Color();
       const stride = interactive ? Math.max(1, Math.ceil(imported.triangleCount / INTERACTIVE_TRIANGLE_BUDGET)) : 1;
       for (let triangle = 0; triangle < imported.triangleCount; triangle += stride) {
             if (imported.alpha[triangle] === 0) continue;
@@ -193,7 +198,10 @@ class FallbackRenderer {
             if (points.some(p => p.depth < 0.1)) continue;
             const area = (points[1].x - points[0].x) * (points[2].y - points[0].y) - (points[1].y - points[0].y) * (points[2].x - points[0].x);
             if (Math.abs(area) < 0.08) continue;
-            faces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color: imported.colors[triangle], alpha: imported.alpha[triangle], selected: imported.triangleIds[triangle] === selectedId });
+            const id = imported.triangleIds[triangle];
+            sourceColor.set(imported.colors[triangle]);
+            const color = instructionFocusIds === undefined ? sourceColor.getStyle() : instructionDisplayColor(sourceColor, instructionFocusIds.has(id)).getStyle();
+            faces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color, alpha: imported.alpha[triangle], selected: id === selectedId });
       }
       faces.sort((a, b) => b.depth - a.depth);
       for (const face of faces) {
@@ -234,6 +242,7 @@ class FallbackRenderer {
       const topY = brick.y + BRICK_HEIGHT - 0.08;
       const top = corners.map(({ x, z }) => project(x, topY, z));
       const color = new Color(brick.color);
+      if (instructionFocusIds !== undefined) instructionDisplayColor(color, instructionFocusIds.has(brick.id));
       const cameraDirection = new Vector2(
         camera.position.x - brick.x,
         camera.position.z - brick.z,
@@ -299,6 +308,53 @@ class FallbackRenderer {
       }
     }
   }
+}
+
+const FOCUS_ATTRIBUTE = "instructionFocus";
+const FOCUS_VERTEX_HEADER = "attribute float instructionFocus;\nvarying float vInstructionFocus;\n";
+const FOCUS_FRAGMENT_HEADER = "varying float vInstructionFocus;\n";
+const FOCUS_FRAGMENT = `
+  if (vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
+    float grey = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    gl_FragColor.rgb = mix(vec3(grey), vec3(0.72), 0.65);
+  } else if (vInstructionFocus > 1.5) {
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0, 0.65, 0.5), 0.65);
+  }
+`;
+
+function applyCanvasInstructionFocus(root: Group | null, current?: ReadonlySet<string>): void {
+  if (!root) return;
+  root.traverse(object => {
+    if (!(object instanceof InstancedMesh)) return;
+    const ids = object.userData.brickIds as string[] | undefined;
+    if (!ids) return;
+    let attribute = object.geometry.getAttribute(FOCUS_ATTRIBUTE) as InstancedBufferAttribute | undefined;
+    if (!attribute || attribute.count < object.instanceMatrix.count) {
+      attribute = new InstancedBufferAttribute(new Float32Array(object.instanceMatrix.count), 1);
+      object.geometry.setAttribute(FOCUS_ATTRIBUTE, attribute);
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        const compile = material.onBeforeCompile;
+        material.onBeforeCompile = (shader, renderer) => {
+          compile.call(material, shader, renderer);
+          shader.vertexShader = FOCUS_VERTEX_HEADER + shader.vertexShader.replace(
+            "#include <begin_vertex>", "#include <begin_vertex>\nvInstructionFocus = instructionFocus;",
+          );
+          shader.fragmentShader = FOCUS_FRAGMENT_HEADER + shader.fragmentShader.replace(
+            "#include <colorspace_fragment>", `${FOCUS_FRAGMENT}\n#include <colorspace_fragment>`,
+          );
+        };
+        const cacheKey = material.customProgramCacheKey.bind(material);
+        material.customProgramCacheKey = () => `${cacheKey()}|instruction-focus-v1`;
+      }
+    }
+    let changed = false;
+    ids.forEach((id, index) => {
+      const value = current === undefined ? 0 : current.has(id) ? 2 : 1;
+      if (attribute!.getX(index) !== value) { attribute!.setX(index, value); changed = true; }
+    });
+    if (changed) attribute.needsUpdate = true;
+  });
 }
 
 const geometryCache = new Map<BrickType, ReturnType<typeof mergeGeometries>>();
@@ -410,6 +466,7 @@ function softwareWarning(scene: SoftwareScene): string {
 export function BuilderCanvas({
   showConstructionControls = true,
   viewRotation,
+  instructionFocusIds,
   projectId,
   bricks,
   imported,
@@ -499,9 +556,11 @@ export function BuilderCanvas({
     invalidatorRef.current?.();
   };
   const invalidatorRef = useRef<(() => void) | null>(null);
+  useEffect(() => { invalidatorRef.current?.(); }, [instructionFocusIds]);
   const raycasterRef = useRef(new Raycaster());
   const propsRef = useRef({
     viewRotation,
+    instructionFocusIds,
     projectId,
     bricks,
     imported,
@@ -531,6 +590,7 @@ export function BuilderCanvas({
 
   propsRef.current = {
     viewRotation,
+    instructionFocusIds,
     projectId,
     bricks,
     imported,
@@ -634,6 +694,8 @@ export function BuilderCanvas({
         makeCameraPosition(camera, state.target, state.theta, state.phi, state.distance);
         applyInstructionCameraRotation(camera, state.target, propsRef.current.viewRotation);
         const activeRenderer = rendererRef.current ?? renderer;
+        applyCanvasInstructionFocus(importedRootRef.current, propsRef.current.instructionFocusIds);
+        applyCanvasInstructionFocus(brickRootRef.current, propsRef.current.instructionFocusIds);
         if (activeRenderer instanceof WebGLRenderer) {
           const ratio = interactive ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
           if (ratio !== lastPixelRatio) { activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; }
@@ -651,6 +713,7 @@ export function BuilderCanvas({
             softwareSceneRef.current,
             importedOffsetRef.current,
             interactive,
+            propsRef.current.instructionFocusIds,
           );
         }
         overlay.draw(camera, importedOffsetRef.current, id => {
@@ -898,7 +961,7 @@ export function BuilderCanvas({
       const first = groupBricks[0];
       const material = new MeshLambertMaterial({ color: first.color });
       const instances = new InstancedMesh(
-        brickGeometry(first.type),
+        brickGeometry(first.type).clone(),
         material,
         groupBricks.length,
       );
