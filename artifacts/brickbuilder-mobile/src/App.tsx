@@ -88,6 +88,8 @@ function App() {
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
   const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
+  const selectedPartNumber = editor.selectedInstance?.part.ldrawId
+    ?? (selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId : editor.selectedPart?.ldrawId);
   const colorReferences = colorInstances.length ? colorInstances.map(instance => instance.part.ldrawId)
     : [selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId
       : editor.selectedPart?.ldrawId].filter((id): id is string => Boolean(id));
@@ -331,14 +333,14 @@ function App() {
           </div>
           {editor.selectedId && editor.toolMode !== 'view' && (
             <div className="mobile-selection-actions" data-testid="mobile-selection-actions">
+              <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? "Stein"}</span>
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
               <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
-              <TiltControls key={`tilt-${editor.selectedId}`}
+              <TiltControls key={`tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
+                tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                 rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                onRotate={editor.setSelectedRotation}
-                tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
-                tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0} onTilt={editor.setSelectedTilt}
+                onRotate={editor.setSelectedRotation} onTilt={editor.setSelectedTilt}
                 onOpenChange={setTiltControlsOpen} />
               <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
@@ -388,7 +390,7 @@ function App() {
               <>
                 <div className="selection-detail" role="status" data-testid="status-selected-brick">
                   <span className="selection-mark"><Box size={16} /></span>
-                  <span><strong>{editor.selectedInstance ? `LDraw ${editor.selectedInstance.part.ldrawId}` : `${selectedBrick.dimensions} Stein`}</strong><small>Kann bearbeitet werden</small></span>
+                  <span><strong>{editor.selectedInstance ? editor.selectedInstance.part.ldrawId : `${selectedBrick.dimensions} Stein`}</strong><small>Kann bearbeitet werden</small></span>
                 </div>
                 <div className="selection-actions">
                   <button type="button" className="selection-action" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher">↑ Höher</button>
@@ -397,11 +399,10 @@ function App() {
                     <Trash2 size={16} /><span>Entfernen</span>
                   </button>
                 </div>
-                <TiltControls key={`desktop-tilt-${editor.selectedId}`}
+                <TiltControls key={`desktop-tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
+                  tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                   rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                  onRotate={editor.setSelectedRotation}
-                  tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
-                  tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0} onTilt={editor.setSelectedTilt}
+                  onRotate={editor.setSelectedRotation} onTilt={editor.setSelectedTilt}
                   onOpenChange={setTiltControlsOpen} />
                 <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>
@@ -504,6 +505,7 @@ function App() {
                   document={editor.document}
                   selected={editor.selectedInventory}
                   onSelect={editor.selectInventoryPart}
+                  onSpread={editor.spreadInventoryParts}
                   onReplace={editor.replacePartsInventory}
                   onSelected={() => setPartsOpen(false)}
                 />

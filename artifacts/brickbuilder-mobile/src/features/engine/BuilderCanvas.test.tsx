@@ -2,12 +2,16 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PerspectiveCamera, Vector3 } from "three";
+import { Box3, Euler, Group, Matrix4, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
+import * as instructionOutlines from "../instructions/outlines";
 import BuilderCanvas from "./BuilderCanvas";
+import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
+import { instanceIndex } from "./instance-index";
+import { compilePart, worldMatrix } from "./ldraw-geometry";
 import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "./instruction-camera";
 import * as snapping from "../connections/engine";
 import type { Contact } from "../connections/types";
@@ -16,10 +20,36 @@ import { resolve } from "node:path";
 import { gunzipSync } from "fflate";
 import { parseLDraw } from "../formats/ldraw/parser";
 import type { ImportedModel } from "../formats/types";
-import { createEmptyDocument, type ToolMode } from "../editor/model";
-import { moveImported } from "../editor/ldraw-editing";
+import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model";
+import { moveImported, tiltImported } from "../editor/ldraw-editing";
+import type { Affine } from "../formats/types";
+import { connectionFixture, partLine } from "../connections/fixtures";
+import { affine, describeConnections, matrix4, transformConnector } from "../connections/description";
+import { axes, intervals, potentialPair, profileOverlap } from "../connections/profiles";
+import { ConnectionOverlay } from "../connections/overlay";
 
-const observed = vi.hoisted(() => ({ scene: undefined as SoftwareScene | undefined, preparations: 0 }));
+const observed = vi.hoisted(() => ({
+  scene: undefined as SoftwareScene | undefined,
+  scene3d: undefined as Scene | undefined,
+  camera: undefined as PerspectiveCamera | undefined,
+  cameraPose: undefined as { target: number[]; distance: number } | undefined,
+  webglEnabled: false,
+  preparations: 0,
+}));
+vi.mock("three", async importOriginal => {
+  const actual = await importOriginal<typeof import("three")>();
+  class TestWebGLRenderer {
+    readonly domElement: HTMLCanvasElement;
+    shadowMap = { enabled: false, type: undefined as unknown };
+    outputColorSpace: unknown;
+    constructor(options: { canvas: HTMLCanvasElement }) { this.domElement = options.canvas; }
+    setPixelRatio() {}
+    setSize() {}
+    render(scene: Scene, camera: PerspectiveCamera) { observed.scene3d = scene; observed.camera = camera; }
+    dispose() {}
+  }
+  return { ...actual, WebGLRenderer: TestWebGLRenderer };
+});
 vi.mock("./software-scene", async importOriginal => {
   const actual = await importOriginal<typeof import("./software-scene")>();
   return { ...actual, createSoftwareScene: async (...args: Parameters<typeof actual.createSoftwareScene>) => {
@@ -78,7 +108,8 @@ function catalogProjection() {
 }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  frames = new Map(); nextFrame = 0; observed.scene = undefined; observed.preparations = 0;
+  frames = new Map(); nextFrame = 0; observed.scene = undefined; observed.scene3d = undefined;
+  observed.camera = undefined; observed.cameraPose = undefined; observed.webglEnabled = false; observed.preparations = 0;
   resizeCallbacks = []; canvasHeight = 600;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
@@ -87,7 +118,21 @@ beforeEach(() => {
     observe() {}
     disconnect() {}
   });
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) => kind === "2d" ? context : null) as HTMLCanvasElement["getContext"]);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+    kind === "2d" ? context : observed.webglEnabled && kind === "webgl2" ? {} : null) as HTMLCanvasElement["getContext"]);
+  const sceneAdd = Scene.prototype.add;
+  vi.spyOn(Scene.prototype, "add").mockImplementation(function (...objects) {
+    observed.scene3d = this;
+    return sceneAdd.apply(this, objects);
+  });
+  const cameraLookAt = PerspectiveCamera.prototype.lookAt;
+  vi.spyOn(PerspectiveCamera.prototype, "lookAt").mockImplementation(function (target: Vector3 | number, y?: number, z?: number) {
+    observed.camera = this;
+    if (target instanceof Vector3) observed.cameraPose = {
+      target: target.toArray(), distance: this.position.distanceTo(target),
+    };
+    return cameraLookAt.call(this, target as Vector3, y, z);
+  });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({
     x: 0, y: 0, left: 0, top: 0, right: 600, bottom: canvasHeight, width: 600, height: canvasHeight, toJSON() {},
   }));
@@ -98,7 +143,273 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+function currentImportedBounds(webgl: boolean): Box3 {
+  const bounds = new Box3();
+  if (webgl) {
+    const scene = observed.scene3d!;
+    const modelRoot = scene.children.find(child => instanceIndex(child as Group)) as Group | undefined;
+    for (const entry of instanceIndex(modelRoot!)?.records.values() ?? []) {
+      if (!entry.bounds.isEmpty()) bounds.union(entry.bounds);
+    }
+  } else {
+    for (const instanceBounds of observed.scene!.instanceBounds.values()) bounds.union(instanceBounds);
+  }
+  return bounds;
+}
+
+function currentImportedInstanceBounds(id: string, webgl: boolean): Box3 {
+  if (webgl) {
+    const modelRoot = observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group;
+    return instanceIndex(modelRoot)!.records.get(id)!.bounds.clone();
+  }
+  return observed.scene!.instanceBounds.get(id)!.clone();
+}
+
+function transformedPartBounds(model: ImportedModel, instance: ImportedModel["instances"][number]): Box3 {
+  const bounds = new Box3(), matrix = worldMatrix(instance.matrix), point = new Vector3();
+  for (const surface of compilePart(model, instance.reference, "16")) {
+    for (const positions of [surface.positions, surface.edges]) {
+      for (let index = 0; index < positions.length; index += 3) {
+        bounds.expandByPoint(point.fromArray(positions, index).applyMatrix4(matrix));
+      }
+    }
+  }
+  return bounds;
+}
+
+const basis = (matrix: Affine) => matrix.filter((_, index) => ![3, 7, 11].includes(index));
+
+function licensedTiltedMechanicalPair(targetPart: string, movingPart: string) {
+  const document = { ...createEmptyDocument(), imported: connectionFixture([
+    partLine(targetPart), partLine(movingPart, 160),
+  ].join("\n")) };
+  const [target, moving] = document.imported.instances;
+  const approaches: Record<string, { x: number; y: number; z: number }> = {
+    "3700/2780": { x: 0.03, y: -0.5, z: 0.5 },
+    "32064/3705": { x: 0.02, y: -0.5, z: 0.02 },
+    "4085a/30374": { x: 0.02, y: -0.2, z: -1.02 },
+  };
+  const snap = snapping.snapConnection(document.imported, moving.id, approaches[`${targetPart}/${movingPart}`]);
+  if (!snap) throw new Error(`Could not orient licensed example ${movingPart}/${targetPart}`);
+
+  const tilts = { target: [30, -12] as const, moving: [-15, 24] as const };
+  const aligned = matrix4(snap.matrix).setPosition(0, 0, 0);
+  const targetTilt = new Matrix4().makeRotationFromEuler(new Euler(
+    tilts.target[0] * Math.PI / 180, 0, tilts.target[1] * Math.PI / 180, "XYZ",
+  ));
+  const movingTilt = new Matrix4().makeRotationFromEuler(new Euler(
+    tilts.moving[0] * Math.PI / 180, 0, tilts.moving[1] * Math.PI / 180, "XYZ",
+  ));
+  const ldrawToWorld = new Matrix4().makeScale(1, -1, 1);
+  aligned.premultiply(ldrawToWorld.clone()
+    .multiply(movingTilt.invert().multiply(targetTilt))
+    .multiply(ldrawToWorld));
+  const instances = [target, {
+    ...moving,
+    matrix: affine(aligned.setPosition(moving.matrix[3], moving.matrix[7], moving.matrix[11])),
+  }];
+  let tilted = { ...document, imported: { ...document.imported, instances } };
+  tilted = tiltImported(tilted, target.id, ...tilts.target) as typeof tilted;
+  tilted = tiltImported(tilted, moving.id, ...tilts.moving) as typeof tilted;
+  const model = tilted.imported!;
+  const targets = describeConnections(`${targetPart}.dat`, model).connectors
+    .map(connector => transformConnector(connector, model.instances[0].matrix))
+    .filter((connector): connector is NonNullable<typeof connector> => !!connector);
+  const movers = describeConnections(`${movingPart}.dat`, model).connectors
+    .map(connector => transformConnector(connector, model.instances[1].matrix))
+    .filter((connector): connector is NonNullable<typeof connector> => !!connector);
+  for (const a of movers) for (const b of targets) {
+    if (!potentialPair(a, b)) continue;
+    const aa = axes(a), bb = axes(b), direction = aa.y.dot(bb.y) > 0 ? 1 : -1;
+    if (Math.abs(Math.abs(aa.y.dot(bb.y)) - 1) > 1e-4) continue;
+    const offsets = intervals(a).flatMap(section => [section.lo * direction, section.hi * direction])
+      .flatMap(movingEnd => intervals(b).flatMap(section => [section.lo - movingEnd, section.hi - movingEnd]));
+    for (const offset of offsets) {
+      if (!profileOverlap(a, b, offset, direction, aa.x.dot(bb.x))) continue;
+      const delta = bb.position.clone().addScaledVector(bb.y, offset).sub(aa.position);
+      return {
+        document: tilted, id: model.instances[1].id, targetId: model.instances[0].id,
+        movingConnectorId: a.id, targetConnectorId: b.id,
+        desired: {
+          x: (model.instances[1].matrix[3] + delta.x) / 20,
+          y: -(model.instances[1].matrix[7] + delta.y) / 20,
+          z: (model.instances[1].matrix[11] + delta.z) / 20,
+        },
+      };
+    }
+  }
+  throw new Error(`No aligned licensed profile pair found for ${movingPart}/${targetPart}`);
+}
+
+function expectConstructionArea(bounds: Box3): void {
+  const expected = constructionArea(bounds);
+  const board = observed.scene3d!.getObjectByName("construction-floor") as import("three").Mesh;
+  const grid = observed.scene3d!.getObjectByName("construction-grid") as import("three").LineSegments;
+  expect(board.position.x).toBe(expected.centerX);
+  expect(board.position.z).toBe(expected.centerZ);
+  expect(board.geometry.parameters.width).toBe(expected.width);
+  expect(board.geometry.parameters.depth).toBe(expected.depth);
+  expect(grid.position.x).toBe(expected.centerX);
+  expect(grid.position.z).toBe(expected.centerZ);
+  expect(Array.from(grid.geometry.getAttribute("position").array)).toEqual(
+    Array.from(createStudGridGeometry(expected).getAttribute("position").array),
+  );
+}
+
+function expectCameraPose(expected: { target: number[]; distance: number }): void {
+  expect(observed.cameraPose!.target).toEqual(expected.target);
+  expect(observed.cameraPose!.distance).toBeCloseTo(expected.distance, 8);
+}
+
+for (const webgl of [true, false]) {
+  it(`reuses spatial highlight groups across camera redraws in ${webgl ? "WebGL" : "software"} preview`, async () => {
+    observed.webglEnabled = webgl;
+    const imported = engineFixture(4, 1);
+    imported.resources["parts/test.dat"].content = "4 16 -20 0 -20 20 0 -20 20 24 20 -20 24 20";
+    imported.instances.forEach(part => { part.colorCode = "4"; });
+    const bricks: Brick[] = [0, 2, 4, 6].map((x, index) => ({
+      id: `local-${index}`, type: "brick-2x2", color: "#ff0000", x, y: 0, z: 6, rotation: 0,
+    }));
+    const focus = new Set([...imported.instances.map(part => part.id), ...bricks.map(part => part.id)]);
+    const grouping = vi.spyOn(instructionOutlines, "groupInstructionHighlights");
+    const drawing = vi.spyOn(instructionOutlines, "drawInstructionOutlines").mockImplementation(() => {});
+    const props = { bricks, imported, instructionFocusIds: focus, showConstructionControls: false,
+      selectedId: null, selectedType: "brick-2x2" as const, selectedColor: "#ff0000", toolMode: "view" as const,
+      onPlace: vi.fn(), onSelect: vi.fn(), onMove: vi.fn() };
+    await act(async () => root.render(<BuilderCanvas {...props} />));
+    await act(async () => {
+      await vi.waitFor(() => expect(webgl
+        ? observed.scene3d?.children.some(child => instanceIndex(child as Group))
+        : observed.scene).toBeTruthy());
+    });
+    flushFrame();
+    const boxes = drawing.mock.lastCall![2] as Box3[];
+    expect(boxes).toHaveLength(2);
+    expect(boxes[1].min.y).toBeCloseTo(0); // Imported ground offset is applied only for drawing.
+    const groupCalls = grouping.mock.calls.length;
+    act(() => root.render(<BuilderCanvas {...props} viewRotation={[20, 35, -15]} />));
+    flushFrame();
+    expect(grouping).toHaveBeenCalledTimes(groupCalls);
+    expect(drawing.mock.lastCall![2]).toBe(boxes);
+
+    const outlinesBeforeToggle = drawing.mock.calls.length;
+    act(() => root.render(<BuilderCanvas {...props} instructionFocusIds={undefined} />));
+    flushFrame();
+    expect(drawing).toHaveBeenCalledTimes(outlinesBeforeToggle);
+    const moved = bricks.map(part => part.id === "local-3" ? { ...part, x: 20 } : part);
+    act(() => root.render(<BuilderCanvas {...props} bricks={moved} />));
+    flushFrame();
+    expect(drawing.mock.lastCall![2]).toHaveLength(3);
+  });
+}
+
 describe("frame-coalesced drag transactions", () => {
+  for (const webgl of [true, false]) {
+    const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`keeps the ground and camera current for directly built parts in ${rendererName}`, () => {
+      observed.webglEnabled = webgl;
+      const original: Brick = {
+        id: "local", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0,
+      };
+      const props = { bricks: [original], selectedId: null, selectedType: "brick-2x4" as const,
+        selectedColor: "#B40000", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      const camera = { ...observed.cameraPose! };
+      const renderStep = (bricks: Brick[]) => {
+        act(() => root.render(<BuilderCanvas {...props} bricks={bricks} />));
+        flushFrame();
+        const bounds = bricks.reduce((result, brick) => result.union(brickConstructionBounds(brick)), new Box3());
+        expectConstructionArea(bounds);
+        expectCameraPose(camera);
+      };
+
+      renderStep([original, { ...original, id: "added", x: 48, z: -24 }]);
+      renderStep([original, { ...original, id: "added", x: 96, z: 32 }]);
+      renderStep([original]);
+    });
+
+    it(`renders a bounded grid for very large builds in ${rendererName}`, () => {
+      observed.webglEnabled = webgl;
+      const bricks: Brick[] = [
+        { id: "west", type: "brick-2x4", color: "#B40000", x: -500_000, y: 0, z: -300_000, rotation: 0 },
+        { id: "east", type: "brick-2x4", color: "#B40000", x: 500_000, y: 0, z: 300_000, rotation: 0 },
+      ];
+      const props = { bricks, selectedId: null, selectedType: "brick-2x4" as const,
+        selectedColor: "#B40000", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+
+      const bounds = bricks.reduce((result, brick) => result.union(brickConstructionBounds(brick)), new Box3());
+      expectConstructionArea(bounds);
+      const grid = observed.scene3d!.getObjectByName("construction-grid") as import("three").LineSegments;
+      const position = grid.geometry.getAttribute("position");
+      expect(position.count / 2).toBeLessThanOrEqual(MAX_STUD_GRID_LINES);
+      expect(Array.from(position.array).every(Number.isFinite)).toBe(true);
+      expect(observed.scene3d!.getObjectByName("construction-floor")).toBeDefined();
+    });
+
+    it(`keeps the ground and camera current for imported parts in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 3);
+      const props = { projectId: "floor-regression", bricks: [], imported: model, selectedId: null,
+        selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? instanceIndex(
+          observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group,
+        ) : observed.scene).toBeDefined());
+      });
+      flushFrame();
+      const camera = { ...observed.cameraPose! };
+      const remote = (x: number, z: number, rotationDegrees: number) => {
+        const angle = rotationDegrees * Math.PI / 180;
+        const cosine = Math.cos(angle), sine = Math.sin(angle);
+        return {
+          ...model.instances[0], id: "remote",
+          matrix: [cosine, 0, sine, x * 20, 0, 1, 0, 0, -sine, 0, cosine, z * 20] as Affine,
+        };
+      };
+      const renderStep = async (next: typeof model, expectedRemote?: typeof model.instances[number]) => {
+        await act(async () => root.render(<BuilderCanvas {...props} imported={next} />));
+        flushFrame();
+        const bounds = currentImportedBounds(webgl);
+        expectConstructionArea(bounds);
+        if (expectedRemote) {
+          const actual = currentImportedInstanceBounds(expectedRemote.id, webgl);
+          const expected = transformedPartBounds(next, expectedRemote);
+          const unrotated = transformedPartBounds(next, {
+            ...expectedRemote, matrix: [1, 0, 0, expectedRemote.matrix[3], 0, 1, 0, 0, 0, 0, 1, expectedRemote.matrix[11]],
+          });
+          expect(expected.getSize(new Vector3()).x).not.toBeCloseTo(unrotated.getSize(new Vector3()).x, 5);
+          expect(actual.min.x).toBeLessThanOrEqual(expected.min.x + 1e-5);
+          expect(actual.max.x).toBeGreaterThanOrEqual(expected.max.x - 1e-5);
+          expect(actual.min.z).toBeLessThanOrEqual(expected.min.z + 1e-5);
+          expect(actual.max.z).toBeGreaterThanOrEqual(expected.max.z - 1e-5);
+          const area = constructionArea(bounds);
+          expect(area.minX).toBeLessThanOrEqual(actual.min.x);
+          expect(area.maxX).toBeGreaterThanOrEqual(actual.max.x);
+          expect(area.minZ).toBeLessThanOrEqual(actual.min.z);
+          expect(area.maxZ).toBeGreaterThanOrEqual(actual.max.z);
+        }
+        expectCameraPose(camera);
+      };
+
+      const addedPart = remote(100, -60, 45);
+      const added = { ...model, instances: [...model.instances, addedPart] };
+      await renderStep(added, addedPart);
+      const movedPart = remote(180, 72, 135);
+      const moved = { ...added, instances: added.instances.map(instance =>
+        instance.id === "remote" ? movedPart : instance) };
+      await renderStep(moved, movedPart);
+      await renderStep({ ...moved, instances: moved.instances.filter(instance => instance.id !== "remote") });
+    });
+  }
+
   it("applies the latest instruction focus after asynchronous preparation and reuses the software scene on toggles and steps", async () => {
     const model = engineFixture(4, 3), original = structuredClone(model);
     const props = { projectId: "focus", bricks: [], imported: model, selectedId: null,
@@ -187,6 +498,94 @@ describe("frame-coalesced drag transactions", () => {
     act(() => element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!.click());
     expect(element.querySelector("[data-testid='collision-warning']")).toBeNull();
   });
+  it("shows worker progress and ignores stale progress after model changes or disabling", () => {
+    const workers: {
+      onmessage: ((event: MessageEvent) => void) | null;
+      terminated: boolean;
+    }[] = [];
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      terminated = false;
+      constructor() { workers.push(this); }
+      postMessage() {}
+      terminate() { this.terminated = true; }
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!;
+    act(() => toggle.click());
+    expect(workers).toHaveLength(1);
+
+    const sendProgress = (worker: typeof workers[number], percent: number) => {
+      act(() => worker.onmessage?.({ data: { progress: { phase: "checking", percent } } } as MessageEvent));
+    };
+    sendProgress(workers[0], 42);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("42 %");
+    expect(element.querySelector<HTMLProgressElement>("progress[aria-label='Fortschritt der Kollisionsprüfung']")?.value).toBe(42);
+
+    act(() => root.render(<BuilderCanvas {...props} bricks={[{ id: "new", type: "brick-1x2", color: "#fff", x: 0, y: 0, z: 0, rotation: 0 }]} />));
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminated).toBe(true);
+    sendProgress(workers[0], 91);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
+    sendProgress(workers[1], 18);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("18 %");
+
+    act(() => toggle.click());
+    expect(element.querySelector("[data-testid='collision-warning']")).toBeNull();
+    expect(workers[1].terminated).toBe(true);
+    act(() => toggle.click());
+    expect(workers).toHaveLength(3);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
+    sendProgress(workers[1], 99);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toContain("0 %");
+  });
+  it("clears worker progress after failure and ignores later messages from that worker", async () => {
+    const workers: {
+      onmessage: ((event: MessageEvent) => void) | null;
+      terminated: boolean;
+    }[] = [];
+    class WorkerStub {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      terminated = false;
+      constructor() { workers.push(this); }
+      postMessage() {}
+      terminate() { this.terminated = true; }
+    }
+    vi.stubGlobal("Worker", WorkerStub);
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    act(() => element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!.click());
+    expect(workers).toHaveLength(1);
+
+    const worker = workers[0];
+    act(() => worker.onmessage?.({
+      data: { progress: { phase: "checking", percent: 42 } },
+    } as MessageEvent));
+    expect(element.querySelector<HTMLProgressElement>("progress[aria-label='Fortschritt der Kollisionsprüfung']")?.value).toBe(42);
+
+    await act(async () => {
+      worker.onmessage?.({
+        data: { error: { name: "Error", message: "simulated worker failure" } },
+      } as MessageEvent);
+    });
+    expect(worker.terminated).toBe(true);
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toBe("Kollisionsprüfung nicht abgeschlossen");
+    expect(element.querySelector("progress[aria-label='Fortschritt der Kollisionsprüfung']")).toBeNull();
+
+    act(() => worker.onmessage?.({
+      data: { progress: { phase: "checking", percent: 91 } },
+    } as MessageEvent));
+    expect(element.querySelector("[data-testid='collision-warning']")?.textContent).toBe("Kollisionsprüfung nicht abgeschlossen");
+    expect(element.querySelector("progress[aria-label='Fortschritt der Kollisionsprüfung']")).toBeNull();
+  });
   it("can hide the construction status controls while another overlay is open", () => {
     const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
       toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), showConstructionControls: false };
@@ -244,6 +643,285 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene!.positions).toEqual(preview);
     expect(snapping.activeConnections(committed.imported!, id)).toHaveLength(2);
   });
+  for (const webgl of [true, false]) {
+    it(`previews and commits real tilted stud contacts with ${webgl ? "WebGL" : "software rendering"}`, async () => {
+      observed.webglEnabled = webgl;
+      let document = { ...createEmptyDocument(), imported: connectionFixture([
+        partLine("3001", 4.6, -200, 3.4), partLine("3003", 160, -200),
+      ].join("\n")) };
+      const [target, moving] = document.imported.instances;
+      for (const instance of [target, moving]) {
+        document = tiltImported(document, instance.id, 27, -18) as typeof document;
+      }
+      const expected = affine(matrix4(document.imported.instances[0].matrix).multiply(new Matrix4().makeTranslation(0, -24, 0)));
+      document = moveImported(document, moving.id, {
+        x: expected[3] / 20 + 4, y: -expected[7] / 20, z: expected[11] / 20,
+      }, false) as typeof document;
+      const model = document.imported, id = moving.id, onMove = vi.fn();
+      const props = { projectId: "tilted-studs", bricks: [], imported: model, selectedId: id,
+        selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove, onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? observed.scene3d && currentImportedBounds(true).isEmpty() === false : observed.scene).toBeTruthy());
+      });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      const camera = observed.camera!, bounds = currentImportedBounds(webgl);
+      const offset = Math.max(0, -bounds.min.y), matrix = model.instances[1].matrix;
+      const toScreen = (point: Vector3) => {
+        const p = point.clone().project(camera);
+        return { x: (p.x + 1) * 300, y: (1 - p.y) * 300 };
+      };
+      const start = toScreen(currentImportedInstanceBounds(id, webgl).getCenter(new Vector3()).add(new Vector3(0, offset, 0)));
+      const ray = new Raycaster();
+      ray.setFromCamera(new Vector2((start.x - 300) / 300, (300 - start.y) / 300), camera);
+      const planeStart = ray.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), matrix[7] / 20 - offset), new Vector3())!;
+      const end = toScreen(planeStart.clone().add(new Vector3((expected[3] - matrix[3]) / 20 + 0.03, 0, 0.02)));
+      const search = vi.spyOn(snapping, "magneticConstructionTransform");
+      pointer("pointerdown", start.x, start.y);
+      expect(props.onSelect).toHaveBeenCalledWith(id);
+      pointer("pointermove", end.x, end.y);
+      flushFrame();
+      expect(search).toHaveBeenCalledOnce();
+      const transform = search.mock.results[0].value.transform;
+      expect(transform.contacts.length).toBeGreaterThan(0);
+      expected.forEach((n, i) => expect(transform.matrix[i]).toBeCloseTo(n, 9));
+      expect(element.querySelector("[data-testid='connection-status']")?.textContent).toContain("Magnetisch eingerastet");
+      const previewBounds = currentImportedInstanceBounds(id, webgl);
+      pointer("pointerup", end.x, end.y);
+      expect(onMove).toHaveBeenCalledOnce();
+      expect(onMove.mock.calls[0][2]).toEqual(transform.matrix);
+      const committed = moveImported(document, id, onMove.mock.calls[0][1], false, onMove.mock.calls[0][2]);
+      act(() => root.render(<BuilderCanvas {...props} imported={committed.imported} />));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+      flushFrame();
+      const committedBounds = currentImportedInstanceBounds(id, webgl);
+      expect(committedBounds.min.distanceTo(previewBounds.min)).toBeLessThan(1e-6);
+      expect(committedBounds.max.distanceTo(previewBounds.max)).toBeLessThan(1e-6);
+      expect(snapping.activeConnections(committed.imported!, id).length).toBeGreaterThan(0);
+    });
+  }
+  for (const webgl of [true, false]) {
+    for (const [targetPart, movingPart] of [["3700", "2780"], ["32064", "3705"], ["4085a", "30374"]] as const) {
+      it(`renders committed mixed-tilt ${movingPart}/${targetPart} joints in ${webgl ? "WebGL" : "software view"}`, async () => {
+        observed.webglEnabled = webgl;
+        const pair = licensedTiltedMechanicalPair(targetPart, movingPart);
+        const model = pair.document.imported!, moving = model.instances.find(instance => instance.id === pair.id)!;
+        const result = snapping.constructionTransform(model, pair.id, pair.desired);
+        expect(result.contacts.some(contact => contact.movingConnectorId === pair.movingConnectorId &&
+          contact.targetConnectorId === pair.targetConnectorId)).toBe(true);
+        expect(basis(result.matrix)).toEqual(basis(moving.matrix));
+        const committed = moveImported(pair.document, pair.id, {
+          x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20,
+        }, false, result.matrix);
+        const committedModel = committed.imported!;
+        const markerArc = vi.fn();
+        const overlayContext = new Proxy({ arc: markerArc }, {
+          get: (target, key: string) => key in target ? target[key as keyof typeof target] : vi.fn(),
+          set: () => true,
+        });
+        vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+          kind === "2d" ? overlayContext : observed.webglEnabled && kind === "webgl2" ? {} : null) as HTMLCanvasElement["getContext"]);
+        const overlayDraw = vi.spyOn(ConnectionOverlay.prototype, "draw");
+        const props = { projectId: `mixed-tilt-${targetPart}-${movingPart}`, bricks: [], imported: committedModel,
+          selectedId: pair.id, selectedType: "brick-2x2" as const, selectedColor: "#B40000",
+          toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+        act(() => root.render(<BuilderCanvas {...props} />));
+        await act(async () => {
+          await vi.waitFor(() => {
+            const root = webgl
+              ? observed.scene3d?.children.find(child => instanceIndex(child as Group)) as Group | undefined
+              : undefined;
+            expect(webgl ? root && instanceIndex(root)?.model : observed.scene?.model).toBe(committedModel);
+          });
+        });
+        host = element.querySelector("[data-testid='canvas-3d']")!;
+        flushFrame();
+
+        const committedMoving = committedModel.instances.find(instance => instance.id === pair.id)!;
+        for (const instance of [committedModel.instances.find(value => value.id === pair.targetId)!, committedMoving]) {
+          const actual = currentImportedInstanceBounds(instance.id, webgl);
+          const expected = transformedPartBounds(committedModel, instance);
+          const rendered = webgl
+            ? instanceIndex(observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group)!.records.get(instance.id)!.instance
+            : observed.scene!.records.get(instance.id)!.instance;
+          expect(rendered.matrix).toEqual(instance.matrix);
+          expect(actual.min.distanceTo(expected.min)).toBeLessThan(0.25);
+          expect(actual.max.distanceTo(expected.max)).toBeLessThan(0.25);
+        }
+        expect(element.querySelector("[data-testid='connection-status']")?.textContent)
+          .toContain("geprüfte Verbindung");
+        expect(overlayDraw.mock.contexts.some(context =>
+          (context as ConnectionOverlay).contacts.some(contact =>
+            contact.movingConnectorId === pair.movingConnectorId &&
+            contact.targetConnectorId === pair.targetConnectorId &&
+            contact.state === "verified"))).toBe(true);
+        expect(markerArc.mock.calls.some(([, , radius]) => radius === 5)).toBe(true);
+      });
+    }
+  }
+  for (const [targetPart, movingPart] of [["3700", "2780"], ["32064", "3705"], ["4085a", "30374"]] as const) {
+    it(`leaves a misaligned ${movingPart}/${targetPart} near-miss visibly unconnected`, async () => {
+      const aligned = licensedTiltedMechanicalPair(targetPart, movingPart);
+      const document = tiltImported(aligned.document, aligned.id, -15, 28) as typeof aligned.document;
+      const model = document.imported!;
+      const target = model.instances.find(instance => instance.id === aligned.targetId)!;
+      const moving = model.instances.find(instance => instance.id === aligned.id)!;
+      const a = describeConnections(`${movingPart}.dat`, model).connectors
+        .map(connector => transformConnector(connector, moving.matrix)).find(connector => connector?.id === aligned.movingConnectorId)!;
+      const b = describeConnections(`${targetPart}.dat`, model).connectors
+        .map(connector => transformConnector(connector, target.matrix)).find(connector => connector?.id === aligned.targetConnectorId)!;
+      const aa = axes(a), bb = axes(b), offset = aa.position.clone().sub(bb.position).dot(bb.y);
+      const delta = bb.position.clone().addScaledVector(bb.y, offset).sub(aa.position);
+      const desired = {
+        x: (moving.matrix[3] + delta.x) / 20,
+        y: -(moving.matrix[7] + delta.y) / 20,
+        z: (moving.matrix[11] + delta.z) / 20,
+      };
+      const result = snapping.constructionTransform(model, aligned.id, desired);
+      expect(result.status).toBe("unconnected");
+      expect(result.contacts.some(contact => contact.movingConnectorId === aligned.movingConnectorId &&
+        contact.targetConnectorId === aligned.targetConnectorId)).toBe(false);
+      expect(basis(result.matrix)).toEqual(basis(moving.matrix));
+      const committed = moveImported(document, aligned.id, {
+        x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20,
+      }, false, result.matrix);
+      const committedModel = committed.imported!;
+      const markerArc = vi.fn();
+      const overlayContext = new Proxy({ arc: markerArc }, {
+        get: (target, key: string) => key in target ? target[key as keyof typeof target] : vi.fn(),
+        set: () => true,
+      });
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+        kind === "2d" ? overlayContext : null) as HTMLCanvasElement["getContext"]);
+      const overlayDraw = vi.spyOn(ConnectionOverlay.prototype, "draw");
+      const props = { projectId: `near-miss-${targetPart}-${movingPart}`, bricks: [], imported: committedModel,
+        selectedId: aligned.id, selectedType: "brick-2x2" as const, selectedColor: "#B40000",
+        toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => { await vi.waitFor(() => expect(observed.scene?.model).toBe(committedModel)); });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      await act(async () => {
+        await vi.waitFor(() => expect(snapping.activeConnections(committedModel, aligned.id)).toHaveLength(0));
+      });
+      flushFrame();
+      expect(element.querySelector("[data-testid='connection-status']")?.textContent)
+        .toContain("Keine aktive Verbindung");
+      expect(overlayDraw.mock.contexts.some(context =>
+        (context as ConnectionOverlay).contacts.some(contact =>
+          contact.movingConnectorId === aligned.movingConnectorId &&
+          contact.targetConnectorId === aligned.targetConnectorId))).toBe(false);
+      expect(markerArc.mock.calls.some(([, , radius]) => radius === 5)).toBe(false);
+      expect(snapping.activeConnections(committedModel, aligned.id).some(contact =>
+        contact.movingConnectorId === aligned.movingConnectorId &&
+        contact.targetConnectorId === aligned.targetConnectorId)).toBe(false);
+    });
+  }
+  for (const webgl of [true, false]) {
+    const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`expands the floor for a drag preview and restores it on cancellation in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 2);
+      const props = { projectId: `floor-preview-${rendererName}`, bricks: [], imported: model,
+        selectedId: model.instances[0].id, selectedType: "brick-2x4" as const, selectedColor: "#B40000",
+        toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? instanceIndex(
+          observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group,
+        ) : observed.scene).toBeDefined());
+      });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+
+      const committedBounds = currentImportedBounds(webgl);
+      const committedArea = constructionArea(committedBounds);
+      const camera = { ...observed.cameraPose! };
+      expectConstructionArea(committedBounds);
+
+      vi.spyOn(snapping, "magneticConstructionTransform").mockReturnValue({
+        transform: {
+          matrix: [1, 0, 0, 6000, 0, 1, 0, 0, 0, 0, 1, 0],
+          contacts: [],
+          status: "unconnected",
+        },
+      });
+      const projected = new Vector3(1 / 3, 2 / 3, 0).project(observed.camera!);
+      const point = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      pointer("pointerdown", point.x, point.y);
+      pointer("pointermove", point.x + 80, point.y + 10);
+      flushFrame();
+
+      expect(snapping.magneticConstructionTransform).toHaveBeenCalledOnce();
+      const previewBounds = currentImportedBounds(webgl);
+      const previewFloorBounds = committedBounds.clone().union(previewBounds);
+      const previewArea = constructionArea(previewFloorBounds);
+      expect(previewBounds.max.x).toBeGreaterThan(committedBounds.max.x + 10);
+      expect(previewArea.width).toBeGreaterThan(committedArea.width);
+      expectConstructionArea(previewFloorBounds);
+      expectCameraPose(camera);
+
+      pointer("pointercancel", point.x + 80, point.y + 10);
+
+      expect(props.onMove).not.toHaveBeenCalled();
+      expect(currentImportedBounds(webgl).max.x).toBeCloseTo(committedBounds.max.x);
+      expectConstructionArea(committedBounds);
+      expectCameraPose(camera);
+    });
+  }
+  for (const webgl of [true, false]) {
+    const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`updates and restores the floor for a built-part drag in ${rendererName}`, () => {
+      observed.webglEnabled = webgl;
+      const original: Brick = {
+        id: "local-preview", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0,
+      };
+      const props = { bricks: [original], selectedId: null, selectedType: "brick-2x4" as const,
+        selectedColor: "#B40000", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+
+      const committedBounds = brickConstructionBounds(original);
+      const committedArea = constructionArea(committedBounds);
+      const camera = { ...observed.cameraPose! };
+      expectConstructionArea(committedBounds);
+      observed.camera!.updateMatrixWorld(true);
+      const screenPoint = (x: number, y: number, z: number) => {
+        const projected = new Vector3(x, y, z).project(observed.camera!);
+        return { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      };
+      const start = screenPoint(0, 1.11, 0);
+      const end = screenPoint(-20, original.y, 0);
+      const pointOnGround = (point: { x: number; y: number }) => {
+        const raycaster = new Raycaster();
+        raycaster.setFromCamera(new Vector2((point.x - 300) / 300, (300 - point.y) / 300), observed.camera!);
+        return raycaster.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), -original.y), new Vector3())!;
+      };
+      const startOnGround = pointOnGround(start), endOnGround = pointOnGround(end);
+      const previewBrick = {
+        ...original,
+        x: Math.round((original.x + endOnGround.x - startOnGround.x) * 2) / 2,
+        z: Math.round((original.z + endOnGround.z - startOnGround.z) * 2) / 2,
+      };
+      pointer("pointerdown", start.x, start.y);
+      expect(props.onSelect).toHaveBeenCalledWith(original.id);
+      pointer("pointermove", end.x, end.y);
+      flushFrame();
+
+      const previewBounds = committedBounds.clone().union(brickConstructionBounds(previewBrick));
+      expect(constructionArea(previewBounds).width).toBeGreaterThan(committedArea.width);
+      expectConstructionArea(previewBounds);
+      expectCameraPose(camera);
+
+      pointer("pointercancel", end.x, end.y);
+
+      expect(props.onMove).not.toHaveBeenCalled();
+      expectConstructionArea(committedBounds);
+      expectCameraPose(camera);
+    });
+  }
   async function mount(toolMode: ToolMode = "select") {
     const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn();
     const props = { projectId: "one", bricks: [], imported: model, selectedId: model.instances[0].id,

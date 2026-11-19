@@ -13,7 +13,7 @@
   .selection-action, .selection-empty, .save-status, .toast-note, .more-controls,
   .dock-color, .dock-tool, .dock-history, .drawer-heading h2, .search-field,
   .search-field input, .drawer-piece, .drawer-empty, .confirm-card h2, .confirm-card p,
-  .cancel-button, .canvas-hint) {
+  .cancel-button, .canvas-hint, .mobile-selection-label) {
   color: hsl(var(--foreground));
 }
 .dark :is(.project-popover, .parts-drawer, .color-drawer, .confirm-card,
@@ -151,7 +151,7 @@
 .dark .ins-shell textarea::placeholder { color: hsl(var(--muted-foreground)); }
 .dark :is(.project-title-button > svg, .piece-copy small, .piece-chevron, .color-heading,
   .color-name, .selection-detail small, .selection-empty, .save-status, .more-controls,
-  .canvas-hint, .saved-project small, .no-saved-projects,
+  .canvas-hint, .mobile-selection-label, .saved-project small, .no-saved-projects,
   .popover-eyebrow, .section-heading > span, .context-label, .ins-head-title small,
   .ins-field > span, .ins-rot legend, .ins-hint, .ins-list small, .ins-strip button small,
   .sle-head small, .sle-field > label, .sle-hint, .sle-itemhead small,
@@ -187,7 +187,7 @@
 .dark .mobile-selection-actions > button:last-child,
 .dark .ins-ghost.is-danger,
 .dark .ins-danger { color: hsl(var(--destructive)); }
-.dark .mobile-selection-actions > button:not(:last-child) {
+.dark .mobile-selection-actions > button {
   border: 1px solid hsl(var(--border));
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
@@ -198,23 +198,6 @@
 }
 .dark .mobile-selection-actions > button:last-child {
   background: hsl(var(--destructive) / .12);
-}
-.dark .mobile-selection-actions .fine-position summary {
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-}
-.dark .mobile-selection-actions .fine-position-panel,
-.dark .mobile-selection-actions .fine-position-grid button {
-  border-color: hsl(var(--border));
-  background: hsl(var(--card));
-  color: hsl(var(--card-foreground));
-}
-.dark .mobile-selection-actions .fine-position-panel small { color: hsl(var(--muted-foreground)); }
-.dark .mobile-selection-actions .fine-position summary:hover,
-.dark .mobile-selection-actions .fine-position-grid button:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
 }
 .dark .fine-position summary {
   border: 1px solid hsl(var(--border));
@@ -330,6 +313,33 @@
   .inv-pager button, .inv-problems button, .inv-search button) {
   color: hsl(var(--foreground));
 }
+.dark .inv-panel :is(.inv-import-head small, .inv-counts, .inv-row-copy small,
+  .inv-empty, .inv-empty-state, .inv-pick, .inv-pager) {
+  color: hsl(var(--muted-foreground));
+}
+.dark .inv-panel :is(.inv-note, .inv-template code) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+.dark .inv-panel :is(.inv-error, .inv-issue, .inv-problems) {
+  background: hsl(8 38% 22%);
+  color: hsl(8 80% 82%);
+  border-color: hsl(8 35% 38%);
+}
+.dark .inv-panel :is(.inv-error button, .inv-status button, .inv-template button,
+  .inv-pager button, .inv-search button) {
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.dark .inv-panel .inv-use:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+.dark .inv-panel :focus-visible,
+.dark .inv-tabs :focus-visible {
+  outline-color: hsl(var(--ring));
+}
 .dark .inv-row.blocked { background: repeating-linear-gradient(135deg, hsl(166 16% 19%) 0 8px, hsl(166 14% 23%) 8px 16px); }
 .dark .inv-row.active { box-shadow: inset 0 0 0 1px hsl(var(--primary)); }
 .dark .sm-drawer :is(.sm-gauge, .sm-row, .sm-ghost, .sm-empty, .sm-skel) {
@@ -339,6 +349,14 @@
 }
 .dark .sm-drawer :is(.sm-gauge-top, .sm-gauge-top span, .sm-group h3, .sm-row-copy strong,
   .sm-size, .sm-confirm-copy b, .sm-state strong) { color: hsl(var(--foreground)); }
+.dark .sm-drawer :is(.sm-gauge p, .sm-note, .sm-row-copy small, .sm-group h3 > span,
+  .sm-group h3 em, .sm-active) { color: hsl(var(--muted-foreground)); }
+.dark .sm-drawer .sm-notice {
+  background: hsl(164 24% 22%);
+  color: hsl(150 32% 82%);
+  border: 1px solid hsl(164 18% 34%);
+}
+.dark .sm-drawer .sm-state { color: hsl(var(--foreground)); }
 .dark .sm-drawer .sm-bar { background: hsl(var(--muted)); }
 .dark .sm-drawer .sm-skel { background-image: linear-gradient(90deg, hsl(var(--muted)), hsl(var(--card)), hsl(var(--muted))); }
 .dark .sm-drawer .sm-warning,

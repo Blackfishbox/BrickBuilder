@@ -47,7 +47,7 @@ export function instructionPartGroups(document: BuilderDocument, ids: string[]):
 export function instructionPartDocument(document: BuilderDocument, entry: InstructionPart): BuilderDocument {
   if (entry.kind === "legacy") return {
     ...document, instructions: undefined, imported: undefined,
-    bricks: [{ ...entry.part, x: 0, y: 0, z: 0, rotation: 0 }],
+    bricks: [{ ...entry.part, x: 0, y: 0, z: 0, rotation: 0, tiltX: 0, tiltZ: 0 }],
   };
   if (!document.imported) throw new Error("Projektgeometrie fehlt.");
   const imported: NonNullable<BuilderDocument["imported"]> = { ...document.imported, instances: [{ ...entry.part, matrix: [...IDENTITY] }] };

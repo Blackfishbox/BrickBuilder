@@ -93,7 +93,12 @@ export function snapPosition(position: Position3): Position3 {
 }
 
 export function rotateQuarterTurn(rotation: number): number {
-  return ((Math.round(rotation / 90) * 90 + 90) % 360 + 360) % 360;
+  return ((rotation + 90) % 360 + 360) % 360;
+}
+
+export function clampRotationAngle(angle: number): number {
+  if (!Number.isFinite(angle)) return 0;
+  return Math.max(0, Math.min(360, angle));
 }
 
 export function normalizeDocument(

@@ -1,11 +1,12 @@
-import { Box3, BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor/model";
+import { Box3, BufferGeometry, Color, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
+import type { BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
+import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
-import { drawInstructionOutlines } from "./outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
 import { applyPdfStepCamera } from "./camera";
 
 const MAX_TRIANGLES = 120_000;
@@ -16,15 +17,20 @@ interface Face { id: string; points: Float32Array; color: string; alpha: number 
  * Refuse the export above a bounded CPU budget instead of omitting surfaces.
  */
 export async function createSoftwareInstructionRenderer(document: BuilderDocument, signal?: AbortSignal,
-  size = { width: 1000, height: 760, minRadius: 1 }): Promise<InstructionImageRenderer> {
+  size: { width: number; height: number; minRadius?: number } = { width: 1000, height: 760, minRadius: 1 }): Promise<InstructionImageRenderer> {
   const canvas = globalThis.document.createElement("canvas");
   canvas.width = size.width; canvas.height = size.height;
   const width = canvas.width, height = canvas.height, aspect = width / height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("PDF-Abbildungen sind nicht verfügbar: Weder WebGL noch die 2D-Ausgabe konnten gestartet werden.");
+  if (!context) {
+    canvas.width = 1; canvas.height = 1;
+    throw new Error("PDF-Abbildungen sind nicht verfügbar: Weder WebGL noch die 2D-Ausgabe konnten gestartet werden.");
+  }
   const faces: Face[] = [], bounds = new Box3(), vertex = new Vector3();
+  const dispose = () => { faces.length = 0; canvas.width = 1; canvas.height = 1; };
   const push = (id: string, positions: ArrayLike<number>, matrix: Matrix4, code: string) => {
     if (faces.length + positions.length / 9 > MAX_TRIANGLES) {
+      dispose();
       throw new Error("PDF: WebGL ist nicht verfügbar und dieses Modell ist für die vollständige Software-Abbildung zu groß. Bitte auf einem Gerät mit WebGL exportieren.");
     }
     const color = resolveColor(code);
@@ -46,31 +52,28 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     }
     if (index % 12 === 0) await new Promise(resolve => setTimeout(resolve, 0));
   }
-  const addGeometry = (id: string, geometry: BoxGeometry | CylinderGeometry, matrix: Matrix4, color: string) => {
+  const addGeometry = (id: string, geometry: BufferGeometry, matrix: Matrix4, color: string) => {
     const flat = geometry.index ? geometry.toNonIndexed() : geometry;
-    push(id, flat.getAttribute("position").array, matrix, `0x2${color.slice(1)}`);
-    if (flat !== geometry) flat.dispose();
-    geometry.dispose();
+    try {
+      push(id, flat.getAttribute("position").array, matrix, `0x2${color.slice(1)}`);
+    } finally {
+      if (flat !== geometry) flat.dispose();
+      geometry.dispose();
+    }
   };
   for (const part of document.bricks) {
     signal?.throwIfAborted();
-    const def = BRICK_DEFINITIONS[part.type];
-    const matrix = brickTransformMatrix(part);
-    addGeometry(part.id, new BoxGeometry(def.studsX * 0.96, BRICK_HEIGHT, def.studsZ * 0.96),
-      matrix.clone().multiply(new Matrix4().makeTranslation(0, BRICK_HEIGHT / 2, 0)), part.color);
-    for (let x = 0; x < def.studsX; x++) for (let z = 0; z < def.studsZ; z++) {
-      addGeometry(part.id, new CylinderGeometry(0.3, 0.3, 0.18, 16),
-        matrix.clone().multiply(new Matrix4().makeTranslation(x - (def.studsX - 1) / 2, BRICK_HEIGHT + 0.09, z - (def.studsZ - 1) / 2)), part.color);
-    }
+    addGeometry(part.id, createLocalBrickGeometry(part.type), brickTransformMatrix(part), part.color);
   }
   const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
-  const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius, bounds.getSize(new Vector3()).length() / 2);
+  const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius ?? 1, bounds.getSize(new Vector3()).length() / 2);
   const camera = new OrthographicCamera(-radius * 1.12 * aspect, radius * 1.12 * aspect,
     radius * 1.12, -radius * 1.12, 0.01, Math.max(100, radius * 12));
   camera.position.set(1.1, 0.85, 1.3).normalize().multiplyScalar(radius * 4);
   camera.lookAt(0, 0, 0); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
   const a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3();
   const light = new Vector3(0.4, 0.8, 0.5).normalize(), color = new Color();
+  const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
   return {
     image(visible, step, highlightIds) {
       signal?.throwIfAborted();
@@ -109,9 +112,12 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         context.lineTo(face.points[4], face.points[5]); context.closePath(); context.fill();
       }
       context.globalAlpha = 1;
-      if (outlines.size) drawInstructionOutlines(context, camera, outlines.values(), width, height);
+      if (outlines.size) {
+        const groups = groupInstructionHighlights(highlightOccurrences, new Set(outlines.keys()));
+        drawInstructionOutlines(context, camera, instructionGroupBounds(groups, outlines), width, height);
+      }
       return canvas.toDataURL("image/jpeg", 0.84);
     },
-    dispose() { faces.length = 0; canvas.width = 1; canvas.height = 1; },
+    dispose,
   };
 }

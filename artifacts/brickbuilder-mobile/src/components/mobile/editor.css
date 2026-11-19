@@ -251,9 +251,21 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
     border: 1px solid #e1ddd0; border-radius: 11px; background: rgba(250,248,240,.97);
     box-shadow: 0 4px 14px rgba(39,57,48,.12); backdrop-filter: blur(10px);
   }
+  .mobile-selection-label {
+    display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 64px; overflow: hidden;
+    color: #64766a; font-size: 9px; font-weight: 700; white-space: nowrap;
+  }
   .mobile-selection-actions button { display: grid; place-items: center; width: 38px; height: 40px; border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; cursor: pointer; }
   .mobile-selection-actions > button:last-child { color: #ad513c; }
   .mobile-selection-actions > button { flex-shrink: 0; }
+  .mobile-selection-label { flex: 0 1 auto; }
+  @media (max-width: 360px) {
+    .mobile-selection-actions { gap: 2px; }
+    .mobile-selection-actions button { width: 32px; }
+    .mobile-selection-label { max-width: 38px; font-size: 8px; }
+    .mobile-selection-actions .fine-position summary { padding: 8px; }
+    .mobile-selection-actions .tilt-controls summary { min-width: 48px; font-size: 8px; }
+  }
   .canvas-stage.has-selection { grid-template-rows: 38px minmax(0,1fr) auto; }
   .context-label { font-size: 8px; }
   .brick-count { font-size: 10px; }

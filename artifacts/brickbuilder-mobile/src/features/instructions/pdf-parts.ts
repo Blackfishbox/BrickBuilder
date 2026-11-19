@@ -12,7 +12,15 @@ export async function drawInstructionPartBox(
   callouts: InstructionCallout[] = [], renderCallout = instructionCalloutImage,
 ): Promise<number> {
   const calloutRows = Math.ceil(callouts.length / 3);
-  const calloutHeight = calloutRows * 39;
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(7);
+  const calloutTitles = callouts.map(callout => pdf.splitTextToSize(callout.title, 56) as string[]);
+  const calloutLineHeight = 7 * 1.15 * 25.4 / 72;
+  const calloutRowHeights = Array.from({ length: calloutRows }, (_, row) => {
+    const rows = calloutTitles.slice(row * 3, row * 3 + 3);
+    const maxLines = Math.max(1, ...rows.map(title => title.length));
+    return Math.max(39, 35 + calloutLineHeight * (maxLines - 1));
+  });
+  const calloutHeight = calloutRowHeights.reduce((total, rowHeight) => total + rowHeight, 0);
   const partRows = Math.max(1, Math.ceil(entries.length / 6));
   const height = 8 + calloutHeight + partRows * 33;
   pdf.setDrawColor(183, 194, 181); pdf.setFillColor(253, 253, 249);
@@ -26,7 +34,9 @@ export async function drawInstructionPartBox(
     pdf.setFontSize(7); pdf.text("Baugruppen einsetzen", 19, y + 11);
     for (const [index, callout] of callouts.entries()) {
       signal?.throwIfAborted();
-      const x = 15 + index % 3 * 60, top = y + 13 + Math.floor(index / 3) * 39;
+      const row = Math.floor(index / 3);
+      const x = 15 + index % 3 * 60;
+      const top = y + 13 + calloutRowHeights.slice(0, row).reduce((total, rowHeight) => total + rowHeight, 0);
       try {
         const image = await renderCallout(document, callout, signal ?? new AbortController().signal);
         signal?.throwIfAborted();
@@ -37,8 +47,9 @@ export async function drawInstructionPartBox(
         pdf.text("Vorschau fehlt", x + 30, top + 14, { align: "center" });
       }
       pdf.setTextColor(35, 55, 46); pdf.setFont("helvetica", "bold"); pdf.setFontSize(7);
-      const title = (pdf.splitTextToSize(callout.title, 56) as string[]).slice(0, 1);
-      pdf.text(title, x + 30, top + 34, { align: "center" });
+      const title = calloutTitles[index];
+      const baseline = calloutRowHeights[row] - 5 - calloutLineHeight * (title.length - 1);
+      pdf.text(title, x + 30, top + baseline, { align: "center" });
     }
   }
   for (const [index, entry] of entries.entries()) {

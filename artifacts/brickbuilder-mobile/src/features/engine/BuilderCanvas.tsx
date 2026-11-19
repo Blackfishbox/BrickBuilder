@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link2, TriangleAlert, Cloud } from "lucide-react";
-import { collisionWarnings } from "./collision-warning";
+import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
   BoxGeometry,
   Box3,
   Box3Helper,
   BufferGeometry,
   Color,
-  CylinderGeometry,
   EdgesGeometry,
   Group,
   InstancedMesh,
@@ -27,7 +26,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { createLocalBrickGeometry, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -47,7 +46,7 @@ import {
 import type { MagneticLatch } from "../connections/engine";
 import { ConnectionOverlay } from "../connections/overlay";
 import type { InstructionCamera } from "../instructions/types";
-import { drawInstructionOutlines } from "../instructions/outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "../instructions/outlines";
 import { floatingParts, legacyBrickBounds } from "./floating";
 import { stackingBounds } from "./stacking";
 import type { ConnectionTransform } from "../connections/types";
@@ -113,7 +112,7 @@ interface ProjectedPoint {
   depth: number;
 }
 
-class FallbackRenderer {
+export class FallbackRenderer {
   readonly domElement = document.createElement("canvas");
   private readonly context = this.domElement.getContext("2d");
   private pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
@@ -244,70 +243,31 @@ class FallbackRenderer {
       if (visibleBricks++ >= (interactive ? 300 : 1200) && brick.id !== selectedId) continue;
       const definition = BRICK_DEFINITIONS[brick.type];
       const transform = brickTransformMatrix(brick);
-      const corners = [
-        [-definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, definition.studsZ / 2],
-        [-definition.studsX / 2, definition.studsZ / 2],
-      ].map(([x, z]) => new Vector3(x, 0, z).applyMatrix4(transform));
-      const bodyHeight = BRICK_HEIGHT - 0.08;
-      const topWorld = [
-        [-definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, -definition.studsZ / 2],
-        [definition.studsX / 2, definition.studsZ / 2],
-        [-definition.studsX / 2, definition.studsZ / 2],
-      ].map(([x, z]) => new Vector3(x, bodyHeight, z).applyMatrix4(transform));
-      const bottom = corners.map(point => project(point.x, point.y, point.z));
-      const top = topWorld.map(point => project(point.x, point.y, point.z));
       const color = new Color(brick.color);
       if (instructionFocusIds !== undefined) instructionDisplayColor(color, instructionFocusIds.has(brick.id));
-      const sideNormals = [
-        new Vector3(0, 0, -1), new Vector3(1, 0, 0),
-        new Vector3(0, 0, 1), new Vector3(-1, 0, 0),
-      ];
-      const visibleSides = sideNormals.map((normal, index) => {
-        const worldNormal = normal.transformDirection(transform);
-        const face = [
-          bottom[index],
-          bottom[(index + 1) % bottom.length],
-          top[(index + 1) % top.length],
-          top[index],
-        ];
-        const center = corners[index].clone().add(corners[(index + 1) % corners.length])
-          .add(topWorld[(index + 1) % topWorld.length]).add(topWorld[index]).multiplyScalar(0.25);
-        const towardCamera = worldNormal.dot(new Vector3().subVectors(camera.position, center));
-        const centerDepth = face.reduce((sum, point) => sum + point.depth, 0) / face.length;
-        return { face, towardCamera, centerDepth };
-      })
-        .filter(side => side.towardCamera > 0)
-        .sort((first, second) => second.centerDepth - first.centerDepth);
-      for (const [index, side] of visibleSides.entries()) {
-        const shade = index === 0 ? 0.72 : 0.84;
-        fillPolygon(context, side.face, color.clone().multiplyScalar(shade).getStyle(), "#7d453b");
+      // Project the same body and cylindrical studs as WebGL/PDF. Screen-space
+      // ellipses cannot represent a stud correctly when its brick is tilted.
+      const triangles = localBrickTriangles(brick.type);
+      const faces: { points: ProjectedPoint[]; depth: number; shade: number }[] = [];
+      const light = new Vector3(0.4, 0.8, 0.5).normalize();
+      for (let index = 0; index < triangles.length; index += 9) {
+        const world = [0, 3, 6].map(offset =>
+          new Vector3().fromArray(triangles, index + offset).applyMatrix4(transform));
+        const normal = world[1].clone().sub(world[0]).cross(world[2].clone().sub(world[0])).normalize();
+        if (normal.dot(camera.position.clone().sub(world[0])) <= 0) continue;
+        const points = world.map(point => project(point.x, point.y, point.z));
+        if (points.some(point => point.depth < 0.1)) continue;
+        faces.push({
+          points,
+          depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
+          shade: 0.58 + 0.42 * Math.abs(normal.dot(light)),
+        });
       }
-      fillPolygon(context, top, color.clone().lerp(new Color("#ffffff"), 0.12).getStyle(), "#75433a");
-
-      for (let x = 0; x < definition.studsX; x += 1) {
-        for (let z = 0; z < definition.studsZ; z += 1) {
-          const localX = x - (definition.studsX - 1) / 2;
-          const localZ = z - (definition.studsZ - 1) / 2;
-          const world = new Vector3(localX, BRICK_HEIGHT, localZ).applyMatrix4(transform);
-          const center = project(world.x, world.y, world.z);
-          const radiusXPoint = new Vector3(localX + 0.22, BRICK_HEIGHT, localZ).applyMatrix4(transform);
-          const radiusZPoint = new Vector3(localX, BRICK_HEIGHT, localZ + 0.22).applyMatrix4(transform);
-          const projectedX = project(radiusXPoint.x, radiusXPoint.y, radiusXPoint.z);
-          const projectedZ = project(radiusZPoint.x, radiusZPoint.y, radiusZPoint.z);
-          const radiusX = Math.hypot(projectedX.x - center.x, projectedX.y - center.y);
-          const radiusZ = Math.hypot(projectedZ.x - center.x, projectedZ.y - center.y);
-          const radius = Math.max(1.6, Math.min(8, (radiusX + radiusZ) / 2));
-          context.beginPath();
-          context.ellipse(center.x, center.y, radius, Math.max(1.4, radius * 0.62), 0, 0, Math.PI * 2);
-          context.fillStyle = color.clone().lerp(new Color("#ffffff"), 0.24).getStyle();
-          context.fill();
-          context.strokeStyle = color.clone().multiplyScalar(0.7).getStyle();
-          context.lineWidth = 0.8;
-          context.stroke();
-        }
+      faces.sort((first, second) => second.depth - first.depth);
+      for (const face of faces) {
+        polygonPath(context, face.points);
+        context.fillStyle = color.clone().multiplyScalar(face.shade).getStyle();
+        context.fill();
       }
 
       if (selectedId === brick.id) {
@@ -317,7 +277,8 @@ class FallbackRenderer {
           [definition.studsX / 2, definition.studsZ / 2],
           [-definition.studsX / 2, definition.studsZ / 2],
         ].map(([x, z]) => {
-          const point = new Vector3(x, BRICK_HEIGHT + 0.18, z).applyMatrix4(transform);
+          const shape = localBrickShape(brick.type);
+          const point = new Vector3(x, shape.bodyHeight + shape.studHeight, z).applyMatrix4(transform);
           return project(point.x, point.y, point.z);
         });
         polygonPath(context, selectionTop);
@@ -331,7 +292,7 @@ class FallbackRenderer {
   }
 }
 
-const geometryCache = new Map<BrickType, ReturnType<typeof mergeGeometries>>();
+const geometryCache = new Map<BrickType, BufferGeometry>();
 
 function polygonPath(context: CanvasRenderingContext2D, points: ProjectedPoint[]): void {
   if (!points.length) return;
@@ -359,34 +320,7 @@ function brickGeometry(type: BrickType) {
   const cached = geometryCache.get(type);
   if (cached) return cached;
 
-  const definition = BRICK_DEFINITIONS[type];
-  const bodyHeight = BRICK_HEIGHT - 0.08;
-  const studHeight = 0.16;
-  const pieces: BufferGeometry[] = [];
-  const body = new BoxGeometry(
-    definition.studsX - 0.035,
-    bodyHeight,
-    definition.studsZ - 0.035,
-  );
-  body.translate(0, bodyHeight / 2, 0);
-  pieces.push(body);
-
-  for (let x = 0; x < definition.studsX; x += 1) {
-    for (let z = 0; z < definition.studsZ; z += 1) {
-      const cylinder = new CylinderGeometry(0.27, 0.27, studHeight, 16);
-      cylinder.translate(
-        x - (definition.studsX - 1) / 2,
-        bodyHeight + studHeight / 2,
-        z - (definition.studsZ - 1) / 2,
-      );
-      pieces.push(cylinder);
-    }
-  }
-
-  const merged = mergeGeometries(pieces, false);
-  for (const piece of pieces) piece.dispose();
-  if (!merged) throw new Error(`Could not build geometry for ${type}.`);
-  merged.computeVertexNormals();
+  const merged = createLocalBrickGeometry(type);
   geometryCache.set(type, merged);
   return merged;
 }
@@ -462,6 +396,9 @@ export function BuilderCanvas({
   const refreshConstructionAreaRef = useRef<((candidate?: Box3) => void) | null>(null);
   const softwareSceneRef = useRef<SoftwareScene | undefined>(undefined);
   const importedOffsetRef = useRef(0);
+  const instructionOutlineCacheRef = useRef<{
+    bricks: Brick[]; imported?: ImportedModel; focus: ReadonlySet<string>; offset: number; boxes: Box3[];
+  } | null>(null);
   const interactionTimeRef = useRef(-Infinity);
   const buildControllerRef = useRef<AbortController | null>(null);
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
@@ -475,7 +412,9 @@ export function BuilderCanvas({
   const overlayRef = useRef<ConnectionOverlay | null>(null);
   const [showConnections, setShowConnections] = useState(true);
   const [showCollisions, setShowCollisions] = useState(false);
-  const [collisionState, setCollisionState] = useState({ count: 0, uncertain: false, pending: false, failed: false });
+  const [collisionState, setCollisionState] = useState<{
+    count: number; uncertain: boolean; pending: boolean; failed: boolean; progress: CollisionProgress | null;
+  }>({ count: 0, uncertain: false, pending: false, failed: false, progress: null });
   const [toggleToast, setToggleToast] = useState("");
   useEffect(() => {
     if (!toggleToast) return;
@@ -665,7 +604,7 @@ export function BuilderCanvas({
     });
     const grid = new LineSegments(createStudGridGeometry(constructionArea(new Box3())), gridMaterial);
     grid.name = "construction-grid";
-    grid.position.y = -0.025;
+    grid.position.set(0, -0.025, 0);
     scene.add(grid);
     let floorSignature = "";
     const refreshConstructionArea = (candidate?: Box3) => {
@@ -705,6 +644,7 @@ export function BuilderCanvas({
       previousBoardGeometry.dispose();
       const previousGridGeometry = grid.geometry;
       grid.geometry = createStudGridGeometry(area);
+      grid.position.set(area.centerX, -0.025, area.centerZ);
       previousGridGeometry.dispose();
       invalidatorRef.current?.();
     };
@@ -772,22 +712,24 @@ export function BuilderCanvas({
         });
         const focus = propsRef.current.instructionFocusIds;
         if (focus?.size) {
-          const boxes: Box3[] = [];
-          const offset = new Vector3(0, importedOffsetRef.current, 0);
-          for (const id of focus) {
-            const bounds = importedRootRef.current ? instanceIndex(importedRootRef.current)?.records.get(id)?.bounds : softwareSceneRef.current?.instanceBounds.get(id);
-            if (bounds) boxes.push(bounds.clone().translate(offset));
-            else {
-              const brick = propsRef.current.bricks.find(b => b.id === id);
-              if (brick) {
-                const bounds = brickConstructionBounds(brick);
-                bounds.max.y += 0.24;
-                boxes.push(bounds);
-              }
-            }
+          const { bricks, imported } = propsRef.current;
+          const offset = importedOffsetRef.current;
+          let cached = instructionOutlineCacheRef.current;
+          if (!cached || cached.bricks !== bricks || cached.imported !== imported || cached.focus !== focus || cached.offset !== offset) {
+            const occurrences = instructionHighlightOccurrences(bricks, imported);
+            const groups = groupInstructionHighlights(occurrences, focus);
+            const importedIds = new Set(imported?.instances.map(part => part.id));
+            const boxes = new Map(occurrences.map(part => {
+              const box = part.bounds.clone();
+              if (importedIds.has(part.id)) box.translate(new Vector3(0, offset, 0));
+              else box.max.y += 0.24; // Preserve the preview's existing stud clearance.
+              return [part.id, box];
+            }));
+            cached = { bricks, imported, focus, offset, boxes: instructionGroupBounds(groups, boxes) };
+            instructionOutlineCacheRef.current = cached;
           }
           const context = overlay.canvas.getContext("2d");
-          if (context) drawInstructionOutlines(context, camera, boxes, overlay.canvas.width, overlay.canvas.height);
+          if (context) drawInstructionOutlines(context, camera, cached.boxes, overlay.canvas.width, overlay.canvas.height);
         }
         if (interactive) {
           clearTimeout(settleTimer);
@@ -1027,18 +969,24 @@ export function BuilderCanvas({
   useEffect(() => {
     const controller = new AbortController();
     if (overlayRef.current) overlayRef.current.collisions = new Map();
-    setCollisionState({ count: 0, uncertain: false, pending: showCollisions, failed: false });
+    setCollisionState({
+      count: 0, uncertain: false, pending: showCollisions, failed: false,
+      progress: showCollisions ? { phase: "preparing", percent: 0 } : null,
+    });
     invalidatorRef.current?.();
     if (showCollisions) {
       const offset = sceneModelRef.current && sceneProjectRef.current === projectId ? importedOffsetRef.current : undefined;
-      void collisionWarnings(bricks, imported, controller.signal, offset).then(result => {
+      void collisionWarningsInWorker(bricks, imported, controller.signal, offset, progress => {
+        if (controller.signal.aborted) return;
+        setCollisionState(current => current.pending ? { ...current, progress } : current);
+      }).then(result => {
         if (controller.signal.aborted) return;
         if (overlayRef.current) overlayRef.current.collisions = result.boxes;
-        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false, failed: false });
+        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false, failed: false, progress: null });
         invalidatorRef.current?.();
       }).catch(error => {
         if (!controller.signal.aborted) {
-          setCollisionState({ count: 0, uncertain: true, pending: false, failed: true });
+          setCollisionState({ count: 0, uncertain: true, pending: false, failed: true, progress: null });
           setToggleToast("Kollisionsprüfung konnte nicht abgeschlossen werden");
           console.error(error);
         }
@@ -1076,7 +1024,6 @@ export function BuilderCanvas({
       groups.set(key, group);
     }
 
-    const dummy = new Object3D();
     for (const groupBricks of groups.values()) {
       const first = groupBricks[0];
       const material = new MeshLambertMaterial({ color: first.color });
@@ -1092,15 +1039,7 @@ export function BuilderCanvas({
       installInstructionFocus(instances);
       instances.name = `brick-group-${first.type}`;
       groupBricks.forEach((brick, index) => {
-        dummy.position.set(brick.x, brick.y, brick.z);
-        dummy.rotation.set(
-          (brick.tiltX ?? 0) * Math.PI / 180,
-          brick.rotation * Math.PI / 180,
-          (brick.tiltZ ?? 0) * Math.PI / 180,
-          "XYZ",
-        );
-        dummy.updateMatrix();
-        instances.setMatrixAt(index, dummy.matrix);
+        instances.setMatrixAt(index, brickTransformMatrix(brick));
       });
       instances.instanceMatrix.needsUpdate = true;
       nextRoot.add(instances);
@@ -1255,15 +1194,6 @@ export function BuilderCanvas({
     const resolveDrag = (drag: DragCandidate) => {
       if (!drag.destination || !drag.needsSnap) return;
       if (drag.matrix && propsRef.current.imported) {
-        const movingInstance = propsRef.current.imported.instances.find(instance => instance.id === drag.id);
-        if (movingInstance?.tiltX || movingInstance?.tiltZ) {
-          drag.needsSnap = false;
-          drag.magneticLatch = undefined;
-          drag.connection = undefined;
-          if (overlayRef.current) overlayRef.current.contacts = [];
-          setConnectionStatus("Neigung aktiv · freie Platzierung, Einrasten aus");
-          return;
-        }
         const offset = importedOffsetRef.current;
         const requested = { ...drag.destination, y: drag.destination.y - offset };
         const magnetic = magneticConstructionTransform(propsRef.current.imported, drag.id,
@@ -1564,7 +1494,14 @@ export function BuilderCanvas({
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
     {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
-      {collisionState.pending ? "Kollisionen werden geprüft …" : collisionState.count
+      {collisionState.pending ? <>
+        {collisionState.progress?.phase === "snapshot" ? "Importmodell wird vorbereitet"
+          : collisionState.progress?.phase === "preparing" ? "Kollisionsprüfung wird vorbereitet" : "Kollisionen werden geprüft"}
+        {collisionState.progress && <> · {Math.floor(collisionState.progress.percent)} %</>}
+        {collisionState.progress && <progress className="ml-2 h-2 w-20 align-middle" aria-label="Fortschritt der Kollisionsprüfung"
+          max={100} value={collisionState.progress.percent} />}
+        {!collisionState.progress && " …"}
+      </> : collisionState.count
         ? `${collisionState.count} Teile kollidieren · orange markiert`
         : collisionState.failed ? "Kollisionsprüfung nicht abgeschlossen"
         : collisionState.uncertain ? "Keine Kollisionen nachgewiesen · einige Geometrien nicht eindeutig prüfbar"

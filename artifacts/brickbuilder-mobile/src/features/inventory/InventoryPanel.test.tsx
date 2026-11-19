@@ -11,7 +11,9 @@ import type { Inventory } from "./types";
 vi.mock("../catalog/client", () => ({
   resolveStoredInventory: async (inventory: Inventory) => ({
     inventory, resolutions: Object.fromEntries(inventory.rows.map(row => [row.id, {
-      parts: [{ ldrawId: row.partId, name: `Part ${row.partId}` }],
+      parts: row.partId === "ambiguous"
+        ? [{ ldrawId: "part-a", name: "Part A" }, { ldrawId: "part-b", name: "Part B" }]
+        : row.partId === "unknown" ? [] : [{ ldrawId: row.partId, name: `Part ${row.partId}` }],
       colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }],
     }])),
   }),
@@ -38,7 +40,7 @@ function consume(document: BuilderDocument, indexes: number[]) {
     ...parsed, resources: {}, legalDocuments: [],
   } };
 }
-async function panel() {
+async function panel(onSpread = vi.fn(async () => ({ placed: 0, deferred: 0 }))) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = window.document.createElement("div");
   root = createRoot(container);
@@ -46,8 +48,10 @@ async function panel() {
     container,
     render: async (document: BuilderDocument) => {
       await act(async () => root!.render(<InventoryPanel document={document} selected={null}
-        onSelect={async () => true} onReplace={() => {}} onSelected={() => {}} />));
+        onSelect={async () => true} onSpread={onSpread}
+        onReplace={() => {}} onSelected={() => {}} />));
     },
+    onSpread,
   };
 }
 it("filters exhausted rows before pagination and retains partially available rows", async () => {
@@ -74,4 +78,28 @@ it("clamps the page when stock shrinks and does not jump back after a deleted pa
   expect(view.container.textContent).toContain("Seite 1 / 2");
   await act(async () => (view.container.querySelector('[data-testid="button-inventory-next"]') as HTMLButtonElement).click());
   expect(view.container.querySelector(`[data-testid="row-inventory-${document.inventory!.rows[30].id}"]`)).not.toBeNull();
+});
+
+it("offers bulk distribution for remaining stock and excludes ambiguous or unresolved rows", async () => {
+  const document = fixture(3);
+  document.inventory!.rows[0].partId = "ambiguous";
+  document.inventory!.rows[0].quantity = 3;
+  document.inventory!.rows[1].partId = "unknown";
+  document.inventory!.rows[2].quantity = 2;
+  const consumed = consume(document, [2]);
+  const onSpread = vi.fn(async () => ({ placed: 1, deferred: 0 }));
+  const view = await panel(onSpread);
+  await view.render(consumed);
+  expect(view.container.querySelector('[data-testid="status-inventory-spread-issues"]')?.textContent)
+    .toContain("mehrdeutiges Teil braucht eine Auswahl");
+  expect(view.container.querySelector('[data-testid="status-inventory-spread-issues"]')?.textContent)
+    .toContain("kein belegtes LDraw-Teil");
+  const button = view.container.querySelector('[data-testid="button-inventory-spread"]') as HTMLButtonElement;
+  expect(button.textContent).toContain("(1)");
+  await act(async () => button.click());
+  expect(onSpread).toHaveBeenCalledWith([
+    { choice: { listId: consumed.inventory!.id, rowId: consumed.inventory!.rows[2].id, ldrawId: "3002", colorCode: "4" }, quantity: 1 },
+  ], expect.any(Function), expect.any(AbortSignal));
+  expect(view.container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
+    .toContain("1 Teile auf der Baufläche verteilt");
 });

@@ -70,6 +70,17 @@ changes. Deleting returns the unit; undo/redo restores model and allocation
 together. Existing model imports and unrestricted catalog placements consume
 nothing. Choosing a catalog part explicitly exits list placement mode.
 
+The inventory panel can distribute all remaining, placeable units across the
+construction surface. Unique part and color mappings are used automatically;
+ambiguous mappings need the same explicit row selections as single placement.
+Unsupported, unresolved, or still-ambiguous rows are listed and skipped. A
+single run is capped at 1,000 units; any remainder stays in stock for another
+run. Geometry for every needed part is loaded before the model changes, so a
+failure or cancellation leaves the whole batch untouched. The batch is arranged
+in a separated grid beyond the current model and saved as one undoable change.
+Each unit remains an individual, movable instance with its original row
+allocation.
+
 ## Saving, replacement and backups
 
 The list, original IDs, quantities and per-instance allocations are saved with

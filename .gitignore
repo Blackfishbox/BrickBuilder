@@ -77,6 +77,5 @@ Thumbs.db
 **/android/app/src/main/assets/capacitor.plugins.json
 **/android/capacitor-cordova-android-plugins/
 *.jks
-*.p12
 *.keystore
 keystore.properties

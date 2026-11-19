@@ -1,6 +1,6 @@
 import { Box3, Matrix4, Plane, Ray, Triangle, Vector3 } from "three";
 import type { Affine, ImportedModel } from "../formats/types";
-import { compilePart, worldMatrix, type Surface } from "./ldraw-geometry";
+import { compilePart, getCompiledPart, worldMatrix, type Surface } from "./ldraw-geometry";
 
 /** Unknown is deliberately distinct from geometric clearance. */
 export type CollisionResult = "overlap" | "clear" | "unknown";
@@ -34,7 +34,7 @@ function tree(faces: Face[]): Node {
  * meshes, non-manifold seams and excessive complexity retain conservative bounds.
  */
 function shapeFor(model: ImportedModel, reference: string, budget: Budget): Shape | null {
-  const surfaces = compilePart(model, reference, "16");
+  const surfaces = getCompiledPart(model, reference) ?? compilePart(model, reference, "16");
   if (shapes.has(surfaces)) return shapes.get(surfaces)!;
   const faceCount = surfaces.reduce((n, s) => n + s.positions.length / 9, 0);
   if (faceCount > MAX_FACES) {
@@ -164,7 +164,8 @@ function intersection(a: Triangle, b: Triangle): Vector3 | null {
       const inward = new Vector3().crossVectors(nb, end.clone().sub(start)).normalize();
       const output: Vector3[] = [];
       for (let j = 0; j < polygon.length; j++) {
-        const p = polygon[j], q = polygon[(j + 1) % 3], d = inward.dot(p.clone().sub(start)), e = inward.dot(q.clone().sub(start));
+        const p = polygon[j], q = polygon[(j + 1) % polygon.length];
+        const d = inward.dot(p.clone().sub(start)), e = inward.dot(q.clone().sub(start));
         if (d >= 0) output.push(p);
         if ((d < 0) !== (e < 0)) output.push(p.clone().lerp(q, d / (d - e)));
       }

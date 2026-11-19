@@ -41,7 +41,10 @@ export function exportIO(document: BuilderDocument): Uint8Array {
       if (!entries[backup]) entries[backup] = entries[key];
       delete entries[key];
     }
-    if (key.toLowerCase() === "model.ldr") delete entries[key];
+    if (key.toLowerCase() === "model.ldr") {
+      if (modified) entries[`BrickBuilder/original/${key}`] ??= entries[key];
+      delete entries[key];
+    }
     if (rebuildInstructions && key.toLowerCase() === "model.ins") {
       entries["BrickBuilder/original/model.ins"] ??= entries[key];
       delete entries[key];
@@ -54,7 +57,7 @@ export function exportIO(document: BuilderDocument): Uint8Array {
   entries["BrickBuilder/export.json"] = encode(JSON.stringify({
     application: "BrickBuilder",
     exportScope: rebuildInstructions
-      ? "Edited instance-specific LDraw construction steps and a regenerated one-step-per-page instruction layout. Original source sections and superseded Studio files are retained as backups."
+      ? "Edited occurrence-specific hierarchical LDraw construction steps and a regenerated one-step-per-page instruction layout. Inline geometry is retained once per occurrence. Original source sections and superseded Studio files are retained as backups."
       : "Edited LDraw assembly with original instruction layout preserved. Derived Studio model variants are retained as backups, not as active models.",
     limitations: "Not a lossless Studio page-designer round trip. Callouts, buffer exchanges and proprietary layout operations are not editable in BrickBuilder.",
   }));

@@ -4,6 +4,7 @@ import { createEmptyDocument } from "../editor/model";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { instructionPartDocument, instructionPartGroups } from "./parts";
 import { instructionPartImage } from "./part-images";
+import { createSoftwareInstructionRenderer } from "./software-render";
 import { drawInstructionPartBox } from "./pdf-parts";
 import { exportInstructionPDF } from "./pdf";
 import type { InstructionPlan, InstructionStep } from "./types";
@@ -46,6 +47,67 @@ function fixture() {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("step parts illustrations", () => {
+  it.each([
+    { rotation: 135, tiltX: 35, tiltZ: -20 },
+    { rotation: 90 },
+  ])("resets every local presentation axis without changing the occurrence: %j", pose => {
+    const doc = createEmptyDocument("Tilted local part");
+    doc.bricks = [{
+      id: "tilted", type: "brick-1x2", color: "#d75b3f",
+      x: 12, y: 7, z: -4, ...pose,
+    }];
+    const original = structuredClone(doc);
+    const entry = instructionPartGroups(doc, ["tilted"])[0];
+    const isolated = instructionPartDocument(doc, entry);
+    expect(isolated.bricks).toEqual([{
+      ...doc.bricks[0], x: 0, y: 0, z: 0, rotation: 0, tiltX: 0, tiltZ: 0,
+    }]);
+    expect(isolated.bricks[0]).not.toBe(doc.bricks[0]);
+    expect(doc).toEqual(original);
+  });
+
+  it("keeps local parts-box images and quantities canonical across build-pose edits", async () => {
+    const doc = createEmptyDocument("Local parts box");
+    doc.bricks = [
+      { id: "first", type: "brick-1x2", color: "#b7c9df", x: 12, y: 7, z: -4, rotation: 135, tiltX: 35, tiltZ: -20 },
+      { id: "second", type: "brick-1x2", color: "#b7c9df", x: 0, y: 0, z: 0, rotation: 0 },
+    ];
+    const original = structuredClone(doc), ids = doc.bricks.map(part => part.id);
+    const points: number[] = [], styles: string[] = [];
+    const context = { fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), beginPath: vi.fn(), closePath: vi.fn(),
+      moveTo: (x: number, y: number) => points.push(x, y), lineTo: (x: number, y: number) => points.push(x, y),
+      fill() { styles.push(this.fillStyle); } };
+    const toDataURL = vi.fn(() => "data:image/jpeg;base64,canonical-local");
+    vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0, getContext: () => context, toDataURL }) });
+    // Render an independently neutral occurrence, so a cache hit cannot hide an incorrect first image.
+    const neutral = createEmptyDocument("Neutral reference");
+    neutral.bricks = [{ ...doc.bricks[0], x: 0, y: 0, z: 0, rotation: 0, tiltX: 0, tiltZ: 0 }];
+    const renderer = await createSoftwareInstructionRenderer(neutral, undefined, { width: 240, height: 182, minRadius: 0.01 });
+    try {
+      renderer.image(new Set(["first"]), { id: "part", title: "", notes: "", partIds: ["first"] });
+    } finally { renderer.dispose(); }
+    const expectedPoints = [...points], expectedStyles = [...styles];
+    expect(expectedPoints.length).toBeGreaterThan(0);
+    points.length = 0; styles.length = 0;
+
+    const before = instructionPartGroups(doc, ids);
+    expect(before).toHaveLength(1);
+    expect(before[0].count).toBe(2);
+    const signal = new AbortController().signal;
+    const image = await instructionPartImage(doc, before[0], signal);
+    expect(points).toEqual(expectedPoints);
+    expect(styles).toEqual(expectedStyles);
+    expect(doc).toEqual(original);
+
+    const moved = structuredClone(doc);
+    moved.bricks = moved.bricks.map(part => ({ ...part, x: -20, y: 50, z: 10, rotation: -45, tiltX: -65, tiltZ: 80 }));
+    const movedOriginal = structuredClone(moved), after = instructionPartGroups(moved, ids);
+    expect(after.map(({ key, count }) => ({ key, count }))).toEqual(before.map(({ key, count }) => ({ key, count })));
+    expect(await instructionPartImage(moved, after[0], signal)).toBe(image);
+    expect(toDataURL).toHaveBeenCalledTimes(2); // Reference plus first thumbnail; pose edits reuse the image.
+    expect(moved).toEqual(movedOriginal);
+  });
+
   it("reuses the shared depth-tested thumbnail renderer with canonical project geometry", async () => {
     const doc = fixture(), original = structuredClone(doc);
     const entry = instructionPartGroups(doc, doc.imported!.instances.map(p => p.id))[0];

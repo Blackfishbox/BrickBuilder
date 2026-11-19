@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Download, FileUp, LoaderCircle, RotateCw, Search, X } from 'lucide-react';
 import type { BuilderDocument } from '@/features/editor/model';
 import { previewInventory, resolveStoredInventory } from '@/features/catalog/client';
-import { allocatedCounts } from './accounting';
+import { allocatedCounts, inventorySpreadCandidates, MAX_INVENTORY_SPREAD_UNITS, type InventorySpreadRequest } from './accounting';
 import InventoryThumbnail from './InventoryThumbnail';
 import { MAX_LIST_BYTES, MAX_ROWS, type Inventory, type InventoryChoice, type InventoryPreview, type InventoryRow } from './types';
 import './inventory.css';
@@ -17,6 +17,7 @@ interface Props {
   document: BuilderDocument;
   selected: InventoryChoice | null;
   onSelect(choice: InventoryChoice): Promise<boolean>;
+  onSpread(requests: InventorySpreadRequest[], onProgress: (progress: { stage: 'mapping' | 'geometry' | 'placing'; completed: number; total: number }) => void, signal: AbortSignal): Promise<{ placed: number; deferred: number }>;
   onReplace(inventory: Inventory, expectedProjectId: string): void;
   onSelected(): void;
 }
@@ -32,7 +33,7 @@ function rowIssue(row: InventoryRow, res: InventoryPreview['resolutions'][string
   return null;
 }
 
-export default function InventoryPanel({ document, selected, onSelect, onReplace, onSelected }: Props) {
+export default function InventoryPanel({ document, selected, onSelect, onSpread, onReplace, onSelected }: Props) {
   const inventory = document.inventory;
   const projectId = document.id;
   const counts = useMemo(() => allocatedCounts(document), [document]);
@@ -48,6 +49,10 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
   const [picks, setPicks] = useState<Record<string, Pick>>({});
   const [busyRow, setBusyRow] = useState('');
   const [rowError, setRowError] = useState('');
+  const [spreading, setSpreading] = useState(false);
+  const [spreadProgress, setSpreadProgress] = useState<{ stage: 'mapping' | 'geometry' | 'placing'; completed: number; total: number } | null>(null);
+  const [spreadMessage, setSpreadMessage] = useState('');
+  const spreadController = useRef<AbortController | null>(null);
   const token = useRef(0);
   const mounted = useRef(true);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -71,6 +76,7 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
       .catch(e => { if (live) setResolveError(e instanceof Error ? e.message : String(e)); });
     return () => { live = false; };
   }, [inventory?.id, resolveTick]);
+  useEffect(() => () => spreadController.current?.abort(), []);
 
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
@@ -126,6 +132,33 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
   useEffect(() => { setPage(previous => Math.min(previous, pages - 1)); }, [pages]);
   const current = Math.min(page, pages - 1);
   const visible = filtered.slice(current * PAGE, current * PAGE + PAGE);
+  const spreadCandidates = useMemo(
+    () => resolutions ? inventorySpreadCandidates(document, resolutions, picks) : [],
+    [document, resolutions, picks],
+  );
+  const spreadRequests = spreadCandidates.flatMap(candidate =>
+    candidate.choice ? [{ choice: candidate.choice, quantity: candidate.quantity }] : [],
+  );
+  const spreadUnits = spreadRequests.reduce((sum, request) => sum + request.quantity, 0);
+  const blockedCandidates = spreadCandidates.filter(candidate => candidate.issue);
+
+  const spreadRemaining = async () => {
+    if (spreading || !spreadRequests.length) return;
+    const controller = new AbortController();
+    spreadController.current = controller;
+    setSpreading(true); setSpreadProgress(null); setSpreadMessage('');
+    try {
+      const result = await onSpread(spreadRequests, setSpreadProgress, controller.signal);
+      setSpreadMessage(`${result.placed} Teile auf der Baufläche verteilt.${result.deferred ? ` ${result.deferred} weitere bleiben für den nächsten Durchgang verfügbar.` : ''}`);
+    } catch (error) {
+      setSpreadMessage(controller.signal.aborted
+        ? 'Verteilen abgebrochen. Das Modell blieb unverändert.'
+        : error instanceof Error ? `Nichts wurde platziert: ${error.message}` : 'Nichts wurde platziert. Bitte erneut versuchen.');
+    } finally {
+      if (spreadController.current === controller) spreadController.current = null;
+      setSpreading(false); setSpreadProgress(null);
+    }
+  };
 
   const choose = async (row: InventoryRow, ldrawId: string, colorCode: string) => {
     if (!inventory) return;
@@ -166,6 +199,32 @@ export default function InventoryPanel({ document, selected, onSelect, onReplace
       {inventory && <>
         <p className="inv-note">Die Listenfarbe ist der Ausgangswert. Du kannst Teile vor und nach dem Platzieren umfärben; der Listenbestand bleibt dabei unverändert.</p>
         <p className="inv-note">Vollständig verbaute Positionen werden ausgeblendet. Löschen gibt sie wieder frei. Zusätzliche Steine kannst du jederzeit ohne Listenbegrenzung im Tab „LDraw-Katalog“ auswählen.</p>
+        <section className="inv-spread" aria-label="Teileliste verteilen">
+          <div>
+            <strong>Verfügbare Teile auf der Baufläche verteilen</strong>
+            <small>Jede Einheit bleibt einzeln auswählbar. Maximal {MAX_INVENTORY_SPREAD_UNITS} Teile pro Durchgang.</small>
+          </div>
+          <button type="button" className="inv-spread-button" disabled={!resolutions || spreading || spreadUnits === 0}
+            onClick={() => void spreadRemaining()} data-testid="button-inventory-spread">
+            {spreading ? <LoaderCircle className="spin" size={15} /> : null}
+            {spreading ? 'Wird verteilt …' : `Verteilen${spreadUnits ? ` (${spreadUnits})` : ''}`}
+          </button>
+          {blockedCandidates.length > 0 && resolutions && <div className="inv-spread-issues" role="status" data-testid="status-inventory-spread-issues">
+            {blockedCandidates.length} Position{blockedCandidates.length === 1 ? '' : 'en'} nicht automatisch platzierbar:
+            <ul>{blockedCandidates.slice(0, 8).map(candidate => <li key={candidate.rowId}>{candidate.issue}</li>)}</ul>
+            {blockedCandidates.length > 8 && <small>Weitere {blockedCandidates.length - 8} Positionen benötigen ebenfalls eine Prüfung oder Auswahl.</small>}
+          </div>}
+          {spreading && spreadProgress && <p className="inv-status" role="status" data-testid="status-inventory-spread-progress">
+            <LoaderCircle className="spin" size={15} />
+            {spreadProgress.stage === 'mapping'
+              ? `Zuordnungen werden geprüft … ${spreadProgress.completed} von ${spreadProgress.total}`
+              : spreadProgress.stage === 'geometry'
+                ? `Geometrie wird geladen … ${spreadProgress.completed} von ${spreadProgress.total}`
+                : `Teile werden verteilt … ${spreadProgress.completed} von ${spreadProgress.total}`}
+            <button type="button" onClick={() => spreadController.current?.abort()} data-testid="button-inventory-spread-cancel">Abbrechen</button>
+          </p>}
+          {spreadMessage && <p className={spreadMessage.startsWith('Nichts') ? 'inv-error' : 'inv-note'} role={spreadMessage.startsWith('Nichts') ? 'alert' : 'status'} data-testid="status-inventory-spread-result">{spreadMessage}</p>}
+        </section>
         <div className="inv-search">
           <Search size={15} />
           <input value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} placeholder="Name, BrickLink-Nr. oder Farbe" aria-label="Teileliste durchsuchen" data-testid="input-inventory-search" />

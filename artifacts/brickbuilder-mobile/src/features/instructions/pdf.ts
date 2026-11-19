@@ -50,13 +50,21 @@ export async function exportInstructionPDF(
       ) + 4;
       step.partIds.forEach(id => visible.add(id));
       const highlightIds = options.highlight && index > 0 ? instructionHighlightIds(document, step) : undefined;
-      pdf.addImage(renderer.image(visible, step, highlightIds), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
+      const image = renderer.image(visible, step, highlightIds);
+      pdf.addImage(image, image.startsWith("data:image/png") ? "PNG" : "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
+      const continuationPage = (section: string) => {
+        pdf.addPage();
+        pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
+        const heading = pdf.splitTextToSize(`${index + 1}. ${step.title} – ${section} (Fortsetzung)`, 178) as string[];
+        pdf.text(heading, 16, 20);
+        return 24 + (heading.length - 1) * 6;
+      };
       const text = (value: string, bold = false) => {
         pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(10);
         const lines = pdf.splitTextToSize(value, 178) as string[];
         for (const line of lines) {
-          if (y > 277) { pdf.addPage(); y = 20; }
+          if (y > 277) y = continuationPage("Hinweise");
           pdf.text(line, 16, y); y += 5;
         }
       };
@@ -71,21 +79,12 @@ export async function exportInstructionPDF(
         pdf.setTextColor(0);
       }
       for (let offset = 3; offset < callouts.length; offset += 12) {
-        pdf.addPage();
-        pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
-        const continued = pdf.splitTextToSize(`${index + 1}. ${step.title} – Baugruppen (Fortsetzung)`, 178) as string[];
-        pdf.text(continued, 16, 20);
-        const y = 24 + (continued.length - 1) * 6;
+        const y = continuationPage("Baugruppen");
         await drawInstructionPartBox(pdf, document, [], y, options.signal, renderPart,
           callouts.slice(offset, offset + 12), renderCallout);
       }
       for (let offset = firstPageParts; offset < groups.length; offset += 36) {
-        if (offset === firstPageParts) text("Weitere Teile für diesen Schritt auf den folgenden Seiten.");
-        pdf.addPage();
-        pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
-        const continued = pdf.splitTextToSize(`${index + 1}. ${step.title} – Teile (Fortsetzung)`, 178) as string[];
-        pdf.text(continued, 16, 20);
-        y = 24 + (continued.length - 1) * 6;
+        y = continuationPage("Teile");
         y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal, renderPart) + 4;
       }
       options.onProgress?.(index + 1, plan.steps.length);

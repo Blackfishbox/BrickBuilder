@@ -1,15 +1,17 @@
 import { Box3, Euler, Matrix4, Vector3 } from "three";
 import type { BuilderDocument, Position3 } from "./model";
 import { normalizeTiltAngle } from "./brick-transform";
+import { clampRotationAngle } from "./model";
 import type { ImportedInstance, ImportedModel, Affine } from "../formats/types";
 import type { LibraryPart } from "../parts/types";
 import { COLORS, resolveColor } from "../formats/colors";
 import { importLDraw } from "../formats/ldraw/import";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
-import { localPartBounds } from "../engine/stacking";
+import { localPartBounds, stackingBounds } from "../engine/stacking";
 import type { InventoryChoice } from "../inventory/types";
-import { requireAvailable } from "../inventory/accounting";
+import { allocatedCounts, MAX_INVENTORY_SPREAD_UNITS, type InventorySpreadRequest, requireAvailable } from "../inventory/accounting";
 import { getImportPartFailures } from "../formats/import-failures";
+import { brickBounds } from "./brick-transform";
 
 export interface PreparedPart {
   part: LibraryPart;
@@ -66,21 +68,21 @@ function affineFromWorldMatrix(matrix: Matrix4): Affine {
     clean(e[2] * scale), clean(e[6] * scale), clean(e[10] * scale), clean(e[14] * scale),
   ];
 }
-function yawMatrix(angle: number): Matrix4 {
+function importedYawMatrix(angle: number): Matrix4 {
   const radians = ((angle % 360) + 360) % 360 * Math.PI / 180;
-  const cosine = Math.abs(Math.cos(radians)) < 1e-12 ? 0 : Math.cos(radians);
-  const sine = Math.abs(Math.sin(radians)) < 1e-12 ? 0 : Math.sin(radians);
+  const clean = (value: number) => Math.abs(value) < 1e-12 ? 0 : Math.abs(value - 1) < 1e-12 ? 1 : Math.abs(value + 1) < 1e-12 ? -1 : value;
+  const cosine = clean(Math.cos(radians)), sine = clean(Math.sin(radians));
   return new Matrix4().set(cosine, 0, sine, 0, 0, 1, 0, 0, -sine, 0, cosine, 0, 0, 0, 0, 1);
 }
 function applyImportedTransform(model: ImportedModel, reference: string, base: Affine, rotationY: number, tiltX: number, tiltZ: number): Affine {
-  if (!rotationY && !tiltX && !tiltZ) return [...base];
+  if (rotationY === 0 && tiltX === 0 && tiltZ === 0) return [...base];
   const world = worldMatrix(base);
-  if (rotationY) {
+  if (rotationY !== 0) {
     const origin = new Vector3().setFromMatrixPosition(world);
-    world.premultiply(yawMatrix(rotationY));
+    world.premultiply(importedYawMatrix(rotationY));
     world.setPosition(origin);
   }
-  if (tiltX || tiltZ) {
+  if (tiltX !== 0 || tiltZ !== 0) {
     const center = localPartBounds(model, reference).getCenter(new Vector3()).applyMatrix4(world);
     const tilt = new Matrix4().makeRotationFromEuler(new Euler(tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ"));
     world.premultiply(new Matrix4().makeTranslation(center.x, center.y, center.z)
@@ -89,51 +91,55 @@ function applyImportedTransform(model: ImportedModel, reference: string, base: A
   }
   return affineFromWorldMatrix(world);
 }
-function importedYaw(base: Affine, rotationY: number): Affine {
-  const world = worldMatrix(base);
-  const origin = new Vector3().setFromMatrixPosition(world);
-  world.premultiply(yawMatrix(rotationY));
-  world.setPosition(origin);
-  return affineFromWorldMatrix(world);
-}
-function fallbackImportedTransform(base: Affine, rotationY: number, tiltX: number, tiltZ: number): Affine {
-  const world = worldMatrix(base);
-  const origin = new Vector3().setFromMatrixPosition(world);
-  if (rotationY) world.premultiply(yawMatrix(rotationY));
-  if (tiltX || tiltZ) world.premultiply(new Matrix4().makeRotationFromEuler(new Euler(
-    tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ",
-  )));
-  world.setPosition(origin);
-  return affineFromWorldMatrix(world);
+function applyImportedYaw(model: ImportedModel, reference: string, base: Affine, rotationY: number): Affine {
+  return applyImportedTransform(model, reference, base, rotationY, 0, 0);
 }
 export function tiltImported(document: BuilderDocument, id: string, tiltX: number, tiltZ: number): BuilderDocument {
-  if (![tiltX, tiltZ].every(Number.isFinite) || !document.imported) return document;
-  const x = normalizeTiltAngle(tiltX), z = normalizeTiltAngle(tiltZ), model = document.imported;
+  if (![tiltX, tiltZ].every(Number.isFinite)) return document;
+  const model = document.imported;
+  if (!model) return document;
+  const x = normalizeTiltAngle(tiltX), z = normalizeTiltAngle(tiltZ);
   return editImported(document, id, instance => {
     const base = instance.rotationBaseMatrix ?? instance.tiltBaseMatrix ?? instance.matrix;
     const rotationY = instance.rotationY ?? 0;
-    if (!x && !z && !rotationY) {
-      const { rotationY: _rotation, rotationBaseMatrix: _rotationBase, tiltBaseMatrix: _tiltBase, tiltX: _x, tiltZ: _z, ...rest } = instance;
+    if (x === 0 && z === 0 && rotationY === 0) {
+      const { tiltBaseMatrix: _tiltBase, rotationBaseMatrix: _rotationBase, rotationY: _rotation, tiltX: _x, tiltZ: _z, ...rest } = instance;
       return { ...rest, matrix: [...base] as Affine };
     }
     let matrix: Affine;
     try { matrix = applyImportedTransform(model, instance.reference, base, rotationY, x, z); }
-    catch { matrix = fallbackImportedTransform(base, rotationY, x, z); }
+    catch {
+      // A missing part can still be transformed around its declared LDraw origin.
+      const world = worldMatrix(base);
+      const origin = new Vector3().setFromMatrixPosition(world);
+      if (rotationY) world.premultiply(importedYawMatrix(rotationY));
+      if (x || z) world.premultiply(new Matrix4().makeRotationFromEuler(new Euler(x * Math.PI / 180, 0, z * Math.PI / 180, "XYZ")));
+      world.setPosition(origin);
+      matrix = affineFromWorldMatrix(world);
+    }
     let tiltBaseMatrix = [...base] as Affine;
-    if (rotationY) {
-      try { tiltBaseMatrix = importedYaw(base, rotationY); }
-      catch { tiltBaseMatrix = [...base] as Affine; }
+    if (rotationY !== 0) {
+      try { tiltBaseMatrix = applyImportedYaw(model, instance.reference, base, rotationY); }
+      catch {
+        const world = worldMatrix(base);
+        const origin = new Vector3().setFromMatrixPosition(world);
+        world.premultiply(importedYawMatrix(rotationY));
+        world.setPosition(origin);
+        tiltBaseMatrix = affineFromWorldMatrix(world);
+      }
     }
     return {
-      ...instance, tiltX: x || undefined, tiltZ: z || undefined, matrix,
+      ...instance, tiltX: x, tiltZ: z,
       ...(rotationY ? { rotationY, rotationBaseMatrix: [...base] as Affine } : {}),
-      tiltBaseMatrix,
+      tiltBaseMatrix, matrix,
     };
   });
 }
 export function setImportedRotation(document: BuilderDocument, id: string, rotationY: number): BuilderDocument {
-  if (!Number.isFinite(rotationY) || !document.imported) return document;
-  const angle = Math.max(0, Math.min(360, Math.round(rotationY))), model = document.imported;
+  if (!Number.isFinite(rotationY)) return document;
+  const model = document.imported;
+  if (!model) return document;
+  const angle = clampRotationAngle(rotationY);
   return editImported(document, id, instance => {
     const base = instance.rotationBaseMatrix ?? instance.tiltBaseMatrix ?? instance.matrix;
     const tiltX = instance.tiltX ?? 0, tiltZ = instance.tiltZ ?? 0;
@@ -141,13 +147,23 @@ export function setImportedRotation(document: BuilderDocument, id: string, rotat
       const { rotationY: _rotation, rotationBaseMatrix: _rotationBase, tiltBaseMatrix: _tiltBase, tiltX: _x, tiltZ: _z, ...rest } = instance;
       return { ...rest, matrix: [...base] as Affine };
     }
-    let matrix: Affine;
-    try { matrix = applyImportedTransform(model, instance.reference, base, angle, tiltX, tiltZ); }
-    catch { matrix = fallbackImportedTransform(base, angle, tiltX, tiltZ); }
-    let tiltBaseMatrix = [...base] as Affine;
-    if (angle) {
-      try { tiltBaseMatrix = importedYaw(base, angle); }
-      catch { tiltBaseMatrix = [...base] as Affine; }
+    let matrix: Affine, tiltBaseMatrix = [...base] as Affine;
+    try {
+      matrix = applyImportedTransform(model, instance.reference, base, angle, tiltX, tiltZ);
+      if (angle) tiltBaseMatrix = applyImportedYaw(model, instance.reference, base, angle);
+    } catch {
+      const world = worldMatrix(base);
+      const origin = new Vector3().setFromMatrixPosition(world);
+      if (angle) world.premultiply(importedYawMatrix(angle));
+      if (tiltX || tiltZ) world.premultiply(new Matrix4().makeRotationFromEuler(new Euler(tiltX * Math.PI / 180, 0, tiltZ * Math.PI / 180, "XYZ")));
+      world.setPosition(origin);
+      matrix = affineFromWorldMatrix(world);
+      if (angle) {
+        const yawWorld = worldMatrix(base), yawOrigin = new Vector3().setFromMatrixPosition(yawWorld);
+        yawWorld.premultiply(importedYawMatrix(angle));
+        yawWorld.setPosition(yawOrigin);
+        tiltBaseMatrix = affineFromWorldMatrix(yawWorld);
+      }
     }
     return {
       ...instance, matrix, rotationY: angle || undefined,
@@ -158,15 +174,7 @@ export function setImportedRotation(document: BuilderDocument, id: string, rotat
 }
 export function rotateImported(document: BuilderDocument, id: string): BuilderDocument {
   const current = document.imported?.instances.find(instance => instance.id === id);
-  if (!current) return document;
-  if (current.rotationY !== undefined || current.tiltX || current.tiltZ) {
-    return setImportedRotation(document, id, ((current.rotationY ?? 0) + 90) % 360);
-  }
-  return editImported(document, id, instance => {
-    const m = instance.matrix;
-    const matrix: Affine = [m[8], m[9], m[10], m[3], m[4], m[5], m[6], m[7], -m[0], -m[1], -m[2], m[11]];
-    return { ...instance, matrix };
-  });
+  return current ? setImportedRotation(document, id, ((current.rotationY ?? 0) + 90) % 360) : document;
 }
 export function moveImported(document: BuilderDocument, id: string, position: Position3, snapXZ = true, transform?: Affine): BuilderDocument {
   return editImported(document, id, instance => {
@@ -180,15 +188,15 @@ export function moveImported(document: BuilderDocument, id: string, position: Po
       matrix[11] = (snapXZ ? Math.round(position.z * 2) / 2 : position.z) * 20;
     }
     const delta = [matrix[3] - instance.matrix[3], matrix[7] - instance.matrix[7], matrix[11] - instance.matrix[11]];
-    const translate = (source: Affine) => {
+    const translateBase = (source: Affine) => {
       const updated = [...source] as Affine;
       updated[3] += delta[0]; updated[7] += delta[1]; updated[11] += delta[2];
       return updated;
     };
     return {
       ...instance, matrix,
-      ...(instance.rotationBaseMatrix ? { rotationBaseMatrix: translate(instance.rotationBaseMatrix) } : {}),
-      ...(instance.tiltBaseMatrix ? { tiltBaseMatrix: translate(instance.tiltBaseMatrix) } : {}),
+      ...(instance.tiltBaseMatrix ? { tiltBaseMatrix: translateBase(instance.tiltBaseMatrix) } : {}),
+      ...(instance.rotationBaseMatrix ? { rotationBaseMatrix: translateBase(instance.rotationBaseMatrix) } : {}),
     };
   });
 }
@@ -229,6 +237,101 @@ export function placeInventoryPart(document: BuilderDocument, prepared: Prepared
   const instances = next.imported!.instances;
   return { ...next, imported: { ...next.imported!, instances: instances.map((instance, index) =>
     index === instances.length - 1 ? { ...instance, allocation: { listId: choice.listId, rowId: choice.rowId } } : instance) } };
+}
+
+/** Prepare and append a complete, preflighted inventory batch as one document change. */
+export function placeInventoryBatch(
+  document: BuilderDocument,
+  requests: InventorySpreadRequest[],
+  preparedByPart: ReadonlyMap<string, PreparedPart>,
+): BuilderDocument {
+  if (!requests.length) return document;
+  const requestedUnits = requests.reduce((sum, request) => sum + request.quantity, 0);
+  if (requestedUnits > MAX_INVENTORY_SPREAD_UNITS) {
+    throw new Error(`Pro Durchgang können höchstens ${MAX_INVENTORY_SPREAD_UNITS} Teile verteilt werden.`);
+  }
+  const inventory = document.inventory;
+  if (!inventory) throw new Error("Keine Teileliste mehr vorhanden.");
+  const rows = new Map(inventory.rows.map(row => [row.id, row]));
+  const counts = allocatedCounts(document);
+  for (const { choice, quantity } of requests) {
+    const row = rows.get(choice.rowId);
+    if (choice.listId !== inventory.id || !row || row.itemType !== "P") throw new Error("Diese Teilelisten-Auswahl ist nicht mehr gültig.");
+    if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error("Ungültige Stückzahl für die Sammelplatzierung.");
+    const count = counts.get(row.id) ?? 0;
+    if (count + quantity > row.quantity) throw new Error(`BrickLink ${row.partId}, Farbe ${row.colorId}: Bestand reicht für die Sammelplatzierung nicht mehr aus.`);
+    counts.set(row.id, count + quantity);
+    const prepared = preparedByPart.get(choice.ldrawId);
+    if (!prepared || prepared.part.ldrawId !== choice.ldrawId || prepared.model.instances[0]?.part.status !== "resolved") {
+      throw new Error(`LDraw ${choice.ldrawId}: Geometrie konnte nicht vollständig geladen werden.`);
+    }
+    if (!resolveColor(choice.colorCode)) throw new Error(`LDraw-Farbe ${choice.colorCode} nicht verfügbar.`);
+  }
+
+  const units = requests.flatMap(request => Array.from({ length: request.quantity }, () => request));
+  const localBounds = units.map(({ choice }) => {
+    const prepared = preparedByPart.get(choice.ldrawId)!;
+    return localPartBounds(prepared.model, prepared.model.instances[0].reference)
+      .clone().applyMatrix4(worldMatrix([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]));
+  });
+  const sceneBounds = new Box3();
+  if (document.imported) {
+    const importedBounds = stackingBounds(document.imported);
+    if (document.imported.instances.some(instance => !importedBounds.has(instance.id))) {
+      throw new Error("Die vorhandene Modellgeometrie ist nicht vollständig verfügbar. Bitte lade die fehlenden Teile, bevor du die Liste verteilst.");
+    }
+    for (const bounds of importedBounds.values()) sceneBounds.union(bounds);
+  }
+  for (const brick of document.bricks) sceneBounds.union(brickBounds(brick));
+  const originX = sceneBounds.isEmpty() ? 1 : sceneBounds.max.x + 1;
+  const originZ = sceneBounds.isEmpty() ? 0 : sceneBounds.min.z;
+  const cellWidth = Math.max(0.25, ...localBounds.map(bounds => bounds.max.x - bounds.min.x)) + 0.75;
+  const cellDepth = Math.max(0.25, ...localBounds.map(bounds => bounds.max.z - bounds.min.z)) + 0.75;
+  const columns = Math.max(1, Math.ceil(Math.sqrt(units.length)));
+  const placements = localBounds.map((bounds, index) => ({
+    x: originX + (index % columns) * cellWidth - bounds.min.x,
+    z: originZ + Math.floor(index / columns) * cellDepth - bounds.min.z,
+  }));
+
+  const original = document.imported;
+  const resources = { ...(original?.resources ?? {}) };
+  const legalDocuments = [...(original?.legalDocuments ?? [])];
+  const instances = [...(original?.instances ?? [])];
+  for (const prepared of new Set([...preparedByPart.values()])) {
+    for (const [path, file] of Object.entries(prepared.model.resources)) {
+      if (resources[path] && resources[path].content !== file.content) {
+        throw new Error(`LDraw-Quellkonflikt: ${path}. Bestehende Geometrie bleibt unverändert.`);
+      }
+      resources[path] ??= file;
+    }
+    for (const legal of prepared.model.legalDocuments) {
+      if (!legalDocuments.some(existing => JSON.stringify(existing) === JSON.stringify(legal))) legalDocuments.push(legal);
+    }
+  }
+  units.forEach(({ choice }, index) => {
+    const prepared = preparedByPart.get(choice.ldrawId)!;
+    const source = prepared.model.instances[0];
+    const colorCode = choice.colorCode;
+    instances.push({
+      ...source,
+      id: `ldraw:${crypto.randomUUID()}`,
+      colorCode,
+      color: resolveColor(colorCode),
+      matrix: [1, 0, 0, Math.round(placements[index].x * 2) / 2 * 20,
+        0, 1, 0, prepared.bottom * 20, 0, 0, 1, Math.round(placements[index].z * 2) / 2 * 20],
+      sourcePath: ["BrickBuilder"],
+      sourceOccurrence: undefined,
+      allocation: { listId: choice.listId, rowId: choice.rowId },
+    });
+  });
+  return {
+    ...document,
+    updatedAt: new Date().toISOString(),
+    imported: {
+      ...(original ?? preparedByPart.values().next().value!.model),
+      edited: true, resources, legalDocuments, instances,
+    },
+  };
 }
 
 /** Geometry acquisition must never replace edits or resurrect deleted instances. */

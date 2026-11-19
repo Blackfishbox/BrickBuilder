@@ -1,4 +1,111 @@
 import { Box3, Camera, Vector3 } from "three";
+import type { Brick, BuilderDocument } from "../editor/model";
+import { brickConstructionBounds } from "../engine/construction-floor";
+import { stackingBounds } from "../engine/stacking";
+
+export interface InstructionHighlightOccurrence {
+  id: string;
+  identity: string;
+  bounds: Box3;
+}
+export interface InstructionHighlightGroup {
+  ids: string[];
+  bounds: Box3;
+}
+
+/**
+ * 0.1 stud (2 LDU): covers the intentional body clearance of local renderers
+ * (up to 0.08 stud), not a placement/snap distance. Test original occurrence
+ * bounds only: an enclosing group box must never bridge empty space.
+ */
+export const INSTRUCTION_CONTACT_TOLERANCE = 0.1;
+
+/** Presentation-only connected components, partitioned by real geometry/color. */
+export function groupInstructionHighlights(
+  occurrences: Iterable<InstructionHighlightOccurrence>,
+  highlighted: ReadonlySet<string>,
+): InstructionHighlightGroup[] {
+  const partitions = new Map<string, InstructionHighlightOccurrence[]>();
+  for (const occurrence of occurrences) {
+    if (!highlighted.has(occurrence.id) || occurrence.bounds.isEmpty()) continue;
+    const entries = partitions.get(occurrence.identity) ?? [];
+    entries.push(occurrence); partitions.set(occurrence.identity, entries);
+  }
+  const groups: InstructionHighlightGroup[] = [];
+  const tolerance = INSTRUCTION_CONTACT_TOLERANCE;
+  for (const entries of partitions.values()) {
+    const parent = entries.map((_, i) => i);
+    const root = (i: number): number => {
+      while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+      return i;
+    };
+    // Sweep the widest model axis, so distant parts do not incur an
+    // unconditional quadratic scan (including tall or long, narrow builds).
+    const extent = new Box3();
+    for (const entry of entries) extent.union(entry.bounds);
+    const size = extent.getSize(new Vector3());
+    const axis = size.x >= size.y && size.x >= size.z ? "x" : size.y >= size.z ? "y" : "z";
+    const order = entries.map((_, i) => i).sort((a, b) => entries[a].bounds.min[axis] - entries[b].bounds.min[axis]);
+    let active: number[] = [];
+    for (const i of order) {
+      const box = entries[i].bounds;
+      active = active.filter(j => entries[j].bounds.max[axis] + tolerance >= box.min[axis]);
+      for (const j of active) {
+        const other = entries[j].bounds;
+        if (box.min.x <= other.max.x + tolerance && box.max.x + tolerance >= other.min.x &&
+            box.min.y <= other.max.y + tolerance && box.max.y + tolerance >= other.min.y &&
+            box.min.z <= other.max.z + tolerance && box.max.z + tolerance >= other.min.z) {
+          parent[root(i)] = root(j);
+        }
+      }
+      active.push(i);
+    }
+    const components = new Map<number, InstructionHighlightGroup>();
+    entries.forEach((entry, i) => {
+      const key = root(i), group = components.get(key) ?? { ids: [], bounds: new Box3() };
+      group.ids.push(entry.id); group.bounds.union(entry.bounds); components.set(key, group);
+    });
+    groups.push(...components.values());
+  }
+  return groups;
+}
+
+/** Stable model-space bounds, independent of camera, material batches and view rotation. */
+export function instructionHighlightOccurrences(
+  bricks: readonly Brick[], imported?: BuilderDocument["imported"],
+): InstructionHighlightOccurrence[] {
+  const occurrences: InstructionHighlightOccurrence[] = [];
+  for (const brick of bricks) {
+    const bounds = brickConstructionBounds(brick);
+    occurrences.push({ id: brick.id, identity: JSON.stringify(["local", brick.type, brick.color.toLowerCase()]), bounds });
+  }
+  if (imported) {
+    const boxes = stackingBounds(imported);
+    for (const part of imported.instances) {
+      const bounds = boxes.get(part.id);
+      if (bounds) occurrences.push({
+        id: part.id,
+        identity: JSON.stringify(["imported", part.reference.replaceAll("\\", "/").toLowerCase(), part.colorCode]),
+        bounds,
+      });
+    }
+  }
+  return occurrences;
+}
+
+/** Union final diagram-space bounds after membership was decided in model space. */
+export function instructionGroupBounds(
+  groups: readonly InstructionHighlightGroup[], boxes: ReadonlyMap<string, Box3>,
+): Box3[] {
+  return groups.map(group => {
+    const box = new Box3();
+    for (const id of group.ids) {
+      const member = boxes.get(id);
+      if (member) box.union(member);
+    }
+    return box;
+  }).filter(box => !box.isEmpty());
+}
 
 /** Selection-style 3D bounds, projected without allocating a mesh per part. */
 export function drawInstructionOutlines(
