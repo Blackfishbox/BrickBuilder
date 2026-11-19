@@ -605,6 +605,37 @@ describe("local construction instructions", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
+  it("cancels fallback PDF rendering during geometry collection and releases its canvas", async () => {
+    const source = Array.from({ length: 13 }, (_, index) => line("3004", index * 40)).join("\n");
+    const doc = fixture(source), controller = new AbortController();
+    for (const part of doc.imported!.instances) part.part.status = "resolved";
+    doc.imported!.resources["parts/3004.dat"] = {
+      path: "parts/3004.dat", sourceUrl: "https://example.invalid/synthetic", author: "Test", license: "CC0-1.0",
+      content: "0 Synthetic PDF test triangle\n3 16 0 0 0 20 0 0 0 20 0\n",
+    };
+    const context = {
+      fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), beginPath: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(),
+    };
+    const canvas = { width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,test" };
+    let geometryCollected = false;
+    vi.stubGlobal("document", { createElement: () => canvas });
+    vi.stubGlobal("setTimeout", (callback: () => void) => {
+      geometryCollected = true;
+      controller.abort();
+      queueMicrotask(callback);
+      return 0;
+    });
+    try {
+      await expect(exportInstructionPDF(doc, doc.instructions!, { signal: controller.signal }, (document, signal) =>
+        createSoftwareInstructionRenderer(document, signal),
+      )).rejects.toThrow();
+      expect(geometryCollected).toBe(true);
+      expect(canvas.width).toBe(1);
+      expect(canvas.height).toBe(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("rejects oversized PDF fallback diagrams clearly and releases the canvas", async () => {
     const doc = fixture("1 4 0 0 0 1 0 0 0 1 0 0 0 1 oversized.dat\n");
     const part = doc.imported!.instances[0];
