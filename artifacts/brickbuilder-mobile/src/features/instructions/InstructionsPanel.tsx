@@ -175,15 +175,22 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   };
 
   const exportPdf = async () => {
+    const latestPlan = planRef.current;
+    const steps = saveAngleDraft(latestPlan.steps);
+    const exportPlan = steps === latestPlan.steps
+      ? latestPlan
+      : { ...latestPlan, edited: true, steps };
+    if (exportPlan !== latestPlan) onChange(exportPlan);
+
     const controller = new AbortController();
     abortRef.current = controller;
     setExportError(null);
-    setExporting({ done: 0, total: plan.steps.length });
+    setExporting({ done: 0, total: exportPlan.steps.length });
     try {
       // Release the interactive preview before allocating the PDF renderer.
       await new Promise(resolve => setTimeout(resolve, 0));
       controller.signal.throwIfAborted();
-      await onExportPDF(plan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
+      await onExportPDF(exportPlan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
     } catch (error) {
       if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : "PDF-Export fehlgeschlagen.");
     } finally {

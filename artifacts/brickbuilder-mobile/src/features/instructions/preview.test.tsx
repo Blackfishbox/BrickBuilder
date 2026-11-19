@@ -365,3 +365,37 @@ it("passes the enabled highlight option to PDF export", async () => {
   expect(onExportPDF).toHaveBeenCalledOnce();
   expect(onExportPDF.mock.calls[0][3]).toBe(true);
 });
+
+it("saves a focused angle edit before passing the plan to PDF export", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, source: "manual", edited: false, warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["b"], rotation: [0, 0, 0] },
+  ] };
+  let savedDocument = source;
+  const onExportPDF = vi.fn(async () => {});
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(current => {
+      const updated = updateInstructions(current, plan);
+      savedDocument = updated;
+      return updated;
+    })} onClose={() => {}} onExportPDF={onExportPDF} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+
+  await act(async () => {
+    const input = host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!;
+    input.focus();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "37");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-pdf"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+
+  expect(savedDocument.instructions?.steps[0].rotation).toEqual([37, 0, 0]);
+  expect(onExportPDF).toHaveBeenCalledOnce();
+  expect(onExportPDF.mock.calls[0][0].steps[0].rotation).toEqual([37, 0, 0]);
+});
