@@ -10,6 +10,7 @@ import * as cameraGestures from "./camera-gesture";
 import BuilderCanvas from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
+import { compilePart, worldMatrix } from "./ldraw-geometry";
 import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "./instruction-camera";
 import * as snapping from "../connections/engine";
 import type { Contact } from "../connections/types";
@@ -148,6 +149,26 @@ function currentImportedBounds(webgl: boolean): Box3 {
   return bounds;
 }
 
+function currentImportedInstanceBounds(id: string, webgl: boolean): Box3 {
+  if (webgl) {
+    const modelRoot = observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group;
+    return instanceIndex(modelRoot)!.records.get(id)!.bounds.clone();
+  }
+  return observed.scene!.instanceBounds.get(id)!.clone();
+}
+
+function transformedPartBounds(model: ImportedModel, instance: ImportedModel["instances"][number]): Box3 {
+  const bounds = new Box3(), matrix = worldMatrix(instance.matrix), point = new Vector3();
+  for (const surface of compilePart(model, instance.reference, "16")) {
+    for (const positions of [surface.positions, surface.edges]) {
+      for (let index = 0; index < positions.length; index += 3) {
+        bounds.expandByPoint(point.fromArray(positions, index).applyMatrix4(matrix));
+      }
+    }
+  }
+  return bounds;
+}
+
 function expectConstructionArea(bounds: Box3): void {
   const expected = constructionArea(bounds);
   const board = observed.scene3d!.getObjectByName("construction-floor") as import("three").Mesh;
@@ -208,22 +229,46 @@ describe("frame-coalesced drag transactions", () => {
       });
       flushFrame();
       const camera = { ...observed.cameraPose! };
-      const remote = (x: number, z: number) => ({
-        ...model.instances[0], id: "remote",
-        matrix: [1, 0, 0, x * 20, 0, 1, 0, 0, 0, 0, 1, z * 20] as Affine,
-      });
-      const renderStep = async (next: typeof model) => {
+      const remote = (x: number, z: number, rotationDegrees: number) => {
+        const angle = rotationDegrees * Math.PI / 180;
+        const cosine = Math.cos(angle), sine = Math.sin(angle);
+        return {
+          ...model.instances[0], id: "remote",
+          matrix: [cosine, 0, sine, x * 20, 0, 1, 0, 0, -sine, 0, cosine, z * 20] as Affine,
+        };
+      };
+      const renderStep = async (next: typeof model, expectedRemote?: typeof model.instances[number]) => {
         await act(async () => root.render(<BuilderCanvas {...props} imported={next} />));
         flushFrame();
-        expectConstructionArea(currentImportedBounds(webgl));
+        const bounds = currentImportedBounds(webgl);
+        expectConstructionArea(bounds);
+        if (expectedRemote) {
+          const actual = currentImportedInstanceBounds(expectedRemote.id, webgl);
+          const expected = transformedPartBounds(next, expectedRemote);
+          const unrotated = transformedPartBounds(next, {
+            ...expectedRemote, matrix: [1, 0, 0, expectedRemote.matrix[3], 0, 1, 0, 0, 0, 0, 1, expectedRemote.matrix[11]],
+          });
+          expect(expected.getSize(new Vector3()).x).not.toBeCloseTo(unrotated.getSize(new Vector3()).x, 5);
+          expect(actual.min.x).toBeLessThanOrEqual(expected.min.x + 1e-5);
+          expect(actual.max.x).toBeGreaterThanOrEqual(expected.max.x - 1e-5);
+          expect(actual.min.z).toBeLessThanOrEqual(expected.min.z + 1e-5);
+          expect(actual.max.z).toBeGreaterThanOrEqual(expected.max.z - 1e-5);
+          const area = constructionArea(bounds);
+          expect(area.minX).toBeLessThanOrEqual(actual.min.x);
+          expect(area.maxX).toBeGreaterThanOrEqual(actual.max.x);
+          expect(area.minZ).toBeLessThanOrEqual(actual.min.z);
+          expect(area.maxZ).toBeGreaterThanOrEqual(actual.max.z);
+        }
         expectCameraPose(camera);
       };
 
-      const added = { ...model, instances: [...model.instances, remote(100, -60)] };
-      await renderStep(added);
+      const addedPart = remote(100, -60, 45);
+      const added = { ...model, instances: [...model.instances, addedPart] };
+      await renderStep(added, addedPart);
+      const movedPart = remote(180, 72, 135);
       const moved = { ...added, instances: added.instances.map(instance =>
-        instance.id === "remote" ? remote(180, 72) : instance) };
-      await renderStep(moved);
+        instance.id === "remote" ? movedPart : instance) };
+      await renderStep(moved, movedPart);
       await renderStep({ ...moved, instances: moved.instances.filter(instance => instance.id !== "remote") });
     });
   }
