@@ -15,7 +15,7 @@ interface Face { id: string; points: Float32Array; color: string; alpha: number 
  * Refuse the export above a bounded CPU budget instead of omitting surfaces.
  */
 export async function createSoftwareInstructionRenderer(document: BuilderDocument, signal?: AbortSignal,
-  size = { width: 1000, height: 760, minRadius: 1 }): Promise<InstructionImageRenderer> {
+  size: { width: number; height: number; minRadius?: number } = { width: 1000, height: 760, minRadius: 1 }): Promise<InstructionImageRenderer> {
   const canvas = globalThis.document.createElement("canvas");
   canvas.width = size.width; canvas.height = size.height;
   const width = canvas.width, height = canvas.height, aspect = width / height;
@@ -64,7 +64,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     }
   }
   const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
-  const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius, bounds.getSize(new Vector3()).length() / 2);
+  const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius ?? 1, bounds.getSize(new Vector3()).length() / 2);
   const camera = new OrthographicCamera(-radius * 1.12 * aspect, radius * 1.12 * aspect,
     radius * 1.12, -radius * 1.12, 0.01, Math.max(100, radius * 12));
   camera.position.set(1.1, 0.85, 1.3).normalize().multiplyScalar(radius * 4);

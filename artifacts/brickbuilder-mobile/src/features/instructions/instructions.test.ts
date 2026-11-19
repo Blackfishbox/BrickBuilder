@@ -54,11 +54,13 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
 }
 
 function rasterCanvas(width: number, height: number) {
-  const pixels = new Uint8Array(width * height * 4), path: [number, number][] = [];
+  const pixels = new Uint8Array(width * height * 4), path: [number, number][] = [], triangleAlphas: number[] = [];
   let fillStyle = "#000000", globalAlpha = 1, filledTriangles = 0;
   const color = () => {
     const rgb = fillStyle.match(/rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)/);
-    return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : [0, 0, 0];
+    const hex = fillStyle.match(/^#([0-9a-f]{6})$/i);
+    return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] :
+      hex ? [0, 2, 4].map(offset => parseInt(hex[1].slice(offset, offset + 2), 16)) : [0, 0, 0];
   };
   const paint = (x: number, y: number, rgba: number[]) => {
     if (x < 0 || y < 0 || x >= width || y >= height) return;
@@ -86,6 +88,7 @@ function rasterCanvas(width: number, height: number) {
       filledTriangles++;
       const [a, b, c] = path, area = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
       if (!area) return;
+      triangleAlphas.push(globalAlpha);
       const rgba = color();
       const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
       const maxX = Math.min(width - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
@@ -115,7 +118,7 @@ function rasterCanvas(width: number, height: number) {
       return `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
     },
   };
-  return { canvas, get filledTriangles() { return filledTriangles; }, pixels };
+  return { canvas, get filledTriangles() { return filledTriangles; }, pixels, triangleAlphas };
 }
 
 describe("local construction instructions", () => {
@@ -435,13 +438,53 @@ describe("local construction instructions", () => {
       expect(decode(pdf.slice(0, 8))).toContain("%PDF-1.");
       expect(output).toContain("/Subtype /Image");
       expect(canvases.length).toBeGreaterThanOrEqual(3);
-      expect(canvases.some(rendered => rendered.filledTriangles > 0 &&
-        rendered.pixels.some((value, index) => index % 4 !== 3 && value !== 255))).toBe(true);
+      expect(canvases[0].filledTriangles).toBeGreaterThan(0);
+      expect(canvases[0].pixels.some((value, index) => index % 4 !== 3 && value !== 255)).toBe(true);
       expect(text).toContain("2×");
       expect(text).toContain("LDraw 3004");
       expect(text).toContain("2 neue Teile");
       expect(text).toContain("3 Teile bis zu diesem Schritt");
       expect(text).toContain("1 neue Teile");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("keeps official transparent LDraw geometry visible and blended in the PDF diagram", async () => {
+    const manifest = PART_PACKAGES.find(pkg => pkg.id === "ldraw-default-details")!;
+    const bytes = readFileSync(new URL(`../../../public/${manifest.url}`, import.meta.url));
+    const parsed = JSON.parse(new TextDecoder().decode(
+      manifest.compression === "gzip" ? gunzipSync(bytes) : bytes,
+    ));
+    const packageData = validatePayload(parsed, manifest);
+    const source = "1 43 0 0 0 1 0 0 0 1 0 0 0 1 2494.dat\n0 STEP\n";
+    const doc = fixture(source);
+    doc.imported!.resources = Object.fromEntries(packageData.files.map(file => [file.path, file]));
+    for (const part of doc.imported!.instances) part.part.status = "resolved";
+    doc.instructions = {
+      version: 1, edited: false, source: "manual", warnings: [],
+      steps: [{ id: "transparent-glass", title: "Glass", notes: "", partIds: [doc.imported!.instances[0].id] }],
+    };
+    const canvases: ReturnType<typeof rasterCanvas>[] = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const rendered = rasterCanvas(240, 182);
+        canvases.push(rendered);
+        return rendered.canvas;
+      },
+    });
+    try {
+      const pdf = await exportInstructionPDF(doc, doc.instructions!, {}, (document, signal) =>
+        createSoftwareInstructionRenderer(document, signal, { width: 240, height: 182 }),
+      );
+      const output = Buffer.from(pdf).toString("latin1");
+      const glass = packageData.files.find(file => file.path === "parts/2494.dat")!;
+      expect(glass.content).toMatch(/^0 !LDRAW_ORG Part(?: UPDATE[^\r\n]*)?$/m);
+      expect(glass.content).toContain("0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt");
+      expect(decode(pdf.slice(0, 8))).toContain("%PDF-1.");
+      expect(output).toContain("/Subtype /Image");
+      expect(canvases.length).toBeGreaterThanOrEqual(2);
+      expect(canvases[0].filledTriangles).toBeGreaterThan(0);
+      expect(canvases[0].triangleAlphas).toContain(128 / 255);
+      expect(canvases[0].pixels.some((value, index) => index % 4 !== 3 && value < 250)).toBe(true);
     } finally { vi.unstubAllGlobals(); }
   });
 
