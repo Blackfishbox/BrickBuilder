@@ -7,7 +7,6 @@ import {
   Color,
   CylinderGeometry,
   EdgesGeometry,
-  GridHelper,
   Group,
   InstancedMesh,
   LineBasicMaterial,
@@ -50,15 +49,16 @@ import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-ge
 import {
   BRICK_DEFINITIONS,
   BRICK_HEIGHT,
-  GRID_STEP,
   type Brick,
   type BrickType,
   type Position3,
   type ToolMode,
 } from "@/features/editor/model";
+import { brickConstructionBounds, constructionArea, createStudGridGeometry, type ConstructionArea } from "./construction-floor";
 
 interface BuilderCanvasProps {
   showConstructionControls?: boolean;
+  darkMode?: boolean;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
   viewCamera?: InstructionCamera;
@@ -132,6 +132,8 @@ class FallbackRenderer {
     importOffset = 0,
     interactive = false,
     instructionFocusIds?: ReadonlySet<string>,
+    floor: ConstructionArea = constructionArea(new Box3()),
+    darkMode = false,
   ): void {
     const context = this.context;
     if (!context) return;
@@ -142,7 +144,7 @@ class FallbackRenderer {
     const focalLength = (this.height / 2) / Math.tan((camera.fov * Math.PI) / 360);
     context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
     context.clearRect(0, 0, this.width, this.height);
-    context.fillStyle = "#eef1ec";
+    context.fillStyle = darkMode ? "#111a18" : "#eef1ec";
     context.fillRect(0, 0, this.width, this.height);
 
     const project = (x: number, y: number, z: number): ProjectedPoint => {
@@ -156,37 +158,37 @@ class FallbackRenderer {
     };
 
     const board = [
-      project(-8, -0.025, -8),
-      project(8, -0.025, -8),
-      project(8, -0.025, 8),
-      project(-8, -0.025, 8),
+      project(floor.minX, -0.025, floor.minZ),
+      project(floor.maxX, -0.025, floor.minZ),
+      project(floor.maxX, -0.025, floor.maxZ),
+      project(floor.minX, -0.025, floor.maxZ),
     ];
-    fillPolygon(context, board, "#e1e6df", "#d2d9d1");
+    fillPolygon(context, board, darkMode ? "#1d2b26" : "#e1e6df", darkMode ? "#31483f" : "#d2d9d1");
     context.save();
     polygonPath(context, board);
     context.clip();
     context.lineWidth = 0.7;
-    context.strokeStyle = "rgba(118, 139, 126, 0.35)";
-    for (let coordinate = -8; coordinate <= 8; coordinate += GRID_STEP) {
-      const isMajorLine = Math.abs(coordinate % 1) < 0.001;
+    context.strokeStyle = darkMode ? "rgba(144, 177, 157, 0.38)" : "rgba(118, 139, 126, 0.35)";
+    const firstX = Math.ceil(floor.minX / floor.gridStride) * floor.gridStride;
+    const lastX = Math.floor(floor.maxX / floor.gridStride) * floor.gridStride;
+    const firstZ = Math.ceil(floor.minZ / floor.gridStride) * floor.gridStride;
+    const lastZ = Math.floor(floor.maxZ / floor.gridStride) * floor.gridStride;
+    const coordinates: { axis: "x" | "z"; value: number }[] = [];
+    for (let coordinate = firstX; coordinate <= lastX; coordinate += floor.gridStride) coordinates.push({ axis: "x", value: coordinate });
+    for (let coordinate = firstZ; coordinate <= lastZ; coordinate += floor.gridStride) coordinates.push({ axis: "z", value: coordinate });
+    for (const { axis, value: coordinate } of coordinates) {
+      const isMajorLine = Math.abs(coordinate % 5) < 0.001;
       context.lineWidth = isMajorLine ? 0.7 : 0.45;
-      context.strokeStyle = isMajorLine
-        ? "rgba(118, 139, 126, 0.35)"
-        : "rgba(118, 139, 126, 0.17)";
-      const xLine = [
-        project(coordinate, -0.018, -8),
-        project(coordinate, -0.018, 8),
-      ];
-      const zLine = [
-        project(-8, -0.018, coordinate),
-        project(8, -0.018, coordinate),
-      ];
-      for (const line of [xLine, zLine]) {
-        context.beginPath();
-        context.moveTo(line[0].x, line[0].y);
-        context.lineTo(line[1].x, line[1].y);
-        context.stroke();
-      }
+      context.strokeStyle = darkMode
+        ? isMajorLine ? "rgba(144, 177, 157, 0.42)" : "rgba(144, 177, 157, 0.22)"
+        : isMajorLine ? "rgba(118, 139, 126, 0.35)" : "rgba(118, 139, 126, 0.17)";
+      const line = axis === "x"
+        ? [project(coordinate, -0.018, floor.minZ), project(coordinate, -0.018, floor.maxZ)]
+        : [project(floor.minX, -0.018, coordinate), project(floor.maxX, -0.018, coordinate)];
+      context.beginPath();
+      context.moveTo(line[0].x, line[0].y);
+      context.lineTo(line[1].x, line[1].y);
+      context.stroke();
     }
     context.restore();
 
@@ -421,6 +423,7 @@ function softwareWarning(scene: SoftwareScene): string {
 
 export function BuilderCanvas({
   showConstructionControls = true,
+  darkMode = false,
   viewRotation,
   viewCamera,
   viewStepId,
@@ -447,6 +450,9 @@ export function BuilderCanvas({
   const sceneProjectRef = useRef<string | undefined>(undefined);
   const selectionOutlineRef = useRef<Box3Helper | null>(null);
   const importedBoundsRef = useRef<Box3 | null>(null);
+  const constructionAreaRef = useRef<ConstructionArea>(constructionArea(new Box3()));
+  const constructionBoundsRef = useRef(new Box3());
+  const refreshConstructionAreaRef = useRef<((candidate?: Box3) => void) | null>(null);
   const softwareSceneRef = useRef<SoftwareScene | undefined>(undefined);
   const importedOffsetRef = useRef(0);
   const interactionTimeRef = useRef(-Infinity);
@@ -523,6 +529,7 @@ export function BuilderCanvas({
   };
   const raycasterRef = useRef(new Raycaster());
   const propsRef = useRef({
+    darkMode,
     viewRotation,
     viewCamera, onViewCameraChange,
     instructionFocusIds,
@@ -563,6 +570,7 @@ export function BuilderCanvas({
   };
 
   propsRef.current = {
+    darkMode,
     viewRotation,
     viewCamera, onViewCameraChange,
     instructionFocusIds,
@@ -583,7 +591,7 @@ export function BuilderCanvas({
     if (!host) return;
 
     const scene = new Scene();
-    scene.background = new Color("#eef1ec");
+    scene.background = new Color(darkMode ? "#111a18" : "#eef1ec");
     const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
     let renderer: WebGLRenderer | FallbackRenderer;
     const renderCanvas = document.createElement("canvas");
@@ -625,16 +633,64 @@ export function BuilderCanvas({
 
     scene.add(createBuilderLighting());
 
-    const board = new Mesh(
-      new BoxGeometry(34, 0.14, 34),
-      new MeshLambertMaterial({ color: "#e1e6df" }),
-    );
+    const boardMaterial = new MeshLambertMaterial({ color: darkMode ? "#1d2b26" : "#e1e6df" });
+    const board = new Mesh(new BoxGeometry(34, 0.14, 34), boardMaterial);
+    board.name = "construction-floor";
     board.position.y = -0.1;
     board.receiveShadow = true;
     scene.add(board);
-    const grid = new GridHelper(34, 34, 0x96a99d, 0xc5cec7);
+    const gridMaterial = new LineBasicMaterial({
+      color: darkMode ? "#91ad9b" : "#96a99d",
+      transparent: true,
+      opacity: darkMode ? 0.72 : 0.62,
+    });
+    const grid = new LineSegments(createStudGridGeometry(constructionArea(new Box3())), gridMaterial);
+    grid.name = "construction-grid";
     grid.position.y = -0.025;
     scene.add(grid);
+    let floorSignature = "";
+    const refreshConstructionArea = (candidate?: Box3) => {
+      const bounds = candidate
+        ? constructionBoundsRef.current.clone().union(candidate)
+        : new Box3();
+      if (!candidate) {
+        for (const brick of propsRef.current.bricks) bounds.union(brickConstructionBounds(brick));
+        const model = propsRef.current.imported;
+        if (model && sceneModelRef.current === model) {
+          const root = importedRootRef.current;
+          if (root) {
+            root.updateMatrixWorld(true);
+            const index = instanceIndex(root);
+            for (const entry of index?.records.values() ?? []) {
+              if (!entry.bounds.isEmpty()) bounds.union(entry.bounds.clone().applyMatrix4(root.matrixWorld));
+            }
+          } else if (softwareSceneRef.current) {
+            const offset = new Vector3(0, importedOffsetRef.current, 0);
+            for (const instanceBounds of softwareSceneRef.current.instanceBounds.values()) {
+              bounds.union(instanceBounds.clone().translate(offset));
+            }
+          }
+        }
+        constructionBoundsRef.current.copy(bounds);
+      } else {
+        constructionBoundsRef.current.union(candidate);
+      }
+      const area = constructionArea(bounds);
+      const signature = [area.minX, area.maxX, area.minZ, area.maxZ, area.gridStride].join(":");
+      if (signature === floorSignature) return;
+      floorSignature = signature;
+      constructionAreaRef.current = area;
+      const previousBoardGeometry = board.geometry;
+      board.geometry = new BoxGeometry(area.width, 0.14, area.depth);
+      board.position.set(area.centerX, -0.1, area.centerZ);
+      previousBoardGeometry.dispose();
+      const previousGridGeometry = grid.geometry;
+      grid.geometry = createStudGridGeometry(area);
+      previousGridGeometry.dispose();
+      invalidatorRef.current?.();
+    };
+    refreshConstructionAreaRef.current = refreshConstructionArea;
+    refreshConstructionArea();
 
     const brickRoot = new Group();
     scene.add(brickRoot);
@@ -687,6 +743,8 @@ export function BuilderCanvas({
             importedOffsetRef.current,
             interactive,
             propsRef.current.instructionFocusIds,
+            constructionAreaRef.current,
+            propsRef.current.darkMode,
           );
         }
         overlay.draw(camera, importedOffsetRef.current, id => {
@@ -763,8 +821,22 @@ export function BuilderCanvas({
       cameraRef.current = null;
       rendererRef.current = null;
       brickRootRef.current = null;
+      refreshConstructionAreaRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const board = scene?.getObjectByName("construction-floor");
+    const grid = scene?.getObjectByName("construction-grid");
+    if (!scene || !(board instanceof Mesh) || !(board.material instanceof MeshLambertMaterial) ||
+      !(grid instanceof LineSegments) || !(grid.material instanceof LineBasicMaterial)) return;
+    scene.background = new Color(darkMode ? "#111a18" : "#eef1ec");
+    board.material.color.set(darkMode ? "#1d2b26" : "#e1e6df");
+    grid.material.color.set(darkMode ? "#91ad9b" : "#96a99d");
+    grid.material.opacity = darkMode ? 0.72 : 0.62;
+    invalidatorRef.current?.();
+  }, [darkMode]);
 
   useEffect(() => {
     invalidatorRef.current?.();
@@ -793,6 +865,7 @@ export function BuilderCanvas({
           refreshInstructionFocus();
           sceneModelRef.current = imported;
           setSceneStatus(null);
+          refreshConstructionAreaRef.current?.();
           if (software) setRenderWarning(softwareWarning(software));
           updateImportedSelection();
           refreshConnections();
@@ -809,6 +882,7 @@ export function BuilderCanvas({
         if (updateSoftwareScene(softwareSceneRef.current, imported)) {
           refreshInstructionFocus();
           sceneModelRef.current = imported; setSceneStatus(null);
+          refreshConstructionAreaRef.current?.();
           refreshConnections();
           setRenderWarning(softwareWarning(softwareSceneRef.current));
           invalidatorRef.current?.(); return;
@@ -826,6 +900,7 @@ export function BuilderCanvas({
         importedBoundsRef.current = null; importedOffsetRef.current = 0; sceneModelRef.current = undefined;
         updateImportedSelection();
         refreshConnections();
+        refreshConstructionAreaRef.current?.();
         return;
       }
       let lastProgress = 0;
@@ -902,6 +977,7 @@ export function BuilderCanvas({
         }
       }
       if (root) { scene.add(root); importedRootRef.current = root; }
+      refreshConstructionAreaRef.current?.();
       refreshInstructionFocus();
       updateImportedSelection();
       refreshConnections();
@@ -1004,6 +1080,7 @@ export function BuilderCanvas({
 
     scene.add(nextRoot);
     brickRootRef.current = nextRoot;
+    refreshConstructionAreaRef.current?.();
     refreshInstructionFocus();
     invalidatorRef.current?.();
   }, [bricks, selectedId]);
@@ -1100,6 +1177,7 @@ export function BuilderCanvas({
       }
       previewBrickRef.current = null;
       dragRef.current = null; clickRef.current = null;
+      refreshConstructionAreaRef.current?.();
       if (overlayRef.current) overlayRef.current.contacts = [];
       setConnectionStatus("");
       updateImportedSelection();
@@ -1153,7 +1231,22 @@ export function BuilderCanvas({
           updateImportedSelection();
         } else {
           const brick = propsRef.current.bricks.find(value => value.id === drag.id);
-          if (brick) { previewBrickRef.current = { ...brick, ...position }; applyBrickPreview(previewBrickRef.current); }
+          if (brick) {
+            previewBrickRef.current = { ...brick, ...position };
+            applyBrickPreview(previewBrickRef.current);
+            refreshConstructionAreaRef.current?.(brickConstructionBounds(previewBrickRef.current));
+          }
+        }
+        if (drag.matrix) {
+          const root = importedRootRef.current;
+          const record = root && instanceIndex(root)?.records.get(drag.id);
+          if (record && !record.bounds.isEmpty()) {
+            root.updateMatrixWorld(true);
+            refreshConstructionAreaRef.current?.(record.bounds.clone().applyMatrix4(root.matrixWorld));
+          } else {
+            const bounds = softwareSceneRef.current?.instanceBounds.get(drag.id);
+            if (bounds) refreshConstructionAreaRef.current?.(bounds.clone().translate(new Vector3(0, importedOffsetRef.current, 0)));
+          }
         }
       };
       interactionTimeRef.current = performance.now();
