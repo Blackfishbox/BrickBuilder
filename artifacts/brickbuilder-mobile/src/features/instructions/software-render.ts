@@ -1,6 +1,7 @@
 import { Box3, BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
 import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor/model";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
+import { instructionDisplayColor } from "../engine/instruction-focus";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
 
@@ -69,7 +70,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   const a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3();
   const light = new Vector3(0.4, 0.8, 0.5).normalize(), color = new Color();
   return {
-    image(visible, step) {
+    image(visible, step, highlightIds) {
       signal?.throwIfAborted();
       const rotation = new Matrix4().makeRotationFromEuler(new Euler(
         ...(step.rotation ?? [0, 0, 0]).map(angle => angle * Math.PI / 180) as [number, number, number],
@@ -82,11 +83,13 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         c.fromArray(face.points, 6).sub(center).applyMatrix4(rotation);
         normal.copy(b).sub(a).cross(vertex.copy(c).sub(a)).normalize();
         const shade = 0.58 + 0.42 * Math.abs(normal.dot(light));
+        color.set(face.color);
+        if (highlightIds !== undefined) instructionDisplayColor(color, highlightIds.has(face.id));
         a.project(camera); b.project(camera); c.project(camera);
         projected.push({
           points: [(a.x + 1) * width / 2, (1 - a.y) * height / 2, (b.x + 1) * width / 2, (1 - b.y) * height / 2, (c.x + 1) * width / 2, (1 - c.y) * height / 2],
           depth: (a.z + b.z + c.z) / 3,
-          color: color.set(face.color).multiplyScalar(shade).getStyle(), alpha: face.alpha,
+          color: color.multiplyScalar(shade).getStyle(), alpha: face.alpha,
         });
       }
       projected.sort((left, right) => right.depth - left.depth);
