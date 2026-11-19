@@ -5,37 +5,38 @@ import { pathToFileURL } from "node:url";
 const workflowName = "Build and publish closed Google Play test";
 const outputDirectory = "generated-artifacts/google-play/whatsnew";
 
-// Summaries describe changed areas, not unverified fixes or translated commit titles.
-const areas = [
-  [/\/instructions\//i, "Bauanleitungen und PDF-Export überarbeitet."],
-  [/\/(?:import|export|inventory)\b|\/formats?\//i, "Import, Export und BrickLink-Teilelisten überarbeitet."],
-  [/\/(?:catalog|parts|colors?|color-evidence)\b|ldraw|geometry|thumbnail/i, "Teilesuche, Farben und Geometrien überarbeitet."],
-  [/\/(?:engine|connections|editor)\b|snapping|camera|gesture/i, "3D-Bauen, Verbindungen und Touch-Bedienung überarbeitet."],
-  [/\/(?:storage|projects|offline)\b|service.worker|indexeddb/i, "Lokale Speicherung und Offline-Nutzung überarbeitet."],
-  [/\/privacy\b|privacy[.-]/i, "Datenschutzhinweise aktualisiert."],
-  [/\/platform\b|\/android\/|capacitor/i, "Android-Integration und Geräteunterstützung überarbeitet."],
-  [/\.github\/workflows\/|scripts\/android\/play-release-notes/i, "Bereitstellung neuer Versionen im geschlossenen Test verbessert."],
-  [/\.(?:css|tsx)$/i, "Benutzeroberfläche und Bedienung überarbeitet."],
-];
+const RELEASE_NOTE_TRAILER = "Release-Notes-DE";
 
-export function summarizeChangedPaths(paths) {
-  const remaining = new Set(paths.filter(Boolean));
-  const lines = [];
-  for (const [pattern, text] of areas) {
-    const matches = [...remaining].filter((path) => pattern.test(path));
-    if (matches.length) {
-      lines.push(text);
-      matches.forEach((path) => remaining.delete(path));
+/** Every non-merge commit since the previous successful Play release must state its actual user-visible change. */
+export function summarizeCommitMessages(messages) {
+  if (!messages.length) {
+    throw new Error("No commits found for this release. Add German release notes or provide them manually.");
+  }
+  const notes = [], seen = new Set();
+  for (const message of messages) {
+    const subject = message.split(/\r?\n/, 1)[0].trim() || "(commit without subject)";
+    const trailers = [...message.matchAll(/^Release-Notes-DE:\s*(.*?)\s*$/gim)];
+    if (trailers.length !== 1 || !trailers[0][1].trim()) {
+      throw new Error(
+        `Commit "${subject}" must contain exactly one "${RELEASE_NOTE_TRAILER}: <konkrete deutsche Änderung>" trailer. ` +
+        "Do not substitute a generic summary based only on changed file paths.",
+      );
     }
+    const note = validateNotes(trailers[0][1]);
+    if (note.includes("\n")) {
+      throw new Error(`Release note for "${subject}" must fit on one line.`);
+    }
+    const key = note.replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+    if (!seen.has(key)) { seen.add(key); notes.push(note); }
   }
-  if (remaining.size) lines.push("Weitere Wartungsarbeiten und Aktualisierungen.");
-  if (!lines.length) lines.push("Erneute Bereitstellung des aktuellen Stands für den geschlossenen Test.");
-  const summary = lines.map((line) => `• ${line}`);
-  if ([...summary.join("\n")].length > 500) {
-    while (Array.from([...summary, "• Weitere Funktionsbereiche überarbeitet."].join("\n")).length > 500) summary.pop();
-    summary.push("• Weitere Funktionsbereiche überarbeitet.");
+  const result = notes.map(note => `• ${note}`).join("\n");
+  if ([...result].length > 500) {
+    throw new Error(
+      `Combined German release notes are ${[...result].length} characters; Google Play allows 500. ` +
+      "Shorten or deduplicate the commit trailers.",
+    );
   }
-  return validateNotes(summary.join("\n"));
+  return validateNotes(result);
 }
 
 export function validateNotes(text) {
@@ -84,11 +85,13 @@ export async function previousPublishedCommit(env, fetchImpl = fetch) {
   throw new Error("Previous published release not found within 1,000 successful runs. Review the release baseline.");
 }
 
-export function changedPaths(base, git = (...args) => execFileSync("git", args, { encoding: "utf8" })) {
+export function releaseNotesSince(base, git = (...args) => execFileSync("git", args, { encoding: "utf8" })) {
+  // Include every intervening commit, not just commits after the last workflow run:
+  // failed builds have not been published and their changes still belong in the next release.
   const output = base
-    ? git("diff", "--name-only", "-z", base, "HEAD", "--")
-    : git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", "HEAD");
-  return output.split("\0").filter(Boolean);
+    ? git("log", "--no-merges", "--reverse", "--format=%B%x00", `${base}..HEAD`, "--")
+    : git("log", "--no-merges", "-1", "--format=%B%x00", "HEAD", "--");
+  return summarizeCommitMessages(output.split("\0").map(message => message.trim()).filter(Boolean));
 }
 
 async function main() {
@@ -97,11 +100,11 @@ async function main() {
   if (!base) {
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
     if (/^[0-9a-f]{40}$/.test(event.before || "") && !/^0+$/.test(event.before)) base = event.before;
-    console.log("No earlier automated Play release: using this push's changes (or HEAD for manual runs).");
+    console.log("No earlier automated Play release: using this push's first commit as the note baseline.");
   }
   const notes = process.env.PLAY_RELEASE_NOTES_DE?.trim()
     ? validateNotes(process.env.PLAY_RELEASE_NOTES_DE)
-    : summarizeChangedPaths(changedPaths(base));
+    : releaseNotesSince(base);
   mkdirSync(outputDirectory, { recursive: true });
   writeFileSync(`${outputDirectory}/whatsnew-de-DE`, `${notes}\n`);
   console.log(`German release notes:\n${notes}`);
