@@ -12,6 +12,7 @@ export class ConnectionOverlay {
   contacts: Contact[] = [];
   previews: Contact[] = [];
   floating = new Map<string, Box3>();
+  collisions = new Map<string, Box3>();
   visible = true;
   constructor(host: HTMLElement) {
     this.canvas.dataset.testid = "connection-overlay";
@@ -63,7 +64,9 @@ export class ConnectionOverlay {
     }
     // Always show floating warnings, independently of the connection toggle.
     context.strokeStyle = "#c52236"; context.lineWidth = 2;
-    for (const [id, fallback] of this.floating) {
+    for (const [id, fallback] of new Map([...this.floating, ...this.collisions])) {
+      const color = this.collisions.has(id) ? "#e87918" : "#c52236";
+      context.strokeStyle = color;
       const box = bounds(id) ?? fallback;
       const points = [];
       for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z])
@@ -73,7 +76,7 @@ export class ConnectionOverlay {
       const x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y;
       if (x + w < 0 || y + h < 0 || x > width || y > height) continue;
       context.strokeRect(x - 2, y - 2, w + 4, h + 4);
-      context.fillStyle = "#c52236"; context.fillRect(x - 2, y - 16, 14, 14);
+      context.fillStyle = color; context.fillRect(x - 2, y - 16, 14, 14);
       context.fillStyle = "#fff"; context.font = "bold 12px sans-serif"; context.fillText("!", x + 3, y - 5);
     }
     const outlined = new Set<string>();
@@ -125,5 +128,5 @@ export class ConnectionOverlay {
       context.restore();
     }
   }
-  dispose(): void { this.contacts = []; this.previews = []; this.floating.clear(); this.canvas.remove(); }
+  dispose(): void { this.contacts = []; this.previews = []; this.floating.clear(); this.collisions.clear(); this.canvas.remove(); }
 }
