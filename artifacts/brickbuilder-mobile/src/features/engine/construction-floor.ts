@@ -1,5 +1,6 @@
 import { Box3, BufferGeometry, Float32BufferAttribute, Vector3 } from "three";
-import { BRICK_DEFINITIONS, BRICK_HEIGHT, type Brick } from "../editor/model";
+import type { Brick } from "../editor/model";
+import { brickBounds } from "../editor/brick-transform";
 
 export const MAX_STUD_GRID_LINES = 201;
 export const CONSTRUCTION_FLOOR_MARGIN = 3;
@@ -18,23 +19,7 @@ export interface ConstructionArea {
 }
 
 export function brickConstructionBounds(brick: Brick): Box3 {
-  const definition = BRICK_DEFINITIONS[brick.type];
-  const angle = brick.rotation * Math.PI / 180;
-  const bounds = new Box3();
-  for (const [localX, localZ] of [
-    [-definition.studsX / 2, -definition.studsZ / 2],
-    [definition.studsX / 2, -definition.studsZ / 2],
-    [definition.studsX / 2, definition.studsZ / 2],
-    [-definition.studsX / 2, definition.studsZ / 2],
-  ]) {
-    bounds.expandByPoint(new Vector3(
-      brick.x + localX * Math.cos(angle) + localZ * Math.sin(angle),
-      brick.y,
-      brick.z - localX * Math.sin(angle) + localZ * Math.cos(angle),
-    ));
-  }
-  bounds.max.y += BRICK_HEIGHT;
-  return bounds;
+  return brickBounds(brick);
 }
 
 /** Keep the empty workspace familiar; grow populated workspaces in whole studs. */

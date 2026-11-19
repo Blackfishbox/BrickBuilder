@@ -30,6 +30,8 @@ const schema = z.object({
   bricks: z.array(z.object({
     id: z.string(), type: z.enum(["brick-2x4", "brick-2x2", "brick-1x2"]),
     color: z.string().regex(/^#[0-9a-f]{6}$/i), x: finite, y: finite, z: finite, rotation: finite,
+    tiltX: z.number().finite().min(-180).max(180).optional(),
+    tiltZ: z.number().finite().min(-180).max(180).optional(),
   })).max(10000),
   imported: z.object({
     version: z.literal(1), format: z.enum(["io", "ldr", "mpd"]), sourceName: z.string(),
@@ -40,6 +42,9 @@ const schema = z.object({
     instances: z.array(z.object({
       id: z.string(), reference: z.string().max(240).regex(/^[a-z0-9_ /.-]+\.dat$/i), colorCode: z.string().regex(/^(?:\d+|0x2[0-9a-f]{6})$/i),
       matrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]),
+      tiltX: z.number().finite().min(-180).max(180).optional(),
+      tiltZ: z.number().finite().min(-180).max(180).optional(),
+      tiltBaseMatrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]).optional(),
       sourcePath: z.array(z.string()),
       allocation: allocationSchema.optional(),
       sourceOccurrence: z.array(z.number().int().nonnegative()).max(49).optional(),

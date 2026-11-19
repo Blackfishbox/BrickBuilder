@@ -102,7 +102,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         stud.position.set(x - (definition.studsX - 1) / 2, BRICK_HEIGHT + 0.09, z - (definition.studsZ - 1) / 2);
         group.add(stud);
       }
-      group.position.set(part.x, part.y, part.z); group.rotation.y = part.rotation * Math.PI / 180;
+      group.position.set(part.x, part.y, part.z);
+      group.rotation.set((part.tiltX ?? 0) * Math.PI / 180, part.rotation * Math.PI / 180, (part.tiltZ ?? 0) * Math.PI / 180, "XYZ");
       assembly.add(group);
     }
     const bounds = new Box3().setFromObject(assembly);

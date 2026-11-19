@@ -59,6 +59,7 @@ import {
   type Position3,
   type ToolMode,
 } from "@/features/editor/model";
+import { brickTransformMatrix } from "@/features/editor/brick-transform";
 import { brickConstructionBounds, constructionArea, createStudGridGeometry, type ConstructionArea } from "./construction-floor";
 
 interface BuilderCanvasProps {
@@ -238,63 +239,63 @@ class FallbackRenderer {
       if (center.depth < 0.1 || center.x < -96 || center.x > this.width + 96 || center.y < -96 || center.y > this.height + 96) continue;
       if (visibleBricks++ >= (interactive ? 300 : 1200) && brick.id !== selectedId) continue;
       const definition = BRICK_DEFINITIONS[brick.type];
-      const theta = (brick.rotation * Math.PI) / 180;
+      const transform = brickTransformMatrix(brick);
       const corners = [
         [-definition.studsX / 2, -definition.studsZ / 2],
         [definition.studsX / 2, -definition.studsZ / 2],
         [definition.studsX / 2, definition.studsZ / 2],
         [-definition.studsX / 2, definition.studsZ / 2],
-      ].map(([localX, localZ]) => ({
-        x: brick.x + localX * Math.cos(theta) + localZ * Math.sin(theta),
-        z: brick.z - localX * Math.sin(theta) + localZ * Math.cos(theta),
-      }));
-      const bottom = corners.map(({ x, z }) => project(x, brick.y, z));
-      const topY = brick.y + BRICK_HEIGHT - 0.08;
-      const top = corners.map(({ x, z }) => project(x, topY, z));
+      ].map(([x, z]) => new Vector3(x, 0, z).applyMatrix4(transform));
+      const bodyHeight = BRICK_HEIGHT - 0.08;
+      const topWorld = [
+        [-definition.studsX / 2, -definition.studsZ / 2],
+        [definition.studsX / 2, -definition.studsZ / 2],
+        [definition.studsX / 2, definition.studsZ / 2],
+        [-definition.studsX / 2, definition.studsZ / 2],
+      ].map(([x, z]) => new Vector3(x, bodyHeight, z).applyMatrix4(transform));
+      const bottom = corners.map(point => project(point.x, point.y, point.z));
+      const top = topWorld.map(point => project(point.x, point.y, point.z));
       const color = new Color(brick.color);
       if (instructionFocusIds !== undefined) instructionDisplayColor(color, instructionFocusIds.has(brick.id));
-      const cameraDirection = new Vector2(
-        camera.position.x - brick.x,
-        camera.position.z - brick.z,
-      );
-      const visibleSides = corners
-        .map((corner, index) => {
-          const next = corners[(index + 1) % corners.length];
-          const dx = next.x - corner.x;
-          const dz = next.z - corner.z;
-          const normal = new Vector2(dz, -dx);
-          const towardCamera = normal.dot(cameraDirection);
-          const face = [
-            bottom[index],
-            bottom[(index + 1) % bottom.length],
-            top[(index + 1) % top.length],
-            top[index],
-          ];
-          const centerDepth = face.reduce((sum, point) => sum + point.depth, 0) / face.length;
-          return { face, towardCamera, centerDepth };
-        })
-        .filter((side) => side.towardCamera > 0)
+      const sideNormals = [
+        new Vector3(0, 0, -1), new Vector3(1, 0, 0),
+        new Vector3(0, 0, 1), new Vector3(-1, 0, 0),
+      ];
+      const visibleSides = sideNormals.map((normal, index) => {
+        const worldNormal = normal.transformDirection(transform);
+        const face = [
+          bottom[index],
+          bottom[(index + 1) % bottom.length],
+          top[(index + 1) % top.length],
+          top[index],
+        ];
+        const center = corners[index].clone().add(corners[(index + 1) % corners.length])
+          .add(topWorld[(index + 1) % topWorld.length]).add(topWorld[index]).multiplyScalar(0.25);
+        const towardCamera = worldNormal.dot(new Vector3().subVectors(camera.position, center));
+        const centerDepth = face.reduce((sum, point) => sum + point.depth, 0) / face.length;
+        return { face, towardCamera, centerDepth };
+      })
+        .filter(side => side.towardCamera > 0)
         .sort((first, second) => second.centerDepth - first.centerDepth);
       for (const [index, side] of visibleSides.entries()) {
         const shade = index === 0 ? 0.72 : 0.84;
         fillPolygon(context, side.face, color.clone().multiplyScalar(shade).getStyle(), "#7d453b");
       }
-      fillPolygon(
-        context,
-        top,
-        color.clone().lerp(new Color("#ffffff"), 0.12).getStyle(),
-        "#75433a",
-      );
+      fillPolygon(context, top, color.clone().lerp(new Color("#ffffff"), 0.12).getStyle(), "#75433a");
 
       for (let x = 0; x < definition.studsX; x += 1) {
         for (let z = 0; z < definition.studsZ; z += 1) {
           const localX = x - (definition.studsX - 1) / 2;
           const localZ = z - (definition.studsZ - 1) / 2;
-          const worldX = brick.x + localX * Math.cos(theta) + localZ * Math.sin(theta);
-          const worldZ = brick.z - localX * Math.sin(theta) + localZ * Math.cos(theta);
-          const center = project(worldX, brick.y + BRICK_HEIGHT, worldZ);
-          const radiusPoint = project(worldX + 0.22, brick.y + BRICK_HEIGHT, worldZ);
-          const radius = Math.max(1.6, Math.min(8, Math.abs(radiusPoint.x - center.x)));
+          const world = new Vector3(localX, BRICK_HEIGHT, localZ).applyMatrix4(transform);
+          const center = project(world.x, world.y, world.z);
+          const radiusXPoint = new Vector3(localX + 0.22, BRICK_HEIGHT, localZ).applyMatrix4(transform);
+          const radiusZPoint = new Vector3(localX, BRICK_HEIGHT, localZ + 0.22).applyMatrix4(transform);
+          const projectedX = project(radiusXPoint.x, radiusXPoint.y, radiusXPoint.z);
+          const projectedZ = project(radiusZPoint.x, radiusZPoint.y, radiusZPoint.z);
+          const radiusX = Math.hypot(projectedX.x - center.x, projectedX.y - center.y);
+          const radiusZ = Math.hypot(projectedZ.x - center.x, projectedZ.y - center.y);
+          const radius = Math.max(1.6, Math.min(8, (radiusX + radiusZ) / 2));
           context.beginPath();
           context.ellipse(center.x, center.y, radius, Math.max(1.4, radius * 0.62), 0, 0, Math.PI * 2);
           context.fillStyle = color.clone().lerp(new Color("#ffffff"), 0.24).getStyle();
@@ -306,9 +307,15 @@ class FallbackRenderer {
       }
 
       if (selectedId === brick.id) {
-        const selectionTop = corners.map(({ x, z }) =>
-          project(x, brick.y + BRICK_HEIGHT + 0.18, z),
-        );
+        const selectionTop = [
+          [-definition.studsX / 2, -definition.studsZ / 2],
+          [definition.studsX / 2, -definition.studsZ / 2],
+          [definition.studsX / 2, definition.studsZ / 2],
+          [-definition.studsX / 2, definition.studsZ / 2],
+        ].map(([x, z]) => {
+          const point = new Vector3(x, BRICK_HEIGHT + 0.18, z).applyMatrix4(transform);
+          return project(point.x, point.y, point.z);
+        });
         polygonPath(context, selectionTop);
         context.strokeStyle = "#b84e37";
         context.lineWidth = 2;
@@ -410,15 +417,6 @@ function fitImportedView(
   camera.far = Math.max(2000, (state.distance + radius) * 8);
   camera.updateProjectionMatrix();
   makeCameraPosition(camera, state.target, state.theta, state.phi, state.distance);
-}
-
-function getFootprint(brick: Brick) {
-  const definition = BRICK_DEFINITIONS[brick.type];
-  const swapped = Math.abs(brick.rotation % 180) === 90;
-  return {
-    width: swapped ? definition.studsZ : definition.studsX,
-    depth: swapped ? definition.studsX : definition.studsZ,
-  };
 }
 
 function softwareWarning(scene: SoftwareScene): string {
@@ -770,9 +768,9 @@ export function BuilderCanvas({
             else {
               const brick = propsRef.current.bricks.find(b => b.id === id);
               if (brick) {
-                const size = getFootprint(brick);
-                boxes.push(new Box3(new Vector3(brick.x - size.width / 2, brick.y, brick.z - size.depth / 2),
-                  new Vector3(brick.x + size.width / 2, brick.y + BRICK_HEIGHT + 0.24, brick.z + size.depth / 2)));
+                const bounds = brickConstructionBounds(brick);
+                bounds.max.y += 0.24;
+                boxes.push(bounds);
               }
             }
           }
@@ -1061,7 +1059,12 @@ export function BuilderCanvas({
       instances.name = `brick-group-${first.type}`;
       groupBricks.forEach((brick, index) => {
         dummy.position.set(brick.x, brick.y, brick.z);
-        dummy.rotation.set(0, (brick.rotation * Math.PI) / 180, 0);
+        dummy.rotation.set(
+          (brick.tiltX ?? 0) * Math.PI / 180,
+          brick.rotation * Math.PI / 180,
+          (brick.tiltZ ?? 0) * Math.PI / 180,
+          "XYZ",
+        );
         dummy.updateMatrix();
         instances.setMatrixAt(index, dummy.matrix);
       });
@@ -1071,7 +1074,7 @@ export function BuilderCanvas({
 
     const selected = bricks.find((brick) => brick.id === selectedId);
     if (selected) {
-      const { width, depth } = getFootprint(selected);
+      const { studsX: width, studsZ: depth } = BRICK_DEFINITIONS[selected.type];
       const outlineHeight = BRICK_HEIGHT + 0.24;
       const outlineGeometry = new EdgesGeometry(
         new BoxGeometry(width + 0.1, outlineHeight, depth + 0.1),
@@ -1082,7 +1085,12 @@ export function BuilderCanvas({
         new LineBasicMaterial({ color: "#b84e37", transparent: true, opacity: 0.9 }),
       );
       outline.position.set(selected.x, selected.y, selected.z);
-      outline.rotation.y = (selected.rotation * Math.PI) / 180;
+      outline.rotation.set(
+        (selected.tiltX ?? 0) * Math.PI / 180,
+        selected.rotation * Math.PI / 180,
+        (selected.tiltZ ?? 0) * Math.PI / 180,
+        "XYZ",
+      );
       outline.userData.isSelectionOutline = true;
       nextRoot.add(outline);
     }
@@ -1194,17 +1202,31 @@ export function BuilderCanvas({
     rollbackRef.current = rollback;
     const applyBrickPreview = (brick: Brick) => {
       const dummy = new Object3D();
-      dummy.position.set(brick.x, brick.y, brick.z); dummy.rotation.y = brick.rotation * Math.PI / 180; dummy.updateMatrix();
+      dummy.position.set(brick.x, brick.y, brick.z);
+      dummy.rotation.set((brick.tiltX ?? 0) * Math.PI / 180, brick.rotation * Math.PI / 180, (brick.tiltZ ?? 0) * Math.PI / 180, "XYZ");
+      dummy.updateMatrix();
       for (const child of brickRootRef.current?.children ?? []) {
         if (child instanceof InstancedMesh) {
           const index = (child.userData.brickIds as string[]).indexOf(brick.id);
           if (index >= 0) { child.setMatrixAt(index, dummy.matrix); child.instanceMatrix.needsUpdate = true; child.boundingSphere = null; }
-        } else if (child.userData.isSelectionOutline) child.position.set(brick.x, brick.y, brick.z);
+        } else if (child.userData.isSelectionOutline) {
+          child.position.set(brick.x, brick.y, brick.z);
+          child.rotation.set((brick.tiltX ?? 0) * Math.PI / 180, brick.rotation * Math.PI / 180, (brick.tiltZ ?? 0) * Math.PI / 180, "XYZ");
+        }
       }
     };
     const resolveDrag = (drag: DragCandidate) => {
       if (!drag.destination || !drag.needsSnap) return;
       if (drag.matrix && propsRef.current.imported) {
+        const movingInstance = propsRef.current.imported.instances.find(instance => instance.id === drag.id);
+        if (movingInstance?.tiltX || movingInstance?.tiltZ) {
+          drag.needsSnap = false;
+          drag.magneticLatch = undefined;
+          drag.connection = undefined;
+          if (overlayRef.current) overlayRef.current.contacts = [];
+          setConnectionStatus("Neigung aktiv · freie Platzierung, Einrasten aus");
+          return;
+        }
         const offset = importedOffsetRef.current;
         const magnetic = magneticConstructionTransform(propsRef.current.imported, drag.id,
           { ...drag.destination, y: drag.destination.y - offset }, drag.magneticLatch);
