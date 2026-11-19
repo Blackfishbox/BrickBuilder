@@ -12,7 +12,7 @@ interface Props {
   document: BuilderDocument;
   onChange: (plan: InstructionPlan) => void;
   onClose: () => void;
-  onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal) => Promise<void>;
+  onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
 }
 
 interface PartInfo { id: string; label: string; color: string }
@@ -110,7 +110,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
       // Release the interactive preview before allocating the PDF renderer.
       await new Promise(resolve => setTimeout(resolve, 0));
       controller.signal.throwIfAborted();
-      await onExportPDF(plan, (done, total) => setExporting({ done, total }), controller.signal);
+      await onExportPDF(plan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
     } catch (error) {
       if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : "PDF-Export fehlgeschlagen.");
     } finally {
@@ -214,7 +214,7 @@ export default function InstructionsPanel({ document, onChange, onClose, onExpor
             </button>
             {highlight && <p className="ins-hint" data-testid="text-instructions-highlight-legend">
               Türkis: aktueller Schritt ({step.partIds.length} Teile). Hellgrau: bereits verbaut.
-              Nur die 3D-Vorschau wird markiert; Teile ohne Geometrie bleiben in der Teileliste.
+              Diese Hervorhebung wird auch in die PDF übernommen. Teile ohne Geometrie bleiben in der Teileliste.
             </p>}
             <div className="ins-row">
               <label className="ins-field ins-grow">

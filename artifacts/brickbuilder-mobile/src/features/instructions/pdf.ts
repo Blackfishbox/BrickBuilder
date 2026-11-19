@@ -10,6 +10,7 @@ import { drawInstructionPartBox } from "./pdf-parts";
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
+  highlight?: boolean;
 }
 
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
@@ -41,7 +42,8 @@ export async function exportInstructionPDF(
       const groups = instructionPartGroups(document, step.partIds);
       imageY += await drawInstructionPartBox(pdf, document, groups.slice(0, 12), imageY, options.signal, renderPart) + 4;
       step.partIds.forEach(id => visible.add(id));
-      pdf.addImage(renderer.image(visible, step), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
+      const highlightIds = options.highlight ? new Set(step.partIds) : undefined;
+      pdf.addImage(renderer.image(visible, step, highlightIds), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
       const text = (value: string, bold = false) => {
         pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(10);
@@ -52,6 +54,7 @@ export async function exportInstructionPDF(
         }
       };
       text(`${step.partIds.length} neue Teile · ${visible.size} Teile bis zu diesem Schritt`, true);
+      if (options.highlight) text("Türkis: neue Teile in diesem Schritt · Hellgrau: bereits verbaute Teile");
       if (step.notes) { y += 3; text(step.notes); }
       const missing = document.imported?.instances.filter(part => visible.has(part.id) && part.part.status !== "resolved") ?? [];
       if (missing.length) {
