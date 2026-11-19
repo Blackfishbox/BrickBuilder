@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { InstructionPlan } from "./types";
+import { instructionStepSchema } from "./types";
 import { studioNodes, validateStudioXml } from "./studio-layout";
 
 /** Only documented-by-fixture display settings are interpreted; all source bytes stay archived. */
@@ -36,6 +37,11 @@ export function readStudioInstructions(xml: string, plan: InstructionPlan): Inst
           }
           if (typeof page.BrickBuilderTitle === "string") step.title = page.BrickBuilderTitle.slice(0, 160);
           if (typeof page.BrickBuilderNotes === "string") step.notes = page.BrickBuilderNotes.slice(0, 2000);
+          if (typeof page.BrickBuilderCamera === "string") {
+            try {
+              step.camera = instructionStepSchema.shape.camera.parse(JSON.parse(page.BrickBuilderCamera));
+            } catch { warnings.push("Eine gespeicherte BrickBuilder-Schrittansicht ist ungültig und wurde nicht übernommen."); }
+          }
         }
       }
     }
@@ -51,7 +57,8 @@ const escape = (value: string) => value.replace(/[&<>"']/g, char => ({
 export function writeStudioInstructions(plan: InstructionPlan): string {
   const pages = plan.steps.map((step, index) => {
     const [x, y, z] = (step.rotation ?? [0, 0, 0]).map(angle => angle * Math.PI / 180);
-    return `<Page template="OneByOne" IsLocked="False"><Slot><Step SerializedIndex="${index}" RectOffset="0 0 0 0"><StepPreview Depth="-100" targetPosOffset="0 0 0" IsForcedTargetPosOffset="False" cameraScale="250" TargetPos="0 0 0" cameraAngle="-0.5235988 0.7853982" modelAngle="${x} ${y} ${z}"/><StepNumber Depth="-30"/><PartList Rect="0 0 0 0" Depth="-70"/></Step></Slot><BrickBuilderTitle>${escape(step.title)}</BrickBuilderTitle><BrickBuilderNotes>${escape(step.notes)}</BrickBuilderNotes></Page>`;
+    const camera = step.camera ? `<BrickBuilderCamera>${escape(JSON.stringify(step.camera))}</BrickBuilderCamera>` : "";
+    return `<Page template="OneByOne" IsLocked="False"><Slot><Step SerializedIndex="${index}" RectOffset="0 0 0 0"><StepPreview Depth="-100" targetPosOffset="0 0 0" IsForcedTargetPosOffset="False" cameraScale="250" TargetPos="0 0 0" cameraAngle="-0.5235988 0.7853982" modelAngle="${x} ${y} ${z}"/><StepNumber Depth="-30"/><PartList Rect="0 0 0 0" Depth="-70"/></Step></Slot><BrickBuilderTitle>${escape(step.title)}</BrickBuilderTitle><BrickBuilderNotes>${escape(step.notes)}</BrickBuilderNotes>${camera}</Page>`;
   }).join("");
   return `<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType><LengthUnit>Pixels</LengthUnit><IsPortrait>True</IsPortrait><Margins>40 40 40 40</Margins></PageSetup></GlobalSetting><Pages>${pages}</Pages><CustomLayouts/></Instruction>`;
 }
