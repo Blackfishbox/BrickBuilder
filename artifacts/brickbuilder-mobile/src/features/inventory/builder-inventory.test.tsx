@@ -8,18 +8,21 @@ import { parseInventory } from "./import";
 import { allocatedCounts } from "./accounting";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { prepareLibraryPart, type PreparedPart } from "../editor/ldraw-editing";
+import { resolveStoredInventory } from "../catalog/client";
 import { builderDatabase } from "@/storage/database";
 import InventoryPanel from "./InventoryPanel";
+import { brickBounds } from "../editor/brick-transform";
+import { stackingBounds } from "../engine/stacking";
 
 vi.mock("../catalog/client", () => ({
   useCatalog: () => ({ status: "ready" }),
   ensureCatalog: async () => {},
-  resolveStoredInventory: async (inventory: ReturnType<typeof parseInventory>) => ({
+  resolveStoredInventory: vi.fn(async (inventory: ReturnType<typeof parseInventory>) => ({
     inventory, resolutions: Object.fromEntries(inventory.rows.map(row => [row.id, {
       parts: [{ ldrawId: "test", name: "Synthetic test part" }],
       colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }],
     }])),
-  }),
+  })),
 }));
 vi.mock("../editor/ldraw-editing", async importOriginal => ({
   ...await importOriginal<typeof import("../editor/ldraw-editing")>(),
@@ -41,7 +44,8 @@ it("handles loading, editable inventory colors, fast taps, stock, catalog exit a
   function Harness() {
     editor = useBuilder();
     return <InventoryPanel document={editor.document} selected={editor.selectedInventory}
-      onSelect={editor.selectInventoryPart} onReplace={editor.replacePartsInventory} onSelected={() => {}} />;
+      onSelect={editor.selectInventoryPart} onSpread={editor.spreadInventoryParts}
+      onReplace={editor.replacePartsInventory} onSelected={() => {}} />;
   }
   const container = document.createElement("div");
   root = createRoot(container);
@@ -124,4 +128,111 @@ it("handles loading, editable inventory colors, fast taps, stock, catalog exit a
   expect(editor.document.inventory).toEqual(inventory);
   expect(allocatedCounts(editor.document).get(choice.rowId)).toBe(1);
   expect(() => editor.replacePartsInventory(inventory, "old-project")).toThrow("gewechselt");
+});
+
+it("prepares inventory geometry before one undoable, separated bulk placement", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  vi.mocked(resolveStoredInventory).mockImplementation(async inventory => ({
+    inventory,
+    resolutions: Object.fromEntries(inventory.rows.map(row => [row.id, {
+      parts: [{ ldrawId: row.partId === "3002" ? "test-two" : "test", name: "Synthetic" }],
+      colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }],
+    }])),
+  }));
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() {
+    editor = useBuilder();
+    return <InventoryPanel document={editor.document} selected={editor.selectedInventory}
+      onSelect={editor.selectInventoryPart} onSpread={editor.spreadInventoryParts}
+      onReplace={editor.replacePartsInventory} onSelected={() => {}} />;
+  }
+  const container = document.createElement("div");
+  root = createRoot(container);
+  await act(async () => { root!.render(<Harness />); });
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+  const source = createEmptyDocument("Parts already on the surface");
+  source.bricks.push({ id: "existing", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 });
+  await act(async () => editor.importProject(source));
+  const inventory = parseInventory("part_id,color_id,quantity\n3001,5,2\n3002,5,1", "batch.csv");
+  await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
+  const part = { id: "test", packageId: "test", ldrawId: "test", name: "Synthetic", category: "", keywords: [], file: "parts/test.dat" };
+  const prepared: PreparedPart = { part, bottom: -1, model: {
+    version: 1, format: "ldr", sourceName: "synthetic.ldr", sourceText: "0 Synthetic", originalBytes: [],
+    ...parseLDraw("1 4 0 0 0 1 0 0 0 1 0 0 0 1 test.dat"),
+    resources: { "parts/test.dat": { path: "parts/test.dat", author: "Synthetic", sourceUrl: "https://example.invalid",
+      license: "CC0-1.0", content: "0 Synthetic triangle\n3 16 0 0 0 20 0 0 0 20 0" } }, legalDocuments: [],
+  } };
+  prepared.model.instances[0].part.status = "resolved";
+  const preparedTwo = structuredClone(prepared);
+  preparedTwo.part = { ...part, id: "test-two", ldrawId: "test-two", file: "parts/test-two.dat" };
+  preparedTwo.model.instances[0].reference = "test-two.dat";
+  preparedTwo.model.instances[0].part.ldrawId = "test-two";
+  delete preparedTwo.model.resources["parts/test.dat"];
+  preparedTwo.model.resources["parts/test-two.dat"] = {
+    ...prepared.model.resources["parts/test.dat"], path: "parts/test-two.dat",
+  };
+
+  vi.mocked(prepareLibraryPart).mockReset();
+  vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockRejectedValueOnce(new Error("Geometry failed"));
+  const button = () => container.querySelector('[data-testid="button-inventory-spread"]') as HTMLButtonElement;
+  await act(async () => button().click());
+  expect(container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent).toContain("Nichts wurde platziert");
+  expect(editor.document.imported).toBeUndefined();
+  expect(allocatedCounts(editor.document).size).toBe(0);
+
+  let finishPreparation!: (value: PreparedPart) => void;
+  vi.mocked(prepareLibraryPart).mockReset();
+  vi.mocked(prepareLibraryPart).mockImplementationOnce(() => new Promise(resolve => { finishPreparation = resolve; }));
+  await act(async () => { button().click(); await Promise.resolve(); });
+  await vi.waitFor(() => expect(container.querySelector('[data-testid="status-inventory-spread-progress"]')?.textContent)
+    .toContain("Geometrie wird geladen"));
+  await act(async () => {
+    (container.querySelector('[data-testid="button-inventory-spread-cancel"]') as HTMLButtonElement).click();
+    finishPreparation(prepared);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
+    .toContain("abgebrochen");
+  expect(editor.document.imported).toBeUndefined();
+  expect(allocatedCounts(editor.document).size).toBe(0);
+
+  vi.mocked(prepareLibraryPart).mockReset();
+  vi.mocked(prepareLibraryPart).mockResolvedValueOnce(prepared).mockResolvedValueOnce(preparedTwo);
+  await act(async () => button().click());
+  const imported = editor.document.imported!;
+  expect(imported.instances).toHaveLength(3);
+  expect(imported.instances.map(instance => instance.part.ldrawId)).toEqual(["test", "test", "test-two"]);
+  expect(imported.instances.map(instance => instance.allocation?.rowId)).toEqual([
+    inventory.rows[0].id, inventory.rows[0].id, inventory.rows[1].id,
+  ]);
+  expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(2);
+  expect(container.querySelector('[data-testid="status-inventory-spread-result"]')?.textContent)
+    .toContain("3 Teile auf der Baufläche verteilt");
+  const batchBounds = [...stackingBounds(imported).values()];
+  const existingBounds = brickBounds(source.bricks[0]);
+  for (const bounds of batchBounds) {
+    expect(bounds.min.x).toBeGreaterThan(existingBounds.max.x);
+    for (const other of batchBounds) {
+      if (bounds === other) continue;
+      expect(bounds.max.x <= other.min.x || other.max.x <= bounds.min.x ||
+        bounds.max.z <= other.min.z || other.max.z <= bounds.min.z).toBe(true);
+    }
+  }
+
+  await act(async () => editor.undo());
+  expect(editor.document.imported).toBeUndefined();
+  expect(editor.document.inventory).toEqual(inventory);
+  await act(async () => editor.redo());
+  expect(editor.document.imported!.instances).toHaveLength(3);
+
+  editor.setToolMode("select");
+  const selected = editor.document.imported!.instances[0];
+  await act(async () => editor.select(selected.id));
+  expect(editor.selectedId).toBe(selected.id);
+  const beforeMove = [...editor.document.imported!.instances[0].matrix];
+  await act(async () => editor.move(selected.id, { x: beforeMove[3] / 20 + 2, y: 0, z: beforeMove[11] / 20 }));
+  expect(editor.document.imported!.instances[0].matrix[3]).not.toBe(beforeMove[3]);
+  expect(editor.document.imported!.instances[0].allocation?.rowId).toBe(inventory.rows[0].id);
 });

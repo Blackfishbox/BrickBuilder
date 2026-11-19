@@ -6,10 +6,11 @@ import type { LibraryPart } from "../parts/types";
 import { COLORS, resolveColor } from "../formats/colors";
 import { importLDraw } from "../formats/ldraw/import";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
-import { localPartBounds } from "../engine/stacking";
+import { localPartBounds, stackingBounds } from "../engine/stacking";
 import type { InventoryChoice } from "../inventory/types";
-import { requireAvailable } from "../inventory/accounting";
+import { allocatedCounts, MAX_INVENTORY_SPREAD_UNITS, type InventorySpreadRequest, requireAvailable } from "../inventory/accounting";
 import { getImportPartFailures } from "../formats/import-failures";
+import { brickBounds } from "./brick-transform";
 
 export interface PreparedPart {
   part: LibraryPart;
@@ -178,6 +179,101 @@ export function placeInventoryPart(document: BuilderDocument, prepared: Prepared
   const instances = next.imported!.instances;
   return { ...next, imported: { ...next.imported!, instances: instances.map((instance, index) =>
     index === instances.length - 1 ? { ...instance, allocation: { listId: choice.listId, rowId: choice.rowId } } : instance) } };
+}
+
+/** Prepare and append a complete, preflighted inventory batch as one document change. */
+export function placeInventoryBatch(
+  document: BuilderDocument,
+  requests: InventorySpreadRequest[],
+  preparedByPart: ReadonlyMap<string, PreparedPart>,
+): BuilderDocument {
+  if (!requests.length) return document;
+  const requestedUnits = requests.reduce((sum, request) => sum + request.quantity, 0);
+  if (requestedUnits > MAX_INVENTORY_SPREAD_UNITS) {
+    throw new Error(`Pro Durchgang können höchstens ${MAX_INVENTORY_SPREAD_UNITS} Teile verteilt werden.`);
+  }
+  const inventory = document.inventory;
+  if (!inventory) throw new Error("Keine Teileliste mehr vorhanden.");
+  const rows = new Map(inventory.rows.map(row => [row.id, row]));
+  const counts = allocatedCounts(document);
+  for (const { choice, quantity } of requests) {
+    const row = rows.get(choice.rowId);
+    if (choice.listId !== inventory.id || !row || row.itemType !== "P") throw new Error("Diese Teilelisten-Auswahl ist nicht mehr gültig.");
+    if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error("Ungültige Stückzahl für die Sammelplatzierung.");
+    const count = counts.get(row.id) ?? 0;
+    if (count + quantity > row.quantity) throw new Error(`BrickLink ${row.partId}, Farbe ${row.colorId}: Bestand reicht für die Sammelplatzierung nicht mehr aus.`);
+    counts.set(row.id, count + quantity);
+    const prepared = preparedByPart.get(choice.ldrawId);
+    if (!prepared || prepared.part.ldrawId !== choice.ldrawId || prepared.model.instances[0]?.part.status !== "resolved") {
+      throw new Error(`LDraw ${choice.ldrawId}: Geometrie konnte nicht vollständig geladen werden.`);
+    }
+    if (!resolveColor(choice.colorCode)) throw new Error(`LDraw-Farbe ${choice.colorCode} nicht verfügbar.`);
+  }
+
+  const units = requests.flatMap(request => Array.from({ length: request.quantity }, () => request));
+  const localBounds = units.map(({ choice }) => {
+    const prepared = preparedByPart.get(choice.ldrawId)!;
+    return localPartBounds(prepared.model, prepared.model.instances[0].reference)
+      .clone().applyMatrix4(worldMatrix([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]));
+  });
+  const sceneBounds = new Box3();
+  if (document.imported) {
+    const importedBounds = stackingBounds(document.imported);
+    if (document.imported.instances.some(instance => !importedBounds.has(instance.id))) {
+      throw new Error("Die vorhandene Modellgeometrie ist nicht vollständig verfügbar. Bitte lade die fehlenden Teile, bevor du die Liste verteilst.");
+    }
+    for (const bounds of importedBounds.values()) sceneBounds.union(bounds);
+  }
+  for (const brick of document.bricks) sceneBounds.union(brickBounds(brick));
+  const originX = sceneBounds.isEmpty() ? 1 : sceneBounds.max.x + 1;
+  const originZ = sceneBounds.isEmpty() ? 0 : sceneBounds.min.z;
+  const cellWidth = Math.max(0.25, ...localBounds.map(bounds => bounds.max.x - bounds.min.x)) + 0.75;
+  const cellDepth = Math.max(0.25, ...localBounds.map(bounds => bounds.max.z - bounds.min.z)) + 0.75;
+  const columns = Math.max(1, Math.ceil(Math.sqrt(units.length)));
+  const placements = localBounds.map((bounds, index) => ({
+    x: originX + (index % columns) * cellWidth - bounds.min.x,
+    z: originZ + Math.floor(index / columns) * cellDepth - bounds.min.z,
+  }));
+
+  const original = document.imported;
+  const resources = { ...(original?.resources ?? {}) };
+  const legalDocuments = [...(original?.legalDocuments ?? [])];
+  const instances = [...(original?.instances ?? [])];
+  for (const prepared of new Set([...preparedByPart.values()])) {
+    for (const [path, file] of Object.entries(prepared.model.resources)) {
+      if (resources[path] && resources[path].content !== file.content) {
+        throw new Error(`LDraw-Quellkonflikt: ${path}. Bestehende Geometrie bleibt unverändert.`);
+      }
+      resources[path] ??= file;
+    }
+    for (const legal of prepared.model.legalDocuments) {
+      if (!legalDocuments.some(existing => JSON.stringify(existing) === JSON.stringify(legal))) legalDocuments.push(legal);
+    }
+  }
+  units.forEach(({ choice }, index) => {
+    const prepared = preparedByPart.get(choice.ldrawId)!;
+    const source = prepared.model.instances[0];
+    const colorCode = choice.colorCode;
+    instances.push({
+      ...source,
+      id: `ldraw:${crypto.randomUUID()}`,
+      colorCode,
+      color: resolveColor(colorCode),
+      matrix: [1, 0, 0, Math.round(placements[index].x * 2) / 2 * 20,
+        0, 1, 0, prepared.bottom * 20, 0, 0, 1, Math.round(placements[index].z * 2) / 2 * 20],
+      sourcePath: ["BrickBuilder"],
+      sourceOccurrence: undefined,
+      allocation: { listId: choice.listId, rowId: choice.rowId },
+    });
+  });
+  return {
+    ...document,
+    updatedAt: new Date().toISOString(),
+    imported: {
+      ...(original ?? preparedByPart.values().next().value!.model),
+      edited: true, resources, legalDocuments, instances,
+    },
+  };
 }
 
 /** Geometry acquisition must never replace edits or resurrect deleted instances. */

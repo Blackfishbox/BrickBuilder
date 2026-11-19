@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { parseInventory } from "./import";
-import { allocatedCounts, replaceInventory, validateInventory } from "./accounting";
+import { allocatedCounts, inventorySpreadCandidates, MAX_INVENTORY_SPREAD_UNITS, replaceInventory, validateInventory } from "./accounting";
 import { MAX_LIST_BYTES, type InventoryChoice } from "./types";
 import { createEmptyDocument, normalizeDocument } from "../editor/model";
-import { editImported, moveImported, placeInventoryPart, placePreparedPart, recolorImported, rotateImported, type PreparedPart } from "../editor/ldraw-editing";
+import { editImported, moveImported, placeInventoryBatch, placeInventoryPart, placePreparedPart, recolorImported, rotateImported, type PreparedPart } from "../editor/ldraw-editing";
 import { commit, createHistory, redo, undo } from "../editor/history";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
@@ -11,6 +11,8 @@ import { builderDatabase, createImportedProject, loadCurrentProject, loadProject
 import { resolveInventory } from "../catalog/inventory-resolution";
 import { decodeCatalog } from "../catalog/data";
 import { existsSync, readFileSync } from "node:fs";
+import { brickBounds } from "../editor/brick-transform";
+import { stackingBounds } from "../engine/stacking";
 
 const csv = "part_id,color_id,quantity\n3001,5,2\n3001,5,1\n3001,7,1";
 const xml = (items: string) => `<?xml version="1.0"?><INVENTORY>${items}</INVENTORY>`;
@@ -78,6 +80,80 @@ describe("bounded inventory imports", () => {
 });
 
 describe("durable stock allocations", () => {
+  it("preflights remaining rows without guessing ambiguous, unsupported, or unknown mappings", () => {
+    const document = { ...createEmptyDocument(), inventory: parseInventory(
+      "part_id,color_id,quantity\n3001,5,3\n3002,5,2\n3003,5,1\n3004,5,1\n3005,5,1", "preflight.csv",
+    ) };
+    const { prepared } = fixture();
+    const firstChoice = { listId: document.inventory!.id, rowId: document.inventory!.rows[0].id, ldrawId: "test", colorCode: "4" };
+    const occupied = placeInventoryPart(document, prepared, position, firstChoice);
+    const rows = document.inventory!.rows;
+    const resolutions = {
+      [rows[0].id]: { parts: [{ ldrawId: "test", name: "Test" }], colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }] },
+      [rows[1].id]: { parts: [{ ldrawId: "a", name: "A" }, { ldrawId: "b", name: "B" }], colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }] },
+      [rows[2].id]: { parts: [], colors: [{ ldrawCode: "4", name: "Red", hex: "#B40000" }] },
+      [rows[3].id]: { parts: [{ ldrawId: "test", name: "Test" }], colors: [
+        { ldrawCode: "4", name: "Red", hex: "#B40000" }, { ldrawCode: "1", name: "Blue", hex: "#1E5AA8" },
+      ] },
+      [rows[4].id]: { parts: [{ ldrawId: "test", name: "Test" }], colors: [] },
+    };
+    const candidates = inventorySpreadCandidates(occupied, resolutions, {});
+    expect(candidates.map(candidate => [candidate.quantity, candidate.issue])).toEqual([
+      [2, undefined], [2, `BL 3002: mehrdeutiges Teil braucht eine Auswahl.`],
+      [1, `BL 3003: kein belegtes LDraw-Teil.`],
+      [1, `BL 3004, Farbe 5: mehrdeutige Farbe braucht eine Auswahl.`],
+      [1, `BL 3005, Farbe 5: keine belegte LDraw-Farbe.`],
+    ]);
+    const selected = inventorySpreadCandidates(occupied, resolutions, {
+      [rows[1].id]: { ldrawId: "b" }, [rows[3].id]: { colorCode: "1" },
+    });
+    expect(selected[1].choice).toEqual({ listId: occupied.inventory!.id, rowId: rows[1].id, ldrawId: "b", colorCode: "4" });
+    expect(selected[3].choice?.colorCode).toBe("1");
+    occupied.inventory!.rows[2].itemType = "S";
+    expect(inventorySpreadCandidates(occupied, resolutions, {})[2].issue).toContain("kein Einzelteil");
+  });
+  it("places a complete batch in separated slots and undo/redo restores all allocations together", () => {
+    const { prepared, choice } = fixture();
+    const document = { ...createEmptyDocument(), inventory: parseInventory(
+      "part_id,color_id,quantity\n3001,5,3", "batch.csv",
+    ), bricks: [{ id: "legacy", type: "brick-2x4" as const, color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 }] };
+    const rowId = document.inventory.rows[0].id;
+    const request = { choice: { ...choice, listId: document.inventory.id, rowId }, quantity: 3 };
+    let history = createHistory(document);
+    history = commit(history, placeInventoryBatch(history.document, [request], new Map([["test", prepared]])));
+    const instances = history.document.imported!.instances;
+    expect(instances).toHaveLength(3);
+    expect(instances.map(instance => instance.allocation)).toEqual(Array.from({ length: 3 }, () => ({ listId: document.inventory.id, rowId })));
+    expect(allocatedCounts(history.document).get(rowId)).toBe(3);
+    const boxes = [...stackingBounds(history.document.imported!).values()];
+    const legacy = brickBounds(document.bricks[0]);
+    for (const box of boxes) {
+      expect(box.min.x).toBeGreaterThanOrEqual(legacy.max.x + 0.5 - 1e-7);
+      for (const other of boxes) {
+        if (other === box) continue;
+        expect(box.max.x <= other.min.x + 1e-7 || other.max.x <= box.min.x + 1e-7 ||
+          box.max.z <= other.min.z + 1e-7 || other.max.z <= box.min.z + 1e-7).toBe(true);
+      }
+    }
+    history = undo(history);
+    expect(history.document.imported).toBeUndefined();
+    expect(allocatedCounts(history.document).size).toBe(0);
+    history = redo(history);
+    expect(history.document.imported!.instances).toHaveLength(3);
+    expect(allocatedCounts(history.document).get(rowId)).toBe(3);
+  });
+  it("does not mutate the source document when batch preparation or stock validation fails", () => {
+    const { document, prepared, choice } = fixture();
+    const before = JSON.stringify(document);
+    expect(() => placeInventoryBatch(document, [{ choice, quantity: 1 }], new Map())).toThrow("Geometrie");
+    expect(JSON.stringify(document)).toBe(before);
+    expect(() => placeInventoryBatch(document, [{ choice, quantity: MAX_INVENTORY_SPREAD_UNITS + 1 }], new Map([["test", prepared]])))
+      .toThrow(`höchstens ${MAX_INVENTORY_SPREAD_UNITS}`);
+    expect(JSON.stringify(document)).toBe(before);
+    const overdraw = { ...choice, rowId: document.inventory!.rows[1].id };
+    expect(() => placeInventoryBatch(document, [{ choice: overdraw, quantity: 3 }], new Map([["test", prepared]]))).toThrow("Bestand");
+    expect(JSON.stringify(document)).toBe(before);
+  });
   it("atomically exhausts a row even with repeated placement and stale choices", () => {
     const { document, prepared, choice } = fixture();
     const first = placeInventoryPart(document, prepared, position, choice);

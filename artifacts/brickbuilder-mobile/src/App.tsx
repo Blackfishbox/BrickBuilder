@@ -504,6 +504,7 @@ function App() {
                   document={editor.document}
                   selected={editor.selectedInventory}
                   onSelect={editor.selectInventoryPart}
+                  onSpread={editor.spreadInventoryParts}
                   onReplace={editor.replacePartsInventory}
                   onSelected={() => setPartsOpen(false)}
                 />

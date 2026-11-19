@@ -15,6 +15,14 @@
 .inv-status { display: flex; align-items: center; gap: 8px; }
 .inv-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(215,91,63,.1); color: #8e3a27; }
 .inv-note { margin: 0; padding: 8px 10px; border-left: 3px solid #d75b3f; background: rgba(215,91,63,.06); font-size: 12px; }
+.inv-spread { display: grid; gap: 8px; padding: 10px; border: 1px solid rgba(33,74,66,.2); border-radius: 9px; background: rgba(255,253,243,.72); }
+.inv-spread > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.inv-spread > div:first-child strong { color: #214a42; }
+.inv-spread > div:first-child small { color: #6b7a72; font-size: 11px; }
+.inv-spread-button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 44px; border: 0; border-radius: 8px; background: #214a42; color: #fffaf0; font-weight: 700; cursor: pointer; }
+.inv-spread-button:disabled { opacity: .5; cursor: not-allowed; }
+.inv-spread-issues { padding: 8px 10px; border-radius: 7px; background: rgba(215,91,63,.08); color: #8e3a27; font-size: 12px; }
+.inv-spread-issues ul { max-height: 100px; overflow: auto; margin: 4px 0 0; padding-left: 18px; }
 .inv-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; min-height: 44px; border: 1px solid rgba(33,74,66,.18); border-radius: 9px; background: #fffdf3; }
 .inv-search input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 14px; outline: none; }
 .inv-skeleton { display: grid; gap: 8px; }

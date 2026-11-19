@@ -1,5 +1,7 @@
 import type { BuilderDocument } from "../editor/model";
-import { inventorySchema, allocationSchema, type Allocation, type Inventory } from "./types";
+import { inventorySchema, allocationSchema, type Allocation, type Inventory, type InventoryChoice, type InventoryResolution } from "./types";
+
+export const MAX_INVENTORY_SPREAD_UNITS = 1000;
 
 /** Stock is always derived from effective instances, including undo/redo snapshots. */
 export function allocatedCounts(document: BuilderDocument): Map<string, number> {
@@ -9,6 +11,48 @@ export function allocatedCounts(document: BuilderDocument): Map<string, number> 
     if (allocation && allocation.listId === document.inventory?.id) counts.set(allocation.rowId, (counts.get(allocation.rowId) ?? 0) + 1);
   }
   return counts;
+}
+export interface InventorySpreadRequest { choice: InventoryChoice; quantity: number }
+export interface InventorySpreadPick { ldrawId?: string; colorCode?: string }
+export interface InventorySpreadCandidate {
+  rowId: string;
+  partId: string;
+  quantity: number;
+  choice?: InventoryChoice;
+  issue?: string;
+}
+/** Resolves only evidence-backed unique choices or explicit per-row user choices. */
+export function inventorySpreadCandidates(
+  document: BuilderDocument,
+  resolutions: Record<string, InventoryResolution>,
+  picks: Record<string, InventorySpreadPick>,
+): InventorySpreadCandidate[] {
+  const inventory = document.inventory;
+  if (!inventory) return [];
+  const counts = allocatedCounts(document);
+  return inventory.rows.flatMap(row => {
+    const quantity = Math.max(0, row.quantity - (counts.get(row.id) ?? 0));
+    if (!quantity) return [];
+    const resolution = resolutions[row.id];
+    let issue: string | undefined;
+    let choice: InventoryChoice | undefined;
+    if (row.itemType !== "P") issue = `BL ${row.partId}: Positionstyp ${row.itemType} ist kein Einzelteil.`;
+    else if (!resolution) issue = `BL ${row.partId}: Zuordnung wird noch geprüft.`;
+    else if (!resolution.parts.length) issue = `BL ${row.partId}: kein belegtes LDraw-Teil.`;
+    else if (!resolution.colors.length) issue = `BL ${row.partId}, Farbe ${row.colorId}: keine belegte LDraw-Farbe.`;
+    else {
+      const part = resolution.parts.length === 1
+        ? resolution.parts[0]
+        : resolution.parts.find(value => value.ldrawId === picks[row.id]?.ldrawId);
+      const color = resolution.colors.length === 1
+        ? resolution.colors[0]
+        : resolution.colors.find(value => value.ldrawCode === picks[row.id]?.colorCode);
+      if (!part) issue = `BL ${row.partId}: mehrdeutiges Teil braucht eine Auswahl.`;
+      else if (!color) issue = `BL ${row.partId}, Farbe ${row.colorId}: mehrdeutige Farbe braucht eine Auswahl.`;
+      else choice = { listId: inventory.id, rowId: row.id, ldrawId: part.ldrawId, colorCode: color.ldrawCode };
+    }
+    return [{ rowId: row.id, partId: row.partId, quantity, choice, issue }];
+  });
 }
 export function requireAvailable(document: BuilderDocument, allocation: Allocation) {
   const row = document.inventory?.id === allocation.listId ? document.inventory.rows.find(r => r.id === allocation.rowId) : undefined;
