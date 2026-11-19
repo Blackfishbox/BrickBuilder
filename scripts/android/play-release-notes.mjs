@@ -86,11 +86,13 @@ export async function previousPublishedCommit(env, fetchImpl = fetch) {
 }
 
 export function releaseNotesSince(base, git = (...args) => execFileSync("git", args, { encoding: "utf8" })) {
-  // Include every intervening commit, not just commits after the last workflow run:
-  // failed builds have not been published and their changes still belong in the next release.
+  // Follow the Android branch's first-parent history. A merge trailer summarizes
+  // imported main changes; traversing its second parent would replay the entire
+  // unrelated main history, including commits predating Android releases.
+  // Failed Android builds remain on this first-parent path and must be included.
   const output = base
-    ? git("log", "--no-merges", "--reverse", "--format=%B%x00", `${base}..HEAD`, "--")
-    : git("log", "--no-merges", "-1", "--format=%B%x00", "HEAD", "--");
+    ? git("log", "--first-parent", "--reverse", "--format=%B%x00", `${base}..HEAD`, "--")
+    : git("log", "--first-parent", "-1", "--format=%B%x00", "HEAD", "--");
   return summarizeCommitMessages(output.split("\0").map(message => message.trim()).filter(Boolean));
 }
 

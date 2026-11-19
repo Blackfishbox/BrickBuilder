@@ -69,13 +69,14 @@ test("API failures and stale runs cannot silently publish", async () => {
   await assert.rejects(previousPublishedCommit({}, async () => response([])), /context/);
 });
 
-test("reads all commit messages since the last published baseline, including failed attempts", () => {
+test("reads first-parent messages since the last release, including merge notes and failed attempts", () => {
   const calls = [];
   assert.equal(releaseNotesSince("a".repeat(40), (...args) => {
     calls.push(args);
-    return "Fade colors\n\nRelease-Notes-DE: Verbaute Teile behalten fast ihre Originalfarben.\0Fix retry\n\nRelease-Notes-DE: Fehlgeschlagene Änderungen werden gesammelt.\0";
-  }), "• Verbaute Teile behalten fast ihre Originalfarben.\n• Fehlgeschlagene Änderungen werden gesammelt.");
-  assert.deepEqual(calls[0], ["log", "--no-merges", "--reverse", "--format=%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
+    return "Merge current main\n\nRelease-Notes-DE: Importierte Anleitungen zeigen Drehungen und Callouts.\0" +
+      "Fix retry\n\nRelease-Notes-DE: Importierte Anleitungen zeigen Drehungen und Callouts.\0";
+  }), "• Importierte Anleitungen zeigen Drehungen und Callouts.");
+  assert.deepEqual(calls[0], ["log", "--first-parent", "--reverse", "--format=%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
 });
 
 test("uses only the latest commit as baseline for an initial manual release", () => {
@@ -85,5 +86,5 @@ test("uses only the latest commit as baseline for an initial manual release", ()
     return "Publish Android improvements\n\nRelease-Notes-DE: Android-Installation und Teilevorschau wurden verbessert.\0";
   });
   assert.equal(notes, "• Android-Installation und Teilevorschau wurden verbessert.");
-  assert.deepEqual(calls[0], ["log", "--no-merges", "-1", "--format=%B%x00", "HEAD", "--"]);
+  assert.deepEqual(calls[0], ["log", "--first-parent", "-1", "--format=%B%x00", "HEAD", "--"]);
 });
