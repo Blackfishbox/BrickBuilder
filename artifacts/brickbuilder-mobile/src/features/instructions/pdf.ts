@@ -50,7 +50,8 @@ export async function exportInstructionPDF(
       ) + 4;
       step.partIds.forEach(id => visible.add(id));
       const highlightIds = options.highlight && index > 0 ? instructionHighlightIds(document, step) : undefined;
-      pdf.addImage(renderer.image(visible, step, highlightIds), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
+      const image = renderer.image(visible, step, highlightIds);
+      pdf.addImage(image, image.startsWith("data:image/png") ? "PNG" : "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
       const text = (value: string, bold = false) => {
         pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(10);

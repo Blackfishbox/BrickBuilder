@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { gunzipSync, unzlibSync, zlibSync } from "fflate";
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDocument, normalizeDocument } from "../editor/model";
 import { parseLDraw } from "../formats/ldraw/parser";
@@ -13,6 +14,7 @@ import { instructionPlanSchema } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { instructionCalloutPartIds, instructionHighlightIds } from "./callouts";
 import { OrthographicCamera, PerspectiveCamera, Vector3 } from "three";
+import { PART_PACKAGES, validatePayload } from "../parts/library";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -36,6 +38,84 @@ function fixture(source = `${line()}\n0 STEP\n${line("3003", 40)}\n0 STEP\n`) {
   };
   document.instructions = sourceInstructionPlan(document.imported);
   return document;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const name = encode(type), body = new Uint8Array(name.length + data.length);
+  body.set(name); body.set(data, name.length);
+  let checksum = 0xffffffff;
+  for (const byte of body) {
+    checksum ^= byte;
+    for (let bit = 0; bit < 8; bit++) checksum = (checksum >>> 1) ^ (checksum & 1 ? 0xedb88320 : 0);
+  }
+  const chunk = new Uint8Array(body.length + 8), view = new DataView(chunk.buffer);
+  view.setUint32(0, data.length); chunk.set(body, 4); view.setUint32(body.length + 4, (checksum ^ 0xffffffff) >>> 0);
+  return chunk;
+}
+
+function rasterCanvas(width: number, height: number) {
+  const pixels = new Uint8Array(width * height * 4), path: [number, number][] = [];
+  let fillStyle = "#000000", globalAlpha = 1, filledTriangles = 0;
+  const color = () => {
+    const rgb = fillStyle.match(/rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)/);
+    return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : [0, 0, 0];
+  };
+  const paint = (x: number, y: number, rgba: number[]) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const offset = (y * width + x) * 4;
+    for (let channel = 0; channel < 3; channel++) {
+      pixels[offset + channel] = Math.round(rgba[channel] * globalAlpha + pixels[offset + channel] * (1 - globalAlpha));
+    }
+    pixels[offset + 3] = 255;
+  };
+  const context = {
+    get fillStyle() { return fillStyle; }, set fillStyle(value: string) { fillStyle = value; },
+    get globalAlpha() { return globalAlpha; }, set globalAlpha(value: number) { globalAlpha = value; },
+    fillRect(x: number, y: number, w: number, h: number) {
+      const rgba = color();
+      for (let py = Math.max(0, Math.floor(y)); py < Math.min(height, Math.ceil(y + h)); py++) {
+        for (let px = Math.max(0, Math.floor(x)); px < Math.min(width, Math.ceil(x + w)); px++) paint(px, py, rgba);
+      }
+    },
+    beginPath() { path.length = 0; },
+    moveTo(x: number, y: number) { path.push([x, y]); },
+    lineTo(x: number, y: number) { path.push([x, y]); },
+    closePath() {},
+    fill() {
+      if (path.length < 3) return;
+      filledTriangles++;
+      const [a, b, c] = path, area = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+      if (!area) return;
+      const rgba = color();
+      const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
+      const maxX = Math.min(width - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
+      const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
+      const maxY = Math.min(height - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
+      for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+        const px = x + 0.5, py = y + 0.5;
+        const u = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / area;
+        const v = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / area;
+        if (u >= 0 && v >= 0 && u + v <= 1) paint(x, y, rgba);
+      }
+    },
+  };
+  const canvas = {
+    width, height, getContext: () => context,
+    toDataURL() {
+      const scanlines = new Uint8Array(height * (width * 4 + 1));
+      for (let y = 0; y < height; y++) scanlines.set(pixels.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1);
+      const header = new Uint8Array(13), view = new DataView(header.buffer);
+      view.setUint32(0, width); view.setUint32(4, height); header.set([8, 6, 0, 0, 0], 8);
+      const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      const png = new Uint8Array(signature.length + pngChunk("IHDR", header).length + pngChunk("IDAT", zlibSync(scanlines)).length + pngChunk("IEND", new Uint8Array()).length);
+      let offset = 0;
+      for (const chunk of [signature, pngChunk("IHDR", header), pngChunk("IDAT", zlibSync(scanlines)), pngChunk("IEND", new Uint8Array())]) {
+        png.set(chunk, offset); offset += chunk.length;
+      }
+      return `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
+    },
+  };
+  return { canvas, get filledTriangles() { return filledTriangles; }, pixels };
 }
 
 describe("local construction instructions", () => {
@@ -214,6 +294,58 @@ describe("local construction instructions", () => {
     expect(counts).toEqual([1, 2]);
     expect(dispose).toHaveBeenCalledOnce();
     expect(progress).toHaveBeenLastCalledWith(2, 2);
+  });
+
+  it("exports resolved official LDraw geometry as a PDF diagram with readable quantities", async () => {
+    const manifest = PART_PACKAGES.find(pkg => pkg.id === "ldraw-bricks")!;
+    const bytes = readFileSync(new URL(`../../../public/${manifest.url}`, import.meta.url));
+    const parsed = JSON.parse(new TextDecoder().decode(
+      manifest.compression === "gzip" ? gunzipSync(bytes) : bytes,
+    ));
+    const packageData = validatePayload(parsed, manifest);
+    const doc = fixture(`${line("3004", 0)}\n${line("3004", 40)}\n0 STEP\n${line("3004", 80)}\n`);
+    doc.imported!.resources = Object.fromEntries(packageData.files.map(file => [file.path, file]));
+    for (const part of doc.imported!.instances) part.part.status = "resolved";
+    const partGeometry = createSoftwareInstructionRenderer;
+    const canvases: ReturnType<typeof rasterCanvas>[] = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const rendered = rasterCanvas(200, 152);
+        canvases.push(rendered);
+        return rendered.canvas;
+      },
+    });
+    try {
+      const renderPart = async (document: typeof doc, entry: Parameters<typeof import("./parts").instructionPartImage>[1], signal: AbortSignal) => {
+        const renderer = await partGeometry(document, signal, { width: 120, height: 91, minRadius: 0.01 });
+        try { return renderer.image(new Set([entry.part.id]), { id: "part", title: "", notes: "", partIds: [entry.part.id] }); }
+        finally { renderer.dispose(); }
+      };
+      const pdf = await exportInstructionPDF(doc, doc.instructions!, {}, (document, signal) =>
+        createSoftwareInstructionRenderer(document, signal, { width: 200, height: 152 }),
+        renderPart,
+      );
+      const output = Buffer.from(pdf).toString("latin1");
+      const objectStreams: string[] = [];
+      const streamPattern = /<<([\s\S]*?)>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/g;
+      for (const match of output.matchAll(streamPattern)) {
+        if (match[1].includes("/FlateDecode")) {
+          objectStreams.push(Buffer.from(unzlibSync(Buffer.from(match[2], "latin1"))).toString("latin1"));
+        }
+      }
+      const text = objectStreams.join("\n");
+      expect(doc.imported!.resources["parts/3004.dat"].content).toContain("0 !LDRAW_ORG Part");
+      expect(decode(pdf.slice(0, 8))).toContain("%PDF-1.");
+      expect(output).toContain("/Subtype /Image");
+      expect(canvases.length).toBeGreaterThanOrEqual(3);
+      expect(canvases.some(rendered => rendered.filledTriangles > 0 &&
+        rendered.pixels.some((value, index) => index % 4 !== 3 && value !== 255))).toBe(true);
+      expect(text).toContain("2×");
+      expect(text).toContain("LDraw 3004");
+      expect(text).toContain("2 neue Teile");
+      expect(text).toContain("3 Teile bis zu diesem Schritt");
+      expect(text).toContain("1 neue Teile");
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it("renders the final repeated touch rotation without changing PDF zoom or target", async () => {
