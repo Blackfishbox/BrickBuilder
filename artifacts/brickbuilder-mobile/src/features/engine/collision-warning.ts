@@ -2,8 +2,9 @@ import { BRICK_DEFINITIONS, BRICK_HEIGHT, type Brick } from "../editor/model";
 import type { ImportedModel } from "../formats/types";
 import { Box3, Euler, Matrix3, Matrix4, Vector3 } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
-import { importedCollisionQuery } from "./imported-collision";
+import { importedWarningQuery } from "./imported-collision";
 import { stackingBounds } from "./stacking";
+import { activeConnections } from "../connections/engine";
 
 export interface CollisionWarnings {
   boxes: Map<string, Box3>;
@@ -27,8 +28,8 @@ function warningVolume(brick: Brick) {
 }
 
 /** Broad-phase sweep with yielding and cancellation between narrow-phase queries.
- * Open LDraw meshes cannot prove penetration: report their bounds conservatively
- * as possible collisions, never as confirmed solid intersections.
+ * Bounds only select candidate pairs. Only positive geometric evidence can
+ * produce a warning; unknown geometry is deliberately left unmarked.
  */
 export async function collisionWarnings(
   bricks: Brick[], model: ImportedModel | undefined, signal: AbortSignal, importedOffset?: number,
@@ -47,7 +48,8 @@ export async function collisionWarnings(
   const entries = [...new Map([...importedBoxes, ...[...volumes].map(([id, volume]) => [id, volume.bounds] as const)])]
     .filter(([, box]) => !box.isEmpty()).sort((a, b) => a[1].min.x - b[1].min.x);
   const instances = new Map(model?.instances.map(instance => [instance.id, instance]));
-  const query = model ? importedCollisionQuery(model) : null;
+  const query = model ? importedWarningQuery(model) : null;
+  const connectedTargets = new Map<string, Set<string>>();
   const boxes = new Map<string, Box3>();
   let uncertain = false, sliceStart = performance.now(), work = 0;
   const checkpoint = async () => {
@@ -69,13 +71,24 @@ export async function collisionWarnings(
       let overlap: boolean;
       const a = instances.get(id), b = instances.get(otherId);
       if (a && b && query) {
+        if (model) {
+          let connected = connectedTargets.get(id);
+          if (!connected) {
+            connected = new Set(activeConnections(model, id).map(contact => contact.targetId));
+            connectedTargets.set(id, connected);
+          }
+          // The connector engine also checks the insertion slab for obstructions.
+          // Do not flag ordinary stud engagement merely because its open mesh
+          // cannot provide a watertight solid proof.
+          if (connected.has(otherId)) continue;
+        }
         const result = query(a.reference, a.matrix, b.reference, b.matrix);
-        overlap = result !== "clear";
-        if (overlap && result === "unknown") uncertain = true;
+        overlap = result === "overlap";
+        if (result === "unknown") uncertain = true;
       } else if (volumes.has(id) && volumes.has(otherId)) {
         overlap = volumes.get(id)!.solid.intersectsOBB(volumes.get(otherId)!.solid);
       } else {
-        overlap = true;
+        overlap = false;
         uncertain = true;
       }
       if (overlap) { boxes.set(id, box); boxes.set(otherId, other); }

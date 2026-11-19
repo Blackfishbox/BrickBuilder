@@ -229,6 +229,63 @@ function overlaps(a: Body, b: Body, budget: Budget): boolean {
   return false;
 }
 
+/** A transverse crossing of face interiors proves surface penetration even
+ * when an LDraw shell is open. Coplanar faces, shared edges and tangencies do
+ * not. Absence of a crossing cannot prove clearance for an open mesh.
+ */
+function surfacesCross(a: Body, b: Body, budget: Budget): boolean {
+  const crosses = (at: Triangle, bt: Triangle): boolean => {
+    const na = at.getNormal(new Vector3()), nb = bt.getNormal(new Vector3());
+    if (new Vector3().crossVectors(na, nb).lengthSq() < 1e-10) return false;
+    const straddles = (triangle: Triangle, plane: Plane) => {
+      const distances = [triangle.a, triangle.b, triangle.c].map(v => plane.distanceToPoint(v));
+      return Math.min(...distances) < -EPS && Math.max(...distances) > EPS;
+    };
+    if (!straddles(at, new Plane().setFromNormalAndCoplanarPoint(nb, bt.a)) ||
+        !straddles(bt, new Plane().setFromNormalAndCoplanarPoint(na, at.a))) return false;
+    const point = intersection(at, bt);
+    if (!point) return false;
+    const interior = (triangle: Triangle) => {
+      const bary = triangle.getBarycoord(point, new Vector3());
+      return bary !== null && Math.min(bary.x, bary.y, bary.z) > 1e-6;
+    };
+    return interior(at) && interior(bt);
+  };
+  const visit = (an: Node, bn: Node): boolean => {
+    budget.spend();
+    if (!bounds(a, an).intersectsBox(bounds(b, bn))) return false;
+    if (an.children) return an.children.some(child => visit(child, bn));
+    if (bn.children) return bn.children.some(child => visit(an, child));
+    for (const af of an.faces!) for (const bf of bn.faces!) {
+      budget.spend();
+      if (!af.box.clone().applyMatrix4(a.matrix).intersectsBox(bf.box.clone().applyMatrix4(b.matrix))) continue;
+      if (crosses(worldFace(a, af), worldFace(b, bf))) return true;
+    }
+    return false;
+  };
+  return visit(a.shape.root, b.shape.root);
+}
+
+/** Diagnostic-only positive evidence; never treats unknown bounds as a collision.
+ * This intentionally does not change conservative placement/stacking queries.
+ */
+export function importedWarningQuery(model: ImportedModel) {
+  const budget = new Budget();
+  return (referenceA: string, matrixA: Affine, referenceB: string, matrixB: Affine): CollisionResult => {
+    try {
+      const sa = shapeFor(model, referenceA, budget), sb = shapeFor(model, referenceB, budget);
+      if (!sa || !sb) return "unknown";
+      const a = body(sa, matrixA), b = body(sb, matrixB);
+      if (!a || !b) return "unknown";
+      if (!bounds(a, sa.root).intersectsBox(bounds(b, sb.root))) return "clear";
+      if (sa.closed && sb.closed) return overlaps(a, b, budget) ? "overlap" : "clear";
+      return surfacesCross(a, b, budget) ? "overlap" : "unknown";
+    } catch {
+      return "unknown";
+    }
+  };
+}
+
 export function importedPartsOverlap(
   model: ImportedModel, movingReference: string, proposed: Affine, targetReference: string, target: Affine,
 ): CollisionResult {

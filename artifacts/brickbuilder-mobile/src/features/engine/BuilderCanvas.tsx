@@ -412,7 +412,7 @@ export function BuilderCanvas({
   const overlayRef = useRef<ConnectionOverlay | null>(null);
   const [showConnections, setShowConnections] = useState(true);
   const [showCollisions, setShowCollisions] = useState(false);
-  const [collisionState, setCollisionState] = useState({ count: 0, uncertain: false, pending: false });
+  const [collisionState, setCollisionState] = useState({ count: 0, uncertain: false, pending: false, failed: false });
   const [toggleToast, setToggleToast] = useState("");
   useEffect(() => {
     if (!toggleToast) return;
@@ -967,18 +967,18 @@ export function BuilderCanvas({
   useEffect(() => {
     const controller = new AbortController();
     if (overlayRef.current) overlayRef.current.collisions = new Map();
-    setCollisionState({ count: 0, uncertain: false, pending: showCollisions });
+    setCollisionState({ count: 0, uncertain: false, pending: showCollisions, failed: false });
     invalidatorRef.current?.();
     if (showCollisions) {
       const offset = sceneModelRef.current && sceneProjectRef.current === projectId ? importedOffsetRef.current : undefined;
       void collisionWarnings(bricks, imported, controller.signal, offset).then(result => {
         if (controller.signal.aborted) return;
         if (overlayRef.current) overlayRef.current.collisions = result.boxes;
-        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false });
+        setCollisionState({ count: result.boxes.size, uncertain: result.uncertain, pending: false, failed: false });
         invalidatorRef.current?.();
       }).catch(error => {
         if (!controller.signal.aborted) {
-          setCollisionState({ count: 0, uncertain: true, pending: false });
+          setCollisionState({ count: 0, uncertain: true, pending: false, failed: true });
           setToggleToast("Kollisionsprüfung konnte nicht abgeschlossen werden");
           console.error(error);
         }
@@ -1487,8 +1487,10 @@ export function BuilderCanvas({
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
     {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
       {collisionState.pending ? "Kollisionen werden geprüft …" : collisionState.count
-        ? `${collisionState.count} Teile ${collisionState.uncertain ? "kollidieren möglicherweise (Geometriegrenzen)" : "kollidieren"} · orange markiert`
-        : collisionState.uncertain ? "Kollisionsprüfung nicht abgeschlossen" : "Keine Kollisionen erkannt"}
+        ? `${collisionState.count} Teile kollidieren · orange markiert`
+        : collisionState.failed ? "Kollisionsprüfung nicht abgeschlossen"
+        : collisionState.uncertain ? "Keine Kollisionen nachgewiesen · einige Geometrien nicht eindeutig prüfbar"
+        : "Keine Kollisionen erkannt"}
     </div>}
     {showFloating && floatingCount > 0 && <div role="status" aria-live="polite" data-testid="floating-warning"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg border border-red-300 bg-red-50/95 p-3 text-xs text-red-900 shadow"
