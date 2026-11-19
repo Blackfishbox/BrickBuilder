@@ -25,4 +25,12 @@ describe("optional collision diagnostics", () => {
     controller.abort();
     await expect(collisionWarnings([brick], undefined, controller.signal)).rejects.toHaveProperty("name", "AbortError");
   });
+  it("still checks local bricks when an imported model is present", async () => {
+    const warnings = await collisionWarnings(
+      [brick, { ...brick, id: "b" }], engineFixture(1, 1), new AbortController().signal, 2,
+    );
+    expect(warnings.boxes.has("a")).toBe(true);
+    expect(warnings.boxes.has("b")).toBe(true);
+    expect(warnings.boxes.get("a")!.min.y).toBe(-2);
+  });
 });
