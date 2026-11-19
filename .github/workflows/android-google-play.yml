@@ -10,7 +10,7 @@ on:
         required: false
         type: string
       release_notes_de:
-        description: "Optional German release notes (maximum 500 characters); otherwise summarized from changed files"
+        description: "Optional manual German notes (maximum 500 characters); push builds use Release-Notes-DE commit trailers"
         required: false
         type: string
 
@@ -243,7 +243,7 @@ jobs:
         with:
           name: brickbuilder-proguard-${{ needs.android.outputs.version_code }}-${{ github.run_attempt }}
           path: generated-artifacts/google-play/mapping
-      - name: Summarize changes in German
+      - name: Build precise German release notes
         env:
           GH_TOKEN: ${{ github.token }}
           PLAY_RELEASE_NOTES_DE: ${{ inputs.release_notes_de }}

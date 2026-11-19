@@ -1,25 +1,36 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { changedPaths, previousPublishedCommit, summarizeChangedPaths, validateNotes } from "./play-release-notes.mjs";
+import {
+  previousPublishedCommit, releaseNotesSince, summarizeCommitMessages, validateNotes,
+} from "./play-release-notes.mjs";
 
-test("summarizes real changed areas in German without repeating overlapping matches", () => {
-  assert.equal(summarizeChangedPaths([
-    "artifacts/brickbuilder-mobile/src/features/inventory/import.ts",
-    "artifacts/brickbuilder-mobile/src/features/inventory/list.tsx",
-    "artifacts/brickbuilder-mobile/src/platform/geometry-request.ts",
-  ]), "• Import, Export und BrickLink-Teilelisten überarbeitet.\n• Teilesuche, Farben und Geometrien überarbeitet.");
+test("uses concrete German commit trailers in history order", () => {
+  assert.equal(summarizeCommitMessages([
+    "Soften faded instruction colors\n\nRelease-Notes-DE: Bereits verbaute Anleitungsteile erscheinen jetzt mit fast unveränderten Farben.",
+    "Expand 3D building area\n\nRelease-Notes-DE: Der Boden wächst jetzt mit dem Modell, wenn es über den bisherigen Rand hinausragt.",
+  ]), "• Bereits verbaute Anleitungsteile erscheinen jetzt mit fast unveränderten Farben.\n• Der Boden wächst jetzt mit dem Modell, wenn es über den bisherigen Rand hinausragt.");
 });
 
-test("all areas fit Google's limit and unknown or empty changes remain truthful", () => {
-  const notes = summarizeChangedPaths([
-    "features/import/a.ts", "features/colors/a.ts", "features/engine/a.ts",
-    "features/storage/a.ts", "features/privacy/a.ts", "app/android/a.java",
-    ".github/workflows/android-google-play.yml", "other/component.tsx", "pnpm-lock.yaml",
-    "features/instructions/pdf.ts",
-  ]);
-  assert.ok([...notes].length <= 500);
-  assert.match(summarizeChangedPaths([]), /Erneute Bereitstellung/);
-  assert.match(summarizeChangedPaths(["README.md"]), /Wartungsarbeiten/);
+test("deduplicates identical notes from multiple commits without inventing summaries", () => {
+  assert.equal(summarizeCommitMessages([
+    "First commit\n\nRelease-Notes-DE: Teilefarben bleiben besser erkennbar.",
+    "Retry after failed workflow\n\nRelease-Notes-DE: Teilefarben bleiben besser erkennbar.",
+  ]), "• Teilefarben bleiben besser erkennbar.");
+});
+
+test("requires a precise note in every included commit", () => {
+  assert.throws(() => summarizeCommitMessages(["Adjust workflow", "Fix camera\n\nRelease-Notes-DE: Die Ansicht bleibt beim Drehen erhalten."]), /Adjust workflow.*must contain exactly one/s);
+  assert.throws(() => summarizeCommitMessages(["Missing trailer"]), /Release-Notes-DE/);
+  assert.throws(() => summarizeCommitMessages([]), /No commits/);
+});
+
+test("enforces the 500-character limit instead of truncating release notes", () => {
+  assert.equal([...summarizeCommitMessages([`Change\n\nRelease-Notes-DE: ${"x".repeat(498)}`])].length, 500);
+  assert.throws(() => summarizeCommitMessages([`Change\n\nRelease-Notes-DE: ${"x".repeat(499)}`]), /allows 500/);
+  assert.throws(() => summarizeCommitMessages([
+    `Change one\n\nRelease-Notes-DE: ${"a".repeat(250)}`,
+    `Change two\n\nRelease-Notes-DE: ${"b".repeat(250)}`,
+  ]), /Shorten or deduplicate/);
 });
 
 test("custom notes are bounded, trimmed and reject controls", () => {
@@ -58,11 +69,21 @@ test("API failures and stale runs cannot silently publish", async () => {
   await assert.rejects(previousPublishedCommit({}, async () => response([])), /context/);
 });
 
-test("reads all changed files since baseline, including intervening failed releases", () => {
+test("reads all commit messages since the last published baseline, including failed attempts", () => {
   const calls = [];
-  assert.deepEqual(changedPaths("a".repeat(40), (...args) => {
+  assert.equal(releaseNotesSince("a".repeat(40), (...args) => {
     calls.push(args);
-    return "one.ts\0two.ts\0";
-  }), ["one.ts", "two.ts"]);
-  assert.deepEqual(calls[0], ["diff", "--name-only", "-z", "a".repeat(40), "HEAD", "--"]);
+    return "Fade colors\n\nRelease-Notes-DE: Verbaute Teile behalten fast ihre Originalfarben.\0Fix retry\n\nRelease-Notes-DE: Fehlgeschlagene Änderungen werden gesammelt.\0";
+  }), "• Verbaute Teile behalten fast ihre Originalfarben.\n• Fehlgeschlagene Änderungen werden gesammelt.");
+  assert.deepEqual(calls[0], ["log", "--no-merges", "--reverse", "--format=%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
+});
+
+test("uses only the latest commit as baseline for an initial manual release", () => {
+  const calls = [];
+  const notes = releaseNotesSince(null, (...args) => {
+    calls.push(args);
+    return "Publish Android improvements\n\nRelease-Notes-DE: Android-Installation und Teilevorschau wurden verbessert.\0";
+  });
+  assert.equal(notes, "• Android-Installation und Teilevorschau wurden verbessert.");
+  assert.deepEqual(calls[0], ["log", "--no-merges", "-1", "--format=%B%x00", "HEAD", "--"]);
 });
