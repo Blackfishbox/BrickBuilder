@@ -4,7 +4,6 @@ import { Box3, Euler, Matrix3, Matrix4, Vector3 } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
 import { importedWarningQuery } from "./imported-collision";
 import { stackingBounds } from "./stacking";
-import { activeConnections } from "../connections/engine";
 import { candidates } from "@workspace/ldraw-source";
 import { referenceLine } from "../formats/ldraw/parser";
 
@@ -51,7 +50,6 @@ export async function collisionWarnings(
     .filter(([, box]) => !box.isEmpty()).sort((a, b) => a[1].min.x - b[1].min.x);
   const instances = new Map(model?.instances.map(instance => [instance.id, instance]));
   const query = model ? importedWarningQuery(model) : null;
-  const connectedTargets = new Map<string, Set<string>>();
   const boxes = new Map<string, Box3>();
   let uncertain = false, sliceStart = performance.now(), work = 0;
   const checkpoint = async () => {
@@ -73,17 +71,9 @@ export async function collisionWarnings(
       let overlap: boolean;
       const a = instances.get(id), b = instances.get(otherId);
       if (a && b && query) {
-        if (model) {
-          let connected = connectedTargets.get(id);
-          if (!connected) {
-            connected = new Set(activeConnections(model, id).map(contact => contact.targetId));
-            connectedTargets.set(id, connected);
-          }
-          // The connector engine also checks the insertion slab for obstructions.
-          // Do not flag ordinary stud engagement merely because its open mesh
-          // cannot provide a watertight solid proof.
-          if (connected.has(otherId)) continue;
-        }
+        // A verified connector is not a body-wide exemption: the same pair can
+        // still have independently provable solid penetration elsewhere.
+        // Open or ambiguous geometry remains "unknown" and is never warned.
         const result = query(a.reference, a.matrix, b.reference, b.matrix);
         overlap = result === "overlap";
         if (result === "unknown") uncertain = true;

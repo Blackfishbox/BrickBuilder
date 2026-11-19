@@ -1,11 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
+import { Euler, Matrix4 } from "three";
 import type { Brick } from "../editor/model";
+import type { Affine } from "../formats/types";
 import { engineFixture } from "./engine-fixtures";
 import { collisionWarnings, collisionWarningsInWorker } from "./collision-warning";
 import { connectionFixture, partLine } from "../connections/fixtures";
-import { activeConnections } from "../connections/engine";
+import { activeConnections, snapConnection } from "../connections/engine";
+import { importedWarningQuery } from "./imported-collision";
+import { worldMatrix } from "./ldraw-geometry";
 
 const brick: Brick = { id: "a", type: "brick-1x2", color: "#fff", x: 0, y: 0, z: 0, rotation: 0 };
+function rotateAssemblyMatrix(matrix: Affine, rotation: Matrix4): Affine {
+  const world = rotation.clone().multiply(worldMatrix(matrix)), e = world.elements;
+  return [
+    e[0] * 20, e[4] * 20, e[8] * 20, e[12] * 20,
+    -e[1] * 20, -e[5] * 20, -e[9] * 20, -e[13] * 20,
+    e[2] * 20, e[6] * 20, e[10] * 20, e[14] * 20,
+  ] as Affine;
+}
 describe("optional collision diagnostics", () => {
   it("marks both intersecting bricks, but not touching or separated bricks", async () => {
     const controller = new AbortController();
@@ -60,6 +72,64 @@ describe("optional collision diagnostics", () => {
     const model = connectionFixture([partLine("3001", 0, -24), partLine("3003", 13, -35, 7)].join("\n"));
     const warnings = await collisionWarnings([], model, new AbortController().signal);
     expect(warnings.boxes.size).toBe(2);
+  });
+  it.each([
+    ["pin", "3700", "2780", 160, 10, 0, { x: 0.03, y: -0.5, z: 0.5 }],
+    ["axle", "32064", "3705", 160, 0, 0, { x: 0.02, y: -0.5, z: 0.02 }],
+    ["clip", "4085a", "30374", 160, 0, 0, { x: 0.02, y: -0.2, z: -1.02 }],
+    ["hinge", "h1", "h2", 160, 20, 0, { x: 0.02, y: -1, z: 0.02 }, "-1 0 0 0 -1 0 0 0 1"],
+  ] as const)("does not warn for real licensed %s connections", async (_name, target, moving, x, y, z, position, basis = "1 0 0 0 1 0 0 0 1") => {
+    const source = connectionFixture([partLine(target), partLine(moving, x, y, z, basis)].join("\n"));
+    const id = source.instances[1].id;
+    const snap = snapConnection(source, id, position);
+    expect(snap).not.toBeNull();
+    const model = { ...source, instances: source.instances.map(instance =>
+      instance.id === id ? { ...instance, matrix: snap!.matrix } : instance) };
+    const tilt = new Matrix4().makeRotationFromEuler(new Euler(0.31, 0, -0.24));
+    const tilted = { ...model, instances: model.instances.map(instance => ({
+      ...instance, matrix: rotateAssemblyMatrix(instance.matrix, tilt),
+    })) };
+    for (const candidate of [model, tilted]) {
+      expect(activeConnections(candidate, id).length).toBeGreaterThan(0);
+      const [targetInstance, movingInstance] = candidate.instances;
+      expect(importedWarningQuery(candidate)(targetInstance.reference, targetInstance.matrix,
+        movingInstance.reference, movingInstance.matrix)).toBe("unknown");
+      const warnings = await collisionWarnings([], candidate, new AbortController().signal);
+      expect(warnings.boxes.size).toBe(0);
+    }
+  });
+  it.each([
+    ["pin", "3700", "2780"],
+    ["axle", "32064", "3705"],
+    ["clip", "4085a", "30374"],
+  ] as const)("reports proven penetration in coincident licensed %s parts", async (_name, target, moving) => {
+    const model = connectionFixture([partLine(target), partLine(moving)].join("\n"));
+    const [a, b] = model.instances;
+    const result = importedWarningQuery(model)(a.reference, a.matrix, b.reference, b.matrix);
+    expect(result).toBe("overlap");
+    const warnings = await collisionWarnings([], model, new AbortController().signal);
+    expect([...warnings.boxes.keys()].sort()).toEqual([a.id, b.id].sort());
+  });
+  it("still warns when a connected real pin pair has additional proven penetration", async () => {
+    const source = connectionFixture([partLine("3700"), partLine("2780", 160, 10)].join("\n"));
+    const original = source.instances[1], snap = snapConnection(source, original.id, { x: 0.03, y: -0.5, z: 0.5 });
+    expect(snap).not.toBeNull();
+    let found: { model: typeof source; target: typeof source.instances[number]; moving: typeof original } | undefined;
+    for (const axis of [3, 7, 11]) for (const delta of [-20, -12, -8, -4, -2, 2, 4, 8, 12, 20]) {
+      const matrix = [...snap!.matrix] as typeof original.matrix;
+      matrix[axis] += delta;
+      const model = { ...source, instances: source.instances.map((instance, index) =>
+        index === 1 ? { ...instance, matrix } : instance) };
+      const target = model.instances[0], moving = model.instances[1];
+      if (!activeConnections(model, moving.id).some(contact => contact.targetId === target.id)) continue;
+      if (importedWarningQuery(model)(target.reference, target.matrix, moving.reference, moving.matrix) === "overlap") {
+        found = { model, target, moving };
+        break;
+      }
+    }
+    expect(found).toBeDefined();
+    const warnings = await collisionWarnings([], found!.model, new AbortController().signal);
+    expect([...warnings.boxes.keys()].sort()).toEqual([found!.target.id, found!.moving.id].sort());
   });
   it("aborts obsolete calculations instead of applying their results", async () => {
     const controller = new AbortController();
