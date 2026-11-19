@@ -2,7 +2,7 @@ import { BRICK_DEFINITIONS, BRICK_HEIGHT, type Brick } from "../editor/model";
 import type { ImportedModel } from "../formats/types";
 import { Box3, Euler, Matrix3, Matrix4, Vector3 } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
-import { importedWarningQuery } from "./imported-collision";
+import { importedBrickWarningQuery, importedWarningQuery } from "./imported-collision";
 import { stackingBounds } from "./stacking";
 import { candidates } from "@workspace/ldraw-source";
 import { referenceLine } from "../formats/ldraw/parser";
@@ -57,6 +57,7 @@ export async function collisionWarnings(
     .filter(([, box]) => !box.isEmpty()).sort((a, b) => a[1].min.x - b[1].min.x);
   const instances = new Map(model?.instances.map(instance => [instance.id, instance]));
   const query = model ? importedWarningQuery(model) : null;
+  const brickQuery = model ? importedBrickWarningQuery(model) : null;
   const boxes = new Map<string, Box3>();
   let uncertain = false, sliceStart = performance.now(), work = 0;
   let currentProgress: CollisionProgress = { phase: "preparing", percent: 0 };
@@ -108,6 +109,14 @@ export async function collisionWarnings(
         // still have independently provable solid penetration elsewhere.
         // Open or ambiguous geometry remains "unknown" and is never warned.
         const result = query(a.reference, a.matrix, b.reference, b.matrix);
+        overlap = result === "overlap";
+        if (result === "unknown") uncertain = true;
+      } else if (a && volumes.has(otherId) && brickQuery) {
+        const result = brickQuery(a.reference, a.matrix, volumes.get(otherId)!.solid);
+        overlap = result === "overlap";
+        if (result === "unknown") uncertain = true;
+      } else if (b && volumes.has(id) && brickQuery) {
+        const result = brickQuery(b.reference, b.matrix, volumes.get(id)!.solid);
         overlap = result === "overlap";
         if (result === "unknown") uncertain = true;
       } else if (volumes.has(id) && volumes.has(otherId)) {

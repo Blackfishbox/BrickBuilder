@@ -131,6 +131,33 @@ describe("optional collision diagnostics", () => {
     const warnings = await collisionWarnings([], found!.model, new AbortController().signal);
     expect([...warnings.boxes.keys()].sort()).toEqual([found!.target.id, found!.moving.id].sort());
   });
+  it("warns when a real imported brick penetrates a local brick", async () => {
+    const model = connectionFixture([partLine("3001", 0, -12)].join("\n"));
+    const importedId = model.instances[0].id;
+    const local = { ...brick, type: "brick-2x4" as const };
+    const warnings = await collisionWarnings([local], model, new AbortController().signal, 0);
+    expect([...warnings.boxes.keys()].sort()).toEqual([local.id, importedId].sort());
+    expect(warnings.uncertain).toBe(false);
+  });
+  it("uses the imported display offset for mixed collision checks", async () => {
+    const model = connectionFixture([partLine("3001", 0, -12)].join("\n"));
+    const importedId = model.instances[0].id;
+    const shiftedBrick = { ...brick, type: "brick-2x4" as const, y: 2 };
+    const shifted = await collisionWarnings([shiftedBrick], model, new AbortController().signal, 2);
+    expect([...shifted.boxes.keys()].sort()).toEqual([shiftedBrick.id, importedId].sort());
+    expect(shifted.boxes.get(shiftedBrick.id)?.min.y).toBeCloseTo(0);
+
+    const unshifted = await collisionWarnings([brick], model, new AbortController().signal, 2);
+    expect(unshifted.boxes.size).toBe(0);
+  });
+  it("does not warn from overlapping bounds when imported geometry is uncertain", async () => {
+    const model = engineFixture(1, 1);
+    model.resources["parts/test.dat"].content = "3 16 0 0 0 4 0 0 0 4 0";
+    model.instances[0].matrix[7] = -12;
+    const warnings = await collisionWarnings([brick], model, new AbortController().signal, 0);
+    expect(warnings.boxes.size).toBe(0);
+    expect(warnings.uncertain).toBe(true);
+  });
   it("aborts obsolete calculations instead of applying their results", async () => {
     const controller = new AbortController();
     controller.abort();

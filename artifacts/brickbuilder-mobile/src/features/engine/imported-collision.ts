@@ -1,4 +1,5 @@
 import { Box3, Matrix4, Plane, Ray, Triangle, Vector3 } from "three";
+import { OBB } from "three/examples/jsm/math/OBB.js";
 import type { Affine, ImportedModel } from "../formats/types";
 import { compilePart, getCompiledPart, worldMatrix, type Surface } from "./ldraw-geometry";
 
@@ -93,6 +94,9 @@ function shapeFor(model: ImportedModel, reference: string, budget: Budget): Shap
 
 function body(shape: Shape, affine: Affine): Body | null {
   const matrix = worldMatrix(affine).multiply(new Matrix4().makeScale(20, 20, 20));
+  return bodyFromMatrix(shape, matrix);
+}
+function bodyFromMatrix(shape: Shape, matrix: Matrix4): Body | null {
   if (Math.abs(matrix.determinant()) < 1e-12) return null;
   return { shape, matrix, inverse: matrix.clone().invert(), boxes: new Map() };
 }
@@ -266,6 +270,36 @@ function surfacesCross(a: Body, b: Body, budget: Budget): boolean {
   return visit(a.shape.root, b.shape.root);
 }
 
+function brickShape(): Shape {
+  const vertices = [
+    [-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1],
+    [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1],
+  ].map(([x, y, z]) => new Vector3(x, y, z));
+  const triangles = [
+    [0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6],
+    [0, 1, 4], [1, 5, 4], [2, 6, 3], [3, 6, 7],
+    [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5],
+  ];
+  const faces = triangles.map(([a, b, c]) => {
+    const triangle = new Triangle(vertices[a], vertices[b], vertices[c]);
+    return { triangle, box: new Box3().setFromPoints([triangle.a, triangle.b, triangle.c]) };
+  });
+  return { root: tree(faces), faces, closed: true };
+}
+const localBrickShape = brickShape();
+
+function bodyForBox(box: OBB): Body | null {
+  const matrix = new Matrix4().setFromMatrix3(box.rotation)
+    .scale(box.halfSize).setPosition(box.center);
+  return bodyFromMatrix(localBrickShape, matrix);
+}
+
+function warningResult(a: Body, b: Body, budget: Budget): CollisionResult {
+  if (!bounds(a, a.shape.root).intersectsBox(bounds(b, b.shape.root))) return "clear";
+  if (a.shape.closed && b.shape.closed) return overlaps(a, b, budget) ? "overlap" : "clear";
+  return surfacesCross(a, b, budget) ? "overlap" : "unknown";
+}
+
 /** Diagnostic-only positive evidence; never treats unknown bounds as a collision.
  * This intentionally does not change conservative placement/stacking queries.
  */
@@ -277,9 +311,23 @@ export function importedWarningQuery(model: ImportedModel) {
       if (!sa || !sb) return "unknown";
       const a = body(sa, matrixA), b = body(sb, matrixB);
       if (!a || !b) return "unknown";
-      if (!bounds(a, sa.root).intersectsBox(bounds(b, sb.root))) return "clear";
-      if (sa.closed && sb.closed) return overlaps(a, b, budget) ? "overlap" : "clear";
-      return surfacesCross(a, b, budget) ? "overlap" : "unknown";
+      return warningResult(a, b, budget);
+    } catch {
+      return "unknown";
+    }
+  };
+}
+
+/** Diagnostic-only query for imported geometry against a local brick's solid volume. */
+export function importedBrickWarningQuery(model: ImportedModel) {
+  const budget = new Budget();
+  return (reference: string, matrix: Affine, brick: OBB): CollisionResult => {
+    try {
+      const shape = shapeFor(model, reference, budget);
+      if (!shape) return "unknown";
+      const imported = body(shape, matrix), local = bodyForBox(brick);
+      if (!imported || !local) return "unknown";
+      return warningResult(imported, local, budget);
     } catch {
       return "unknown";
     }
