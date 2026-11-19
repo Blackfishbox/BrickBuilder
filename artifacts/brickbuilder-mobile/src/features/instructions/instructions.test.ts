@@ -230,6 +230,39 @@ describe("local construction instructions", () => {
     expect(() => readStudioInstructions("<Bad/>", plan)).toThrow();
   });
 
+  it("restores camera angles from the legacy Studio attribute", () => {
+    const plan = fixture().instructions!;
+    const expectedRotation: [number, number, number] = [23, -47, 68];
+    const modernXml = writeStudioInstructions({
+      ...plan,
+      steps: plan.steps.map((step, index) => index === 0 ? { ...step, rotation: expectedRotation } : step),
+    });
+    const legacyXml = modernXml.replaceAll(' modelAngle="', ' DefaultCameraControlInfo_modelAngle="');
+    expect(legacyXml).toContain(' DefaultCameraControlInfo_modelAngle="');
+    expect(legacyXml).not.toContain(' modelAngle="');
+
+    const blankPlan = {
+      ...plan,
+      steps: plan.steps.map(step => ({ ...step, rotation: undefined })),
+    };
+    const restored = readStudioInstructions(legacyXml, blankPlan);
+    const recoveredRotation = restored.steps[0].rotation;
+    const pose = (rotation?: [number, number, number]) => {
+      const view = new PerspectiveCamera(), target = new Vector3();
+      view.position.set(
+        Math.sin(DEFAULT_INSTRUCTION_PHI) * Math.sin(DEFAULT_INSTRUCTION_THETA),
+        Math.cos(DEFAULT_INSTRUCTION_PHI),
+        Math.sin(DEFAULT_INSTRUCTION_PHI) * Math.cos(DEFAULT_INSTRUCTION_THETA),
+      );
+      view.lookAt(target);
+      applyInstructionCameraRotation(view, target, rotation);
+      return view;
+    };
+
+    expect(recoveredRotation).toBeDefined();
+    expect(pose(recoveredRotation).quaternion.angleTo(pose(expectedRotation).quaternion)).toBeLessThan(0.00001);
+  });
+
   it("preserves repeated touch turns at pitch limits through instruction export and restore", () => {
     const doc = fixture(), plan = doc.instructions!;
     let rotation: [number, number, number] | undefined;
