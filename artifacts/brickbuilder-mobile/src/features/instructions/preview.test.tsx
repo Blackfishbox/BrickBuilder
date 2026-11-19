@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import InstructionsPanel from "./InstructionsPanel";
 import { updateInstructions } from "./model";
+import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "../engine/instruction-camera";
 
 const { preview } = vi.hoisted(() => ({ preview: vi.fn() }));
 vi.mock("../engine/BuilderCanvas", () => ({ default: (props: unknown) => { preview(props); return null; } }));
@@ -39,6 +40,40 @@ it("persists manual preview camera changes independently for each step", () => {
   expect(preview.mock.lastCall![0].viewCamera).toBeUndefined();
   act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-prev"]')!.click());
   expect(preview.mock.lastCall![0].viewCamera).toEqual(saved);
+});
+
+it("shows touch rotations in the fields while zoom and pan leave the angles alone", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["b"], rotation: [0, 20, 0] },
+  ] };
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(d => updateInstructions(d, plan))}
+      onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+  const camera = {
+    theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI, distance: 12,
+    target: [1, 2, 3] as [number, number, number], referenceDistance: 20, referenceTarget: [0, 0, 0] as [number, number, number],
+  };
+  act(() => preview.mock.lastCall![0].onViewCameraChange(camera, [10, 20, 30]));
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("10");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-y"]')!.value).toBe("20");
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-z"]')!.value).toBe("30");
+  act(() => preview.mock.lastCall![0].onViewCameraChange({ ...camera, target: [4, 5, 6] }, undefined));
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("10");
+  expect(preview.mock.lastCall![0].viewCamera.target).toEqual([4, 5, 6]);
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-rotation-reset"]')!.click());
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value).toBe("0");
+  expect(preview.mock.lastCall![0].viewCamera.theta).toBe(DEFAULT_INSTRUCTION_THETA);
+  expect(preview.mock.lastCall![0].viewCamera.phi).toBe(DEFAULT_INSTRUCTION_PHI);
+  expect(preview.mock.lastCall![0].viewCamera.distance).toBe(12);
+  expect(preview.mock.lastCall![0].viewCamera.target).toEqual([4, 5, 6]);
 });
 
 it("passes each saved step rotation to the live view and updates on edit/reset without changing model parts", () => {
