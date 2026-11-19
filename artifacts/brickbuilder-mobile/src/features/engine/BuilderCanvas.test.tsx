@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Group, PerspectiveCamera, Scene, Vector3 } from "three";
+import { Box3, Group, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -311,6 +311,110 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene!.positions).toEqual(preview);
     expect(snapping.activeConnections(committed.imported!, id)).toHaveLength(2);
   });
+  for (const webgl of [true, false]) {
+    const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`expands the floor for a drag preview and restores it on cancellation in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 2);
+      const props = { projectId: `floor-preview-${rendererName}`, bricks: [], imported: model,
+        selectedId: model.instances[0].id, selectedType: "brick-2x4" as const, selectedColor: "#B40000",
+        toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? instanceIndex(
+          observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group,
+        ) : observed.scene).toBeDefined());
+      });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+
+      const committedBounds = currentImportedBounds(webgl);
+      const committedArea = constructionArea(committedBounds);
+      const camera = { ...observed.cameraPose! };
+      expectConstructionArea(committedBounds);
+
+      vi.spyOn(snapping, "magneticConstructionTransform").mockReturnValue({
+        transform: {
+          matrix: [1, 0, 0, 6000, 0, 1, 0, 0, 0, 0, 1, 0],
+          contacts: [],
+          status: "unconnected",
+        },
+      });
+      const projected = new Vector3(1 / 3, 2 / 3, 0).project(observed.camera!);
+      const point = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      pointer("pointerdown", point.x, point.y);
+      pointer("pointermove", point.x + 80, point.y + 10);
+      flushFrame();
+
+      expect(snapping.magneticConstructionTransform).toHaveBeenCalledOnce();
+      const previewBounds = currentImportedBounds(webgl);
+      const previewFloorBounds = committedBounds.clone().union(previewBounds);
+      const previewArea = constructionArea(previewFloorBounds);
+      expect(previewBounds.max.x).toBeGreaterThan(committedBounds.max.x + 10);
+      expect(previewArea.width).toBeGreaterThan(committedArea.width);
+      expectConstructionArea(previewFloorBounds);
+      expectCameraPose(camera);
+
+      pointer("pointercancel", point.x + 80, point.y + 10);
+
+      expect(props.onMove).not.toHaveBeenCalled();
+      expect(currentImportedBounds(webgl).max.x).toBeCloseTo(committedBounds.max.x);
+      expectConstructionArea(committedBounds);
+      expectCameraPose(camera);
+    });
+  }
+  for (const webgl of [true, false]) {
+    const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`updates and restores the floor for a built-part drag in ${rendererName}`, () => {
+      observed.webglEnabled = webgl;
+      const original: Brick = {
+        id: "local-preview", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0,
+      };
+      const props = { bricks: [original], selectedId: null, selectedType: "brick-2x4" as const,
+        selectedColor: "#B40000", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+
+      const committedBounds = brickConstructionBounds(original);
+      const committedArea = constructionArea(committedBounds);
+      const camera = { ...observed.cameraPose! };
+      expectConstructionArea(committedBounds);
+      observed.camera!.updateMatrixWorld(true);
+      const screenPoint = (x: number, y: number, z: number) => {
+        const projected = new Vector3(x, y, z).project(observed.camera!);
+        return { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      };
+      const start = screenPoint(0, 1.11, 0);
+      const end = screenPoint(-20, original.y, 0);
+      const pointOnGround = (point: { x: number; y: number }) => {
+        const raycaster = new Raycaster();
+        raycaster.setFromCamera(new Vector2((point.x - 300) / 300, (300 - point.y) / 300), observed.camera!);
+        return raycaster.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), -original.y), new Vector3())!;
+      };
+      const startOnGround = pointOnGround(start), endOnGround = pointOnGround(end);
+      const previewBrick = {
+        ...original,
+        x: Math.round((original.x + endOnGround.x - startOnGround.x) * 2) / 2,
+        z: Math.round((original.z + endOnGround.z - startOnGround.z) * 2) / 2,
+      };
+      pointer("pointerdown", start.x, start.y);
+      expect(props.onSelect).toHaveBeenCalledWith(original.id);
+      pointer("pointermove", end.x, end.y);
+      flushFrame();
+
+      const previewBounds = committedBounds.clone().union(brickConstructionBounds(previewBrick));
+      expect(constructionArea(previewBounds).width).toBeGreaterThan(committedArea.width);
+      expectConstructionArea(previewBounds);
+      expectCameraPose(camera);
+
+      pointer("pointercancel", end.x, end.y);
+
+      expect(props.onMove).not.toHaveBeenCalled();
+      expectConstructionArea(committedBounds);
+      expectCameraPose(camera);
+    });
+  }
   async function mount(toolMode: ToolMode = "select") {
     const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn();
     const props = { projectId: "one", bricks: [], imported: model, selectedId: model.instances[0].id,
