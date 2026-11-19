@@ -246,16 +246,14 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .canvas-stage { height: 100%; padding: 0 10px; grid-template-rows: 38px minmax(0,1fr); }
   .canvas-host { border-radius: 14px; }
   .mobile-selection-actions {
-    position: relative; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 6px;
-    width: 100%; max-width: none; box-sizing: border-box; overflow: visible; flex-wrap: wrap; padding: 4px;
+    position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 4px;
+    width: 100%; max-width: none; box-sizing: border-box; overflow: visible; flex-wrap: nowrap; padding: 4px;
     border: 1px solid #e1ddd0; border-radius: 11px; background: rgba(250,248,240,.97);
     box-shadow: 0 4px 14px rgba(39,57,48,.12); backdrop-filter: blur(10px);
   }
-  .mobile-selection-label { display: flex; align-items: center; gap: 5px; padding: 0 7px; max-width: 100px; overflow: hidden; color: #64766a; font-size: 9px; font-weight: 700; }
-   .mobile-selection-actions button { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; cursor: pointer; }
+  .mobile-selection-actions button { display: grid; place-items: center; width: 38px; height: 40px; border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; cursor: pointer; }
   .mobile-selection-actions > button:last-child { color: #ad513c; }
   .mobile-selection-actions > button { flex-shrink: 0; }
-  .mobile-selection-label { min-width: 0; }
   .canvas-stage.has-selection { grid-template-rows: 38px minmax(0,1fr) auto; }
   .context-label { font-size: 8px; }
   .brick-count { font-size: 10px; }
