@@ -79,12 +79,20 @@ interface BuilderCanvasProps {
   bricks: Brick[];
   imported?: ImportedModel;
   selectedId: string | null;
+  selectedIds?: readonly string[];
   selectedType: BrickType;
   selectedColor: string;
   toolMode: ToolMode;
   onPlace: (position: Position3) => void;
   onSelect: (id: string | null) => void;
   onMove: (id: string, position: Position3, transform?: Affine) => void;
+  onMoveGroup?: (ids: readonly string[], delta: Position3) => void;
+}
+
+interface DragMember {
+  id: string;
+  brick?: Brick;
+  matrix?: Affine;
 }
 
 interface DragCandidate {
@@ -99,6 +107,7 @@ interface DragCandidate {
   connection?: ConnectionTransform;
   magneticLatch?: MagneticLatch;
   planeStart: Position3 | null;
+  members: DragMember[];
 }
 
 interface BrickHit {
@@ -374,12 +383,14 @@ export function BuilderCanvas({
   bricks,
   imported,
   selectedId,
+  selectedIds,
   selectedType,
   selectedColor,
   toolMode,
   onPlace,
   onSelect,
   onMove,
+  onMoveGroup,
 }: BuilderCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene | null>(null);
@@ -492,12 +503,14 @@ export function BuilderCanvas({
     bricks,
     imported,
     selectedId,
+    selectedIds,
     selectedType,
     selectedColor,
     toolMode,
     onPlace,
     onSelect,
     onMove,
+    onMoveGroup,
   });
   const pointersRef = useRef(new Map<number, PointerPoint>());
   const pointerLastRef = useRef(new Map<number, PointerPoint>());
@@ -536,12 +549,14 @@ export function BuilderCanvas({
     bricks,
     imported,
     selectedId,
+    selectedIds,
     selectedType,
     selectedColor,
     toolMode,
     onPlace,
     onSelect,
     onMove,
+    onMoveGroup,
   };
 
   useEffect(() => {
@@ -1160,10 +1175,13 @@ export function BuilderCanvas({
       pendingPreviewRef.current = null;
       const drag = dragRef.current;
       if (drag) {
-        if (importedRootRef.current) instanceIndex(importedRootRef.current)?.restore(drag.id);
-        if (softwareSceneRef.current) restoreSoftware(softwareSceneRef.current, drag.id);
-        const brick = propsRef.current.bricks.find(value => value.id === drag.id);
-        if (brick) applyBrickPreview(brick);
+        for (const member of drag.members) {
+          if (member.matrix) {
+            if (importedRootRef.current) instanceIndex(importedRootRef.current)?.restore(member.id);
+            if (softwareSceneRef.current) restoreSoftware(softwareSceneRef.current, member.id);
+          }
+          if (member.brick) applyBrickPreview(member.brick);
+        }
       }
       previewBrickRef.current = null;
       dragRef.current = null; clickRef.current = null;
@@ -1185,7 +1203,7 @@ export function BuilderCanvas({
         if (child instanceof InstancedMesh) {
           const index = (child.userData.brickIds as string[]).indexOf(brick.id);
           if (index >= 0) { child.setMatrixAt(index, dummy.matrix); child.instanceMatrix.needsUpdate = true; child.boundingSphere = null; }
-        } else if (child.userData.isSelectionOutline) {
+        } else if (child.userData.isSelectionOutline && brick.id === propsRef.current.selectedId) {
           child.position.set(brick.x, brick.y, brick.z);
           child.rotation.set((brick.tiltX ?? 0) * Math.PI / 180, brick.rotation * Math.PI / 180, (brick.tiltZ ?? 0) * Math.PI / 180, "XYZ");
         }
@@ -1219,9 +1237,32 @@ export function BuilderCanvas({
     const queuePreview = (drag: DragCandidate) => {
       pendingPreviewRef.current = () => {
         if (dragRef.current !== drag || !drag.destination) return;
-        resolveDrag(drag);
+        const grouped = drag.members.length > 1;
+        if (!grouped) resolveDrag(drag);
         const position = drag.destination;
-        if (drag.matrix) {
+        if (grouped) {
+          const delta = {
+            x: position.x - drag.origin.x,
+            y: position.y - drag.origin.y,
+            z: position.z - drag.origin.z,
+          };
+          for (const member of drag.members) {
+            if (member.matrix) {
+              const matrix = [...member.matrix] as Affine;
+              matrix[3] += delta.x * 20;
+              matrix[7] -= delta.y * 20;
+              matrix[11] += delta.z * 20;
+              if (importedRootRef.current) instanceIndex(importedRootRef.current)?.preview(member.id, matrix);
+              if (softwareSceneRef.current) previewSoftware(softwareSceneRef.current, member.id, matrix);
+            } else if (member.brick) {
+              const preview = { ...member.brick,
+                x: member.brick.x + delta.x, y: member.brick.y + delta.y, z: member.brick.z + delta.z };
+              applyBrickPreview(preview);
+              refreshConstructionAreaRef.current?.(brickConstructionBounds(preview));
+            }
+          }
+          updateImportedSelection();
+        } else if (drag.matrix) {
           const matrix = [...(drag.connection?.matrix ?? drag.matrix)] as Affine;
           // Connection matrices are already in original LDU coordinates.
           // A scene-unit/floor-offset round trip changes exact off-grid values
@@ -1240,7 +1281,20 @@ export function BuilderCanvas({
             refreshConstructionAreaRef.current?.(brickConstructionBounds(previewBrickRef.current));
           }
         }
-        if (drag.matrix) {
+        if (grouped) {
+          const root = importedRootRef.current;
+          if (root) {
+            root.updateMatrixWorld(true);
+            const groupBounds = new Box3();
+            for (const member of drag.members) {
+              if (member.matrix) {
+                const record = instanceIndex(root)?.records.get(member.id);
+                if (record && !record.bounds.isEmpty()) groupBounds.union(record.bounds);
+              }
+            }
+            if (!groupBounds.isEmpty()) refreshConstructionAreaRef.current?.(groupBounds);
+          }
+        } else if (drag.matrix) {
           const root = importedRootRef.current;
           const record = root && instanceIndex(root)?.records.get(drag.id);
           if (record && !record.bounds.isEmpty()) {
@@ -1296,12 +1350,24 @@ export function BuilderCanvas({
       const hit = current.toolMode === "view" ? null : findBrick(point);
       if (current.toolMode === "select") {
         if (hit) {
-          current.onSelect(hit.id);
+          const alreadySelected = current.selectedIds?.includes(hit.id) ?? false;
+          if (!alreadySelected) current.onSelect(hit.id);
           const brick = current.bricks.find((item) => item.id === hit.id);
           const instance = current.imported?.instances.find(item => item.id === hit.id);
           const origin = brick ? { x: brick.x, y: brick.y, z: brick.z } :
             instance ? { x: instance.matrix[3] / 20, y: -instance.matrix[7] / 20 + importedOffsetRef.current, z: instance.matrix[11] / 20 } : null;
           if (origin) {
+            const requestedIds = current.selectedIds?.includes(hit.id) ? current.selectedIds : [hit.id];
+            const members: DragMember[] = [
+              ...current.bricks.filter(item => requestedIds.includes(item.id)).map(item => ({ id: item.id, brick: item })),
+              ...(current.imported?.instances ?? []).filter(item => requestedIds.includes(item.id))
+                .map(item => ({ id: item.id, matrix: [...item.matrix] as Affine })),
+            ];
+            if (!members.some(member => member.id === hit.id)) {
+              members.push(brick
+                ? { id: brick.id, brick }
+                : { id: instance!.id, matrix: [...instance!.matrix] as Affine });
+            }
             dragRef.current = {
               id: hit.id,
               pointerId: event.pointerId,
@@ -1311,6 +1377,7 @@ export function BuilderCanvas({
               destination: null,
               matrix: instance?.matrix,
               planeStart: projectToPlane(point, origin.y),
+              members,
             };
           }
         } else {
@@ -1370,7 +1437,13 @@ export function BuilderCanvas({
               y: start.origin.y,
               z: start.origin.z + destination.z - (start.planeStart?.z ?? start.origin.z),
             };
-            start.needsSnap = true;
+            if (start.members.length > 1) {
+              start.destination.x = Math.round(start.destination.x * 2) / 2;
+              start.destination.z = Math.round(start.destination.z * 2) / 2;
+              start.needsSnap = false;
+            } else {
+              start.needsSnap = true;
+            }
             queuePreview(start);
           }
           return;
@@ -1414,12 +1487,23 @@ export function BuilderCanvas({
         if (drag?.pointerId === event.pointerId && drag.moved) {
           resolveDrag(drag);
           if (drag.destination) {
+            const delta = {
+              x: drag.destination.x - drag.origin.x,
+              y: drag.destination.y - drag.origin.y,
+              z: drag.destination.z - drag.origin.z,
+            };
             const destination = { ...drag.destination, y: drag.destination.y - (drag.matrix ? importedOffsetRef.current : 0) };
-            const changed = drag.destination.x !== drag.origin.x || drag.destination.y !== drag.origin.y || drag.destination.z !== drag.origin.z ||
-              !!drag.connection?.matrix.some((value, i) => value !== drag.matrix?.[i]);
+            const changed = drag.members.length > 1
+              ? Math.abs(delta.x) > 1e-10 || Math.abs(delta.y) > 1e-10 || Math.abs(delta.z) > 1e-10
+              : drag.destination.x !== drag.origin.x || drag.destination.y !== drag.origin.y || drag.destination.z !== drag.origin.z ||
+                !!drag.connection?.matrix.some((value, i) => value !== drag.matrix?.[i]);
             const transform = drag.connection?.matrix;
+            const groupIds = drag.members.map(member => member.id);
             rollback();
-            if (changed) current.onMove(drag.id, destination, transform);
+            if (changed) {
+              if (groupIds.length > 1 && current.onMoveGroup) current.onMoveGroup(groupIds, delta);
+              else current.onMove(drag.id, destination, transform);
+            }
           }
         } else if (current.toolMode === "build" && click && !click.moved) {
           const hit = findBrick(point);

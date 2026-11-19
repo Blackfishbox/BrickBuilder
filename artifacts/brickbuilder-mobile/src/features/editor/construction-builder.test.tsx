@@ -274,3 +274,55 @@ it("applies one Y rotation to a selected local and imported group", async () => 
   expect(editor.bricks.map(brick => brick.rotation)).toEqual([90, 90]);
   expect(editor.imported!.instances[0].rotationY).toBe(90);
 });
+
+it("moves a mixed selected group together as one saveable undo step", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => { root!.render(<Harness />); });
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const sourceText = "0 Group move test\n1 4 400 0 0 0 0 1 0 1 0 -1 0 0 1 test.dat\n";
+  const imported: ImportedModel = {
+    version: 1, format: "ldr", sourceName: "group-move.ldr", sourceText,
+    originalBytes: Array.from(new TextEncoder().encode(sourceText)), ...parseLDraw(sourceText),
+    resources: { "parts/test.dat": { path: "parts/test.dat", author: "Fixture", license: "CC0-1.0",
+      sourceUrl: "https://example.invalid/test.dat", content: "0 Test geometry\n3 16 0 0 0 20 0 0 0 20 0\n" } },
+    legalDocuments: [],
+  };
+  imported.instances.forEach(instance => { instance.part.status = "resolved"; });
+  const first = { id: "move-a", type: "brick-2x2" as const, color: "#B40000", x: 0, y: 0, z: 0, rotation: 37 };
+  const second = { id: "move-b", type: "brick-1x2" as const, color: "#B40000", x: 10, y: 0, z: 0, rotation: 90 };
+  const importedId = imported.instances[0].id;
+  const before = { ...createEmptyDocument(), bricks: [first, second], imported };
+  await act(async () => { await editor.importProject(before); });
+
+  const originalMatrix = [...editor.imported!.instances[0].matrix];
+  await act(async () => editor.moveGroup([first.id, second.id, importedId], { x: 2.5, y: 0.4, z: -1.5 }));
+  expect(editor.bricks.map(brick => [brick.x, brick.y, brick.z, brick.rotation])).toEqual([
+    [2.5, 0.4, -1.5, 37], [12.5, 0.4, -1.5, 90],
+  ]);
+  const moved = editor.imported!.instances[0];
+  expect(moved.matrix[3] - originalMatrix[3]).toBe(50);
+  expect(moved.matrix[7] - originalMatrix[7]).toBe(-8);
+  expect(moved.matrix[11] - originalMatrix[11]).toBe(-30);
+  for (const index of [0, 1, 2, 4, 5, 6, 8, 9, 10]) {
+    expect(moved.matrix[index]).toBe(originalMatrix[index]);
+  }
+  expect(editor.canUndo).toBe(true);
+  await act(async () => { await editor.save(); });
+  expect((await loadProject(editor.document.id))?.bricks).toEqual(editor.bricks);
+  expect((await loadProject(editor.document.id))?.imported?.instances[0]).toEqual(moved);
+
+  await act(async () => editor.undo());
+  expect(editor.bricks).toEqual([first, second]);
+  expect(editor.imported!.instances[0].matrix).toEqual(originalMatrix);
+  await act(async () => editor.redo());
+  expect(editor.bricks.map(brick => [brick.x, brick.y, brick.z])).toEqual([
+    [2.5, 0.4, -1.5], [12.5, 0.4, -1.5],
+  ]);
+  expect(editor.imported!.instances[0]).toEqual(moved);
+});

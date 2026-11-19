@@ -14,7 +14,7 @@ import {
   type Position3,
   type ToolMode,
 } from "./model";
-import { clampBrickToGround, normalizeTiltAngle } from "./brick-transform";
+import { brickBounds, clampBrickToGround, normalizeTiltAngle } from "./brick-transform";
 import { commit, createHistory, redo, undo, type HistoryState } from "./history";
 import type { LibraryPart } from "../parts/types";
 import { ensureCatalog, resolveStoredInventory, useCatalog } from "../catalog/client";
@@ -25,7 +25,8 @@ import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
 import { editImported, moveImported, placePreparedPart, placeInventoryPart, placeInventoryBatch, prepareLibraryPart, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
-import { inheritStackingBounds } from "../engine/stacking";
+import { inheritStackingBounds, localPartBounds } from "../engine/stacking";
+import { worldMatrix } from "../engine/ldraw-geometry";
 import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
 import { groundedTransform, modelGround } from "./positioning";
@@ -497,6 +498,78 @@ export function useBuilder() {
     [updateDocument, constructionGround],
   );
 
+  const moveGroup = useCallback((ids: readonly string[], delta: Position3) => {
+    if (![delta.x, delta.y, delta.z].every(Number.isFinite)) return;
+    const requested = new Set(ids);
+    if (requested.size < 2) return;
+    updateDocument(document => {
+      const bricks = document.bricks.filter(brick => requested.has(brick.id));
+      const instances = document.imported?.instances.filter(instance => requested.has(instance.id)) ?? [];
+      if (bricks.length + instances.length < 2) return document;
+
+      let next = document;
+      const brickIds = new Set(bricks.map(brick => brick.id));
+      next = {
+        ...next,
+        bricks: next.bricks.map(brick => brickIds.has(brick.id)
+          ? { ...brick, x: brick.x + delta.x, y: brick.y + delta.y, z: brick.z + delta.z }
+          : brick),
+      };
+      for (const instance of instances) {
+        const matrix = [...instance.matrix] as Affine;
+        matrix[3] += delta.x * 20;
+        matrix[7] -= delta.y * 20;
+        matrix[11] += delta.z * 20;
+        next = moveImported(next, instance.id, {
+          x: instance.matrix[3] / 20 + delta.x,
+          y: -instance.matrix[7] / 20 + delta.y,
+          z: instance.matrix[11] / 20 + delta.z,
+        }, false, matrix);
+      }
+
+      // Keep the translation shared if a downward move reaches the construction floor.
+      let lift = 0;
+      for (const brick of next.bricks) {
+        if (brickIds.has(brick.id)) lift = Math.max(lift, -brickBounds(brick).min.y);
+      }
+      const importedIds = new Set(instances.map(instance => instance.id));
+      if (next.imported) {
+        const floor = constructionGround(document.imported!);
+        for (const instance of next.imported.instances) {
+          if (!importedIds.has(instance.id)) continue;
+          try {
+            const bounds = localPartBounds(next.imported, instance.reference)
+              .clone().applyMatrix4(worldMatrix(instance.matrix));
+            if (!bounds.isEmpty()) lift = Math.max(lift, floor - bounds.min.y);
+          } catch {
+            // Keep unresolved parts movable without inventing geometry for their floor bounds.
+          }
+        }
+      }
+      lift = Math.max(0, lift);
+      if (lift > 1e-9) {
+        next = {
+          ...next,
+          bricks: next.bricks.map(brick => brickIds.has(brick.id)
+            ? { ...brick, y: brick.y + lift } : brick),
+        };
+        for (const id of importedIds) {
+          const instance = next.imported?.instances.find(value => value.id === id);
+          if (instance) {
+            const matrix = [...instance.matrix] as Affine;
+            matrix[7] -= lift * 20;
+            next = moveImported(next, id, {
+              x: instance.matrix[3] / 20,
+              y: -instance.matrix[7] / 20 + lift,
+              z: instance.matrix[11] / 20,
+            }, false, matrix);
+          }
+        }
+      }
+      return next === document ? document : { ...next, updatedAt: new Date().toISOString() };
+    });
+  }, [constructionGround, updateDocument]);
+
   const remove = useCallback(
     (id: string) => {
       if (historyRef.current.document.imported?.instances.some(instance => instance.id === id)) {
@@ -779,6 +852,7 @@ export function useBuilder() {
     select,
     place,
     move,
+    moveGroup,
     changeHeight,
     nudgeSelected,
     rotateSelected,

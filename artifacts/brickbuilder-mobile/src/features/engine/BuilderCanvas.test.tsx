@@ -1127,6 +1127,40 @@ describe("frame-coalesced drag transactions", () => {
       expectCameraPose(camera);
     });
   }
+  it("drags a selected secondary member and reports one shared group offset", () => {
+    const bricks: Brick[] = [
+      { id: "group-primary", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 35 },
+      { id: "group-secondary", type: "brick-1x2", color: "#B40000", x: 8, y: 0, z: 0, rotation: 90 },
+    ];
+    const onMove = vi.fn(), onMoveGroup = vi.fn(), onSelect = vi.fn();
+    const props = { bricks, selectedId: bricks[0].id, selectedIds: bricks.map(brick => brick.id),
+      selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "select" as const,
+      onMove, onMoveGroup, onSelect, onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    host = element.querySelector("[data-testid='canvas-3d']")!;
+    flushFrame();
+    observed.camera!.updateMatrixWorld(true);
+    const project = (point: Vector3) => {
+      const projected = point.project(observed.camera!);
+      return { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+    };
+    const start = project(new Vector3(8, 1.11, 0));
+    const ray = new Raycaster();
+    ray.setFromCamera(new Vector2((start.x - 300) / 300, (300 - start.y) / 300), observed.camera!);
+    const planeStart = ray.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), 0), new Vector3())!;
+    const end = project(planeStart.clone().add(new Vector3(1.2, 0, 2.2)));
+    pointer("pointerdown", start.x, start.y);
+    pointer("pointermove", end.x, end.y);
+    flushFrame();
+    pointer("pointerup", end.x, end.y);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onMove).not.toHaveBeenCalled();
+    expect(onMoveGroup).toHaveBeenCalledOnce();
+    expect(onMoveGroup.mock.calls[0][0]).toEqual(bricks.map(brick => brick.id));
+    expect(onMoveGroup.mock.calls[0][1].x).toBeGreaterThan(0);
+    expect(onMoveGroup.mock.calls[0][1].z).toBeGreaterThan(0);
+  });
   async function mount(toolMode: ToolMode = "select") {
     const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn();
     const props = { projectId: "one", bricks: [], imported: model, selectedId: model.instances[0].id,

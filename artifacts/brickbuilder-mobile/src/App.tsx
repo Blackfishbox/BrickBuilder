@@ -103,14 +103,14 @@ function App() {
   const rotationSelection = (mobile = false) => (
     <details className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}>
       <summary>{mobile ? `Gruppe${rotationTargetIds.length > 1 ? ` · ${rotationTargetIds.length}` : ""}`
-        : `Weitere Teile gemeinsam drehen${rotationTargetIds.length > 1 ? ` (${rotationTargetIds.length} ausgewählt)` : ""}`}</summary>
+        : `Teile gemeinsam bewegen und drehen${rotationTargetIds.length > 1 ? ` (${rotationTargetIds.length} ausgewählt)` : ""}`}</summary>
       <div className="rotation-selection-panel">
         <label className="rotation-selection-search">
-          <span className="sr-only">Teile zum gemeinsamen Drehen suchen</span>
-          <input aria-label="Teile zum gemeinsamen Drehen suchen" value={rotationTargetQuery}
+          <span className="sr-only">Teile zur Gruppenauswahl suchen</span>
+          <input aria-label="Teile zur Gruppenauswahl suchen" value={rotationTargetQuery}
             onChange={event => setRotationTargetQuery(event.target.value)} placeholder="LDraw-ID oder Teilname" />
         </label>
-        <p>{rotationTargetIds.length} Teile ausgewählt. Die Auswahl dreht sich gemeinsam um ihren Mittelpunkt.</p>
+        <p>{rotationTargetIds.length} Teile ausgewählt. Ziehen oder drehen bewegt die Gruppe gemeinsam.</p>
         <div className="rotation-selection-list">
           {availableRotationTargets.filter(target => target.id !== editor.selectedId &&
             target.label.toLowerCase().includes(rotationTargetQuery.trim().toLowerCase())).map(target => (
@@ -348,12 +348,14 @@ function App() {
                 bricks={editor.bricks}
                 imported={editor.imported}
                 selectedId={editor.selectedId}
+                selectedIds={rotationTargetIds}
                 selectedType={editor.selectedType}
                 selectedColor={editor.selectedColor}
                 toolMode={editor.toolMode}
                 onPlace={editor.place}
                 onSelect={editor.select}
                 onMove={editor.move}
+                onMoveGroup={editor.moveGroup}
               />}
             </Suspense>
             {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">Vollständiger Zuordnungskatalog nicht verfügbar. Vorhandene Nachweise bleiben erhalten. <button type="button" onClick={() => setPartsOpen(true)}>Katalog unter „Steine“ erneut laden</button></div>}
