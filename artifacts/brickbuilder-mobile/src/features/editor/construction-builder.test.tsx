@@ -120,6 +120,10 @@ it("clamps legacy saved bricks and allows fine steps without grid rounding", asy
   legacyDocument.bricks = [{ id: "legacy", type: "brick-1x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 }];
   await act(async () => editor.importProject(legacyDocument));
   await act(async () => editor.select("legacy"));
+  await act(async () => editor.setSelectedRotation(37.5));
+  expect(editor.document.bricks[0].rotation).toBe(38);
+  await act(async () => editor.undo());
+  expect(editor.document.bricks[0].rotation).toBe(0);
   const before = editor.document;
   await act(async () => editor.changeHeight(-0.4));
   expect(editor.document).toBe(before);

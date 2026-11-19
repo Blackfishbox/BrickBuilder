@@ -30,6 +30,10 @@ export interface ImportedInstance {
   sourcePath: string[];
   /** Zero-based reference-line indices from root to leaf; distinguishes repeated submodels. */
   sourceOccurrence?: number[];
+  /** User-applied yaw in degrees, relative to the imported source transform. */
+  rotationY?: number;
+  /** Original transform used to update the yaw without accumulating rotation drift. */
+  rotationBaseMatrix?: Affine;
   part: { ldrawId: string; studioId?: string; brickLinkId?: string; name?: string; mapping?: PartMappingResult; status: "resolved" | "missing" };
   color?: ResolvedColor;
 }

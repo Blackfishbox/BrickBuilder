@@ -22,7 +22,7 @@ import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
-import { editImported, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, setImportedRotation, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
@@ -472,6 +472,23 @@ export function useBuilder() {
     }));
   }, [selectedId, updateDocument]);
 
+  const setSelectedRotation = useCallback((angle: number) => {
+    if (!selectedId || !Number.isFinite(angle)) return;
+    const rotationY = Math.max(0, Math.min(360, Math.round(angle)));
+    updateDocument(document => {
+      if (document.imported?.instances.some(instance => instance.id === selectedId)) {
+        return setImportedRotation(document, selectedId, rotationY);
+      }
+      const brick = document.bricks.find(value => value.id === selectedId);
+      if (!brick || brick.rotation === rotationY) return document;
+      return {
+        ...document,
+        updatedAt: new Date().toISOString(),
+        bricks: document.bricks.map(value => value.id === selectedId ? { ...value, rotation: rotationY } : value),
+      };
+    });
+  }, [selectedId, updateDocument]);
+
   const deleteSelected = useCallback(() => {
     if (selectedId) remove(selectedId);
   }, [remove, selectedId]);
@@ -586,6 +603,7 @@ export function useBuilder() {
     changeHeight,
     nudgeSelected,
     rotateSelected,
+    setSelectedRotation,
     deleteSelected,
     undo: undoChange,
     redo: redoChange,
