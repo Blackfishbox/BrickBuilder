@@ -1,9 +1,9 @@
 # Standalone Android and Google Play preparation
 
 This work lives on **`android/google-play`**. The GitHub `main` branch remains
-the existing web/PWA application. Pushes to `android/google-play` build signed
-bundles and submit them to the closed **`alpha`** test. `main` never publishes
-and the workflow never targets production.
+the existing web/PWA application. Pushes to `android/google-play` build a signed
+AAB and submit it to the **closed `alpha` test** using the Google Play API.
+The workflow never targets production. `main` does not trigger publishing.
 
 ## What runs locally
 
@@ -14,12 +14,20 @@ workers, original bundled LDraw resources, connector metadata and the reviewed
 catalog snapshot are installed with the app. IndexedDB remains local to the
 Android application.
 
-There is no `server.url`, live-reload host, analytics SDK, account,
+There is no `server.url`, live-reload host, API base URL, analytics SDK, account,
 advertising SDK or Play upload client in the native application. Its manifest
-requests INTERNET for optional, default-off first-party geometry downloads,
-but no broad storage permission. The PWA service worker is
+does not request network or broad storage permission. The PWA service worker is
 disabled for the native build; Android updates replace its packaged assets.
 The ordinary web/PWA build remains unchanged.
+
+The Android-branch release workflow retains only the signed AAB and matching
+ProGuard/R8 `mapping.txt` as downloadable GitHub artifacts, and uploads both to
+Google Play with short German release notes. The one-time emulator screen-measurement and screenshot
+workflow has been removed; signing, privacy and ordinary regression checks remain.
+
+Native status/navigation bar, display-cutout and keyboard bounds are handled
+by the activity's content container, verified by one-time emulator checks. See
+[Native Android system-bar bounds](android-system-insets.md).
 
 ### Important coverage limits
 
@@ -31,9 +39,8 @@ The ordinary web/PWA build remains unchanged.
   The existing import-geometry snapshot and geometries already present in a
   project/local database remain available.
 - Importing LDR/MPD/IO does not magically supply every missing geometry. The
-  native build calls the hosted geometry resolver **only after explicit opt-in**
-  in the Android privacy dialog. It does not silently fetch a newer upstream
-  dataset. Missing parts retain the existing part-ID warnings.
+  native build will **not call the hosted geometry resolver** or silently fetch
+  a newer upstream dataset. Missing parts retain the existing part-ID warnings.
   A complete, independently installable offline geometry distribution is a
   separate release prerequisite if the store listing promises that coverage.
 - Native and browser IndexedDB are separate. Export projects from the PWA as
@@ -42,41 +49,20 @@ The ordinary web/PWA build remains unchanged.
   and the inventory template use Android's local share/save sheet, not browser
   `blob:` downloads. Choose Files/a document provider there and verify the saved
   file. A cancelled share is not evidence that a backup exists.
-- The app does not send model files to a server.
+- The app's permission-free implementation does not send models to a server.
   A share target selected by the user can itself be a cloud application.
 - A browser/Node test is **not an Android hardware, WebGL, file-provider, memory
   or performance test**. These checks must happen before production submission.
 
-### Optional geometry API
-
-Enable **Datenschutz (Android) → Fehlende Geometrien online nachladen** to
-request missing files from `https://blackfishbox.de/BrickBuilder/api/ldraw/file`.
-The setting defaults to off and persists locally. Re-run an unsuccessful import
-after enabling it. Disable it to prevent subsequent requests; requests already
-sent may finish. Existing cached geometry still works offline.
-
-Native requests use CapacitorHttp, not WebView cross-origin fetch. Keep the
-server's browser same-origin protection intact: do not add a wildcard CORS
-exception for Android. The URL is fixed, HTTPS-only, redirects are disabled,
-timeouts are bounded, and the existing checksum, provenance, license, request
-concurrency and per-import budgets remain active. Downloads transmit file paths,
-IP addresses and technical metadata, not project files, quantities or colors.
-The Apache endpoint must already be installed and reachable; this code does
-not provision or publish the Ubuntu server.
-
-Before release, test opt-in, a real missing geometry, a second offline import,
-withdrawal and unavailable-server behavior on Android hardware. Review
-`docs/privacy-policy.md`, deploy the updated public HTML policy and update
-Play Data safety. No end-to-end device or live-server test is implied by unit
-tests or `android:prepare`.
-
 ## Identity, tools and versions
 
 - Release application ID: `brickbuilder.blackfishbox.de`.
-  This identifier is fixed for the new Play listing and cannot be changed after
-  the listing is created. It differs from older Android builds
-  (`io.github.blackfishbox.brickbuilder`), so those installs cannot be upgraded
-  in place and keep separate app data.
+  Create or select a Play Console listing for this exact ID before the first
+  upload; the ID cannot be changed for that listing.
+- The former ID, `io.github.blackfishbox.brickbuilder`, is a different app.
+  An existing listing under that ID cannot be converted. Publishing with the
+  new ID creates a separate app; existing installs and their data do not
+  migrate automatically.
 - Debug ID: `brickbuilder.blackfishbox.de.debug`; separate projects and
   storage, allowing debug and release apps to coexist.
 - Minimum Android: API 24 (Android 7). Target/compile: API 36 (Android 16).
@@ -121,15 +107,10 @@ into the Android asset tree at the manifest's relative `.bin` path. Do not remov
 the filename extension: Capacitor's HTML5 router serves `index.html` for an
 extensionless URL, even when a matching catalog asset exists in the AAB.
 
-For repeatable GitHub builds, set repository Actions variable `ANDROID_CATALOG_URL`
-to the operator's pinned endpoint:
-
-```text
-https://blackfishbox.de/BrickBuilder/api/catalog/snapshot/ad5363fcd70e3d278cb26c69bb0af5291c89628ca84e6e674fccaa8ea6f5475c
-```
-
-An approved immutable GitHub Release asset is also supported. This is
-**licensed, non-user** data. Retain the Rebrickable attribution/terms
+For repeatable GitHub builds, place this **licensed, non-user** data file in an
+appropriate immutable downloadable asset location (for example, an approved
+GitHub Release asset) and set repository Actions variable `ANDROID_CATALOG_URL`
+to its public HTTPS download URL. Retain the Rebrickable attribution/terms
 listed in the manifest. Never upload an IO model or private project as this
 asset. No automatically refreshed external catalog is accepted.
 
@@ -167,161 +148,96 @@ or Play's internal testing to exercise a signed AAB.
 
 Workflow: `.github/workflows/android-google-play.yml`.
 
-Every push to `android/google-play` starts a **signed release AAB** build.
-There are no path filters, no unsigned fallback, no silently skipped job when
-configuration is missing, and no build concurrency rule that cancels queued pushes.
-A multi-commit push builds its final tree once, as GitHub's push trigger works.
-After the build succeeds, a separate job uploads that exact AAB and its R8
-mapping to Google Play's closed **`alpha`** test, with short German release
-notes. Protect write access to this branch: code running there can access
-release secrets and submit releases to testers.
+### One-time configuration
 
-### Set up the Play service account
-
-1. Enable **Google Play Android Developer API** in the service account's Google
-   Cloud project.
-2. Invite the service account's email under Play Console **Users and
-   permissions**. Give it access to `brickbuilder.blackfishbox.de`, permission
-   to view app information and **release apps to testing tracks**. Production
-   permissions are not required and should not be granted for this workflow.
-3. Create/configure the closed test with exact API identifier **`alpha`** and
-   select its testers/countries. The app listing must already exist. If no
-   binary has ever been uploaded, perform the initial signed AAB upload manually
-   in Play Console. Complete required declarations and Play App Signing.
-4. Create repository Actions secret **`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`** at
+1. In Google Cloud, enable the **Google Play Android Developer API** for the
+   project containing your service account.
+2. In Play Console, invite the service account's email under **Users and
+   permissions**. Grant access to `brickbuilder.blackfishbox.de`, permission to
+   view app information and **release apps to testing tracks**. Do not grant
+   production-release permissions for this workflow. Ensure the closed track's
+   exact API identifier is `alpha`, with its testers/countries configured.
+3. The app listing must already exist. If no binary has ever been uploaded,
+   perform the first signed AAB upload manually in Play Console; the API cannot
+   create the initial app listing. Complete required declarations, Play App
+   Signing and any first-release setup before expecting automated publication.
+4. In GitHub **Settings → Secrets and variables → Actions**, add the repository
+   secret **`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`**. Paste the complete original
+   service-account JSON, including its private key, directly into GitHub's
+   secret editor. Do not base64-encode it and do not commit/upload the JSON as
+   a source file, chat attachment or build artifact.
+   Direct link:
    https://github.com/Blackfishbox/BrickBuilder-Mobile/settings/secrets/actions/new
-   and paste the full original service-account JSON directly into GitHub's
-   protected editor. Do not base64-encode it. Never put the JSON in source,
-   a chat message, an attachment or a build artifact.
+5. Keep the existing repository signing and privacy secrets configured:
+   - `ANDROID_UPLOAD_KEY_BASE64`
+   - `ANDROID_UPLOAD_STORE_PASSWORD`
+   - `ANDROID_UPLOAD_KEY_ALIAS`
+   - `ANDROID_UPLOAD_KEY_PASSWORD`
+   - `PRIVACY_CONTROLLER_NAME`
+   - `PRIVACY_CONTROLLER_STREET`
+   - `PRIVACY_CONTROLLER_POSTAL_CITY`
+   - `PRIVACY_CONTROLLER_COUNTRY`
+6. Set repository Actions variable `ANDROID_CATALOG_URL` to the reviewed asset's
+   HTTPS URL. Optionally set `ANDROID_VERSION_NAME` (default `0.1.0`) and
+   `ANDROID_VERSION_CODE_OFFSET` (default `0`).
 
-Configure these repository Actions variables:
+### What each push does
 
-| Variable | Value |
-| --- | --- |
-| `ANDROID_CATALOG_URL` | The pinned public catalog URL above |
-| `ANDROID_VERSION_NAME` | Displayed version, initially `0.1.0` |
-| `ANDROID_VERSION_CODE_OFFSET` | Initially `0`; increase deliberately if an existing Play upload requires it |
+1. A push to `android/google-play` runs the existing tests, builds the signed
+   release AAB, checks its signature/privacy policy and generates R8 mapping.
+   Missing or malformed publishing secrets fail early with a clear error.
+2. The AAB and matching `mapping.txt` remain available in the run's **Artifacts**
+   for 14 days, even if the later Play upload fails. No emulator screenshots
+   or measurement reports are produced.
+3. A separate publish job downloads those exact artifacts and generates German
+   release notes (locale `de-DE`, maximum 500 characters). It compares files
+   against the last successful automated release, so intervening failed runs
+   are included. Before the first successful automated release, it summarizes
+   the current push's changes; manual runs use the latest commit.
+4. The pinned upload action sends the AAB, R8 mapping and notes to app
+   `brickbuilder.blackfishbox.de`, track **`alpha`**, with release status
+   **`completed`** and `changesNotSentForReview: false`.
 
-Configure these **repository Actions secrets** (no environment approval is
-required on every push):
+The notes are deterministic, short German summaries of the changed functional
+areas, not an AI translation or a claim that every changed area contains a
+verified bug fix. They require no paid API. For precise hand-written notes, use
+**Run workflow**, select `android/google-play`, and fill in `release_notes_de`.
+The optional `version_name` input overrides the displayed version for that run.
+The GitHub Actions step summary also shows the actual German notes.
 
-| Secret | Purpose |
-| --- | --- |
-| `ANDROID_UPLOAD_KEY_BASE64` | Base64-encoded encrypted upload keystore |
-| `ANDROID_UPLOAD_STORE_PASSWORD` | Keystore password |
-| `ANDROID_UPLOAD_KEY_ALIAS` | Upload key alias |
-| `ANDROID_UPLOAD_KEY_PASSWORD` | Private key password |
-| `PRIVACY_CONTROLLER_NAME` | Responsible person's/legal entity's name |
-| `PRIVACY_CONTROLLER_STREET` | Street and house number |
-| `PRIVACY_CONTROLLER_POSTAL_CITY` | Postal code and city |
-| `PRIVACY_CONTROLLER_COUNTRY` | Country |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Full service-account JSON for closed test publishing |
-
-Do not put these values in YAML, repository variables, commits, tickets or
-workflow inputs. Use protected secret entry. Missing secrets fail the build
-explicitly with secret **names only**. The source privacy HTML keeps its four
-placeholders: `android:prepare` replaces them only in generated assets when
-`ANDROID_RELEASE_BUILD=true`, escaping HTML and rejecting empty fields.
-The final app necessarily exposes the completed policy to its users; using
-secrets keeps personal data out of Git history, not out of the published app.
-
-Open **Actions → Build and publish closed Google Play test → the run → Artifacts**.
-Download `brickbuilder-play-aab-<versionCode>-<attempt>`, extract its ZIP, and
-keep **`app-release.aab`** as a backup or for manual recovery. The only other download is the matching ProGuard/R8
-`mapping.txt`. No release JSON, emulator reports or screenshots are uploaded.
-Use the Actions run and its commit to identify each release. Artifacts expire
-after **14 days**; archive the releases you need privately. They remain
-downloadable if the subsequent Play upload fails.
-
-The pinned publishing action submits the AAB, mapping and notes with
-`tracks: alpha`, `status: completed`, and `changesNotSentForReview: false`.
-This requests rollout to eligible closed testers, not production users.
+`completed` requests rollout to all eligible testers of this closed track.
 Google review, managed publishing, incomplete declarations or account
-restrictions can still delay/prevent availability. The workflow cannot bypass
-them and does not change the tester list. A rejected submission fails the job;
-it is not silently retried as a draft or with review disabled.
+restrictions can delay/prevent availability; the workflow cannot bypass them.
+It does not create a production release or change the tester list.
+If Google rejects the submission, the job fails explicitly; it does not silently
+retry as a draft or leave the changes unsubmitted for review.
 
-### German release notes
+Publishing jobs are serialized to avoid conflicting Play edits; active uploads
+are never cancelled. Under GitHub concurrency rules, a newer waiting publish
+job can replace an older waiting one during rapid pushes. Every push still has
+its own independent build and downloadable artifacts. An older run is refused
+if a newer automated release has already succeeded. Avoid editing the same
+release manually in Play Console while an automated upload is running.
 
-The publish job automatically summarizes changed functional areas in **German**
-(locale `de-DE`, maximum 500 characters), comparing against the last successful
-automated release. Changes from intervening failed runs are included. Before
-the first successful automated release, the baseline is the current push;
-manual runs without a prior automated release use the latest commit.
+The version code is `ANDROID_VERSION_CODE_OFFSET + GITHUB_RUN_NUMBER`.
+**Every Play upload must have a strictly higher code than previous uploads**,
+including manual uploads. Adjust the offset before enabling automation if
+necessary. Re-running a run that already uploaded its AAB does not create a new
+code; start a new manual run or push a new commit instead.
 
-This is a deterministic file-based summary with no paid AI service, not a
-translation of English commits or a claim that all changes are verified fixes.
-For more specific wording, choose **Run workflow**, select
-`android/google-play`, and enter `release_notes_de`. The optional `version_name`
-input overrides the display version. The GitHub Actions summary also shows the
-actual notes sent to Play.
-
-Publish jobs are serialized to avoid concurrent Google Play edits; an active
-upload is never cancelled. GitHub can replace an older waiting publish job with
-a newer waiting one during rapid pushes. Independent builds and their
-downloadable artifacts are not cancelled by this publish-job concurrency.
-An older run is refused if a newer automated release has already succeeded.
-Avoid editing the same release manually while an automated submission runs.
-
-`MainActivity` now fits the entire WebView inside actual system-bar, cutout
-and keyboard insets. Capacitor's competing inset listener is disabled.
-The earlier `viewport-fit=contain` change alone did not establish correct
-layout on the user's device; it is not the mechanism of this native fix.
-The API 35/36 native-bound and screenshot checks were needed only once and have
-been removed from GitHub Actions. Signing, privacy, packaged-asset and ordinary
-regression checks remain. See
-[Native Android system-bar bounds](android-system-insets.md) for ownership and
-optional local testing. The browser/PWA viewport remains unchanged.
-Physical manufacturer-device testing remains distinct from emulator evidence.
-
-Android model and inventory file pickers use the unrestricted `*/*` MIME
-filter. Document providers do not consistently identify IO, LDraw, JSON, XML
-or CSV files, and filtering by extensions can leave valid documents disabled.
-The existing importers still validate file names, sizes and contents after
-selection; this does not grant broad storage permissions or bypass import
-validation. Browser/PWA picker filters remain unchanged.
-
-Release builds enable R8 code shrinking and obfuscation. Download
-`brickbuilder-proguard-<versionCode>-<attempt>` from the **same workflow run**
-to obtain the generated **`mapping.txt`** for native Android crash
-deobfuscation in Google Play Console. Keep it together with that exact AAB;
-another release's mapping cannot reliably decode its crash reports.
-This artifact also expires after **14 days**. The build fails if R8 does not
-produce a non-empty mapping. Capacitor's consumer rules preserve its native
-plugins, and app rules preserve JavaScript bridge methods and source locations.
-This mapping does not decode JavaScript/TypeScript stack traces.
-
-`versionCode` is `ANDROID_VERSION_CODE_OFFSET + github.run_number`. Each new
-push/run increases the number; rerunning the same run preserves it. **Every
-Play upload must have a strictly higher code than the previous upload.**
-If earlier manual uploads used higher codes, increase the offset before
-enabling automation. Re-running an already uploaded run reuses its version code
-and will be rejected by Play: start a new manual run or push a new commit.
-GitHub normally exposes manual dispatch only when the workflow also exists
-on the default branch; automatic Android-branch pushes work without that.
-
-The workflow verifies the AAB signature and checks that its packaged privacy
-policy has no unresolved placeholders. It deletes the temporary keystore and
-unpackaged personal HTML even on failure, and never uses a debug key for
-release. Only the signed AAB, its R8 mapping and non-personal release metadata are uploaded;
-no keystore or separately rendered policy is a CI artifact.
+The workflow verifies signatures and uses the existing permanent upload key,
+never a debug key or a newly generated replacement. Private controller details
+are injected at build time as before, not committed to the repository.
 
 GitHub-hosted runner minutes/storage are subject to your GitHub account's
 allowance and spending settings. No paid service is configured or purchased.
 
 ## Upload key and Play App Signing
 
-The initial upload key for this application is an encrypted PKCS#12 keystore.
-Keep an offline copy of the `.p12` file and its password in separate secure
-locations. GitHub Actions secrets cannot be downloaded again as a backup.
-The key alias and private-key password must match the configured keystore;
-the initial setup uses the store password for the private key as well.
-Never generate a new key on every workflow run.
-
 Create an upload key locally using Android Studio's **Generate Signed Bundle**
 flow or `keytool`, protect it with a strong password, and maintain a secure
 offline backup. Store key material only in your own secure storage and GitHub
-repository secrets, never in source, chat, a CI artifact or a public issue.
+environment secrets, never in source, chat, an artifact or a public issue.
 Enable **Play App Signing** in the Play Console. The upload key and Play's app
 signing key have different roles; do not substitute the debug key.
 
@@ -379,22 +295,6 @@ The first successful native CI build, real-device testing, signing setup, final
 store graphics, publisher/privacy details and Play Console submission remain
 explicit release gates. A complete offline geometry expansion is not silently
 included or promised by this preparation.
-
-## Launcher artwork
-
-The launcher uses the shared transparent construction-brick icon from
-`artifacts/brickbuilder-mobile/public/icons/brickbuilder-512.png`.
-To regenerate the five legacy/round icon densities and padded adaptive
-foregrounds, install ImageMagick 7 and run:
-
-```sh
-bash scripts/android/generate-icons.sh
-```
-
-The adaptive background layer is transparent. Launchers can apply their own
-mask, background treatment or themed rendering; identical appearance on every
-device is not guaranteed. No signing, version increment or store publication is
-performed by the icon-generation script.
 
 ## Official references
 

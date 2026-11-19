@@ -32,11 +32,44 @@ describe("dynamic construction floor", () => {
     expect(area.minZ).toBeLessThan(bounds.min.z);
     expect(area.maxZ).toBeGreaterThan(bounds.max.z);
     for (let index = 0; index < vertices.length; index += 3) {
-      const coordinate = vertices[index]!;
-      if (coordinate !== area.minX && coordinate !== area.maxX) {
+      const coordinate = vertices[index]! + area.centerX;
+      if (Math.abs(coordinate - area.minX) > 0.001 && Math.abs(coordinate - area.maxX) > 0.001) {
         expect(coordinate / area.gridStride).toBeCloseTo(Math.round(coordinate / area.gridStride));
       }
     }
+    geometry.dispose();
+  });
+
+  it("keeps huge-coordinate floor geometry precise and within the total line budget", () => {
+    const bounds = new Box3(
+      new Vector3(-1_000_000_000_000, 0, -800_000_000_000),
+      new Vector3(1_000_000_000_000, 10, 800_000_000_000),
+    );
+    const area = constructionArea(bounds);
+    const geometry = createStudGridGeometry(area);
+    const position = geometry.getAttribute("position");
+    const vertices = Array.from(position.array);
+    let xLines = 0, zLines = 0;
+    expect(area.gridStride).toBeGreaterThan(1);
+    expect(position.count / 2).toBeLessThanOrEqual(MAX_STUD_GRID_LINES);
+    expect(vertices.length % 6).toBe(0);
+    expect(vertices.every(Number.isFinite)).toBe(true);
+
+    const endpointTolerance = area.gridStride * 0.001;
+    for (let index = 0; index < vertices.length; index += 6) {
+      const [x1, , z1, x2, , z2] = vertices.slice(index, index + 6);
+      if (x1 === x2) {
+        xLines++;
+        expect(Math.abs(z1! - (area.minZ - area.centerZ))).toBeLessThanOrEqual(endpointTolerance);
+        expect(Math.abs(z2! - (area.maxZ - area.centerZ))).toBeLessThanOrEqual(endpointTolerance);
+      } else {
+        zLines++;
+        expect(Math.abs(x1! - (area.minX - area.centerX))).toBeLessThanOrEqual(endpointTolerance);
+        expect(Math.abs(x2! - (area.maxX - area.centerX))).toBeLessThanOrEqual(endpointTolerance);
+      }
+    }
+    expect(xLines).toBeGreaterThan(0);
+    expect(zLines).toBeGreaterThan(0);
     geometry.dispose();
   });
 

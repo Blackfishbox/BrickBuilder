@@ -4,6 +4,7 @@ import {
   BRICK_DEFINITIONS,
   BRICK_HEIGHT,
   createEmptyDocument,
+  clampRotationAngle,
   normalizeDocument,
   rotateQuarterTurn,
   snapPosition,
@@ -23,13 +24,13 @@ import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
-import { editImported, moveImported, placePreparedPart, placeInventoryPart, prepareLibraryPart, recolorImported, rotateImported, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, moveImported, placePreparedPart, placeInventoryPart, placeInventoryBatch, prepareLibraryPart, recolorImported, rotateImported, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds } from "../engine/stacking";
 import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
 import { groundedTransform, modelGround } from "./positioning";
 import type { Inventory, InventoryChoice } from "../inventory/types";
-import { replaceInventory, requireAvailable } from "../inventory/accounting";
+import { MAX_INVENTORY_SPREAD_UNITS, replaceInventory, requireAvailable, type InventorySpreadRequest } from "../inventory/accounting";
 import {
   listProjectSummaries,
   type ProjectSummary,
@@ -75,7 +76,11 @@ export function useBuilder() {
   const [partLoading, setPartLoading] = useState(false);
   const [partError, setPartError] = useState<string | null>(null);
   const partControllerRef = useRef<AbortController | null>(null);
-  useEffect(() => () => partControllerRef.current?.abort(), []);
+  const spreadControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    partControllerRef.current?.abort();
+    spreadControllerRef.current?.abort();
+  }, []);
   const [toolMode, setToolModeState] = useState<ToolMode>("view");
   const setToolMode = useCallback((mode: ToolMode) => {
     if (mode === "view") setSelectedId(null);
@@ -114,6 +119,7 @@ export function useBuilder() {
   const replaceDocument = useCallback((document: BuilderDocument, alreadySaved = false) => {
     const opened = normalizeDocument(document);
     partControllerRef.current?.abort();
+    spreadControllerRef.current?.abort();
     placementRef.current = null;
     setPreparedPart(null); setSelectedInventory(null); setPartLoading(false); setPartError(null);
     const next = createHistory(opened);
@@ -326,6 +332,90 @@ export function useBuilder() {
     setPartLoading(false);
   }, []);
 
+  const spreadInventoryParts = useCallback(async (
+    requests: InventorySpreadRequest[],
+    onProgress: (progress: { stage: "mapping" | "geometry" | "placing"; completed: number; total: number }) => void,
+    signal?: AbortSignal,
+  ): Promise<{ placed: number; deferred: number }> => {
+    if (requests.some(request => !Number.isSafeInteger(request.quantity) || request.quantity < 1)) {
+      throw new Error("Ungültige Stückzahl für die Sammelplatzierung.");
+    }
+    const initial = documentRef.current;
+    const projectId = initial.id;
+    const inventoryId = initial.inventory?.id;
+    if (!inventoryId) throw new Error("Keine Teileliste mehr vorhanden.");
+    if (!requests.length) throw new Error("Es gibt keine eindeutig zugeordneten, verfügbaren Teile zum Verteilen.");
+    const controller = new AbortController();
+    spreadControllerRef.current?.abort();
+    spreadControllerRef.current = controller;
+    const abort = () => controller.abort();
+    if (signal?.aborted) controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      controller.signal.throwIfAborted();
+      onProgress({ stage: "mapping", completed: 0, total: requests.length });
+      const preview = await resolveStoredInventory(initial.inventory!);
+      controller.signal.throwIfAborted();
+      if (documentRef.current.id !== projectId || documentRef.current.inventory?.id !== inventoryId) {
+        throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
+      }
+      const totalRequested = requests.reduce((sum, request) => sum + request.quantity, 0);
+      const limit = Math.min(totalRequested, MAX_INVENTORY_SPREAD_UNITS);
+      let remainingLimit = limit;
+      const accepted: InventorySpreadRequest[] = [];
+      for (const request of requests) {
+        if (!Number.isSafeInteger(request.quantity) || request.quantity < 1) continue;
+        const quantity = Math.min(request.quantity, remainingLimit);
+        if (quantity > 0) accepted.push({ choice: { ...request.choice }, quantity });
+        remainingLimit -= quantity;
+        if (!remainingLimit) break;
+      }
+      if (!accepted.length) throw new Error("Es gibt keine verfügbaren Teile zum Verteilen.");
+      for (const { choice } of accepted) {
+        const row = initial.inventory!.rows.find(value => value.id === choice.rowId);
+        const resolution = preview.resolutions[choice.rowId];
+        if (choice.listId !== inventoryId || !row || row.itemType !== "P" ||
+          !resolution?.parts.some(part => part.ldrawId === choice.ldrawId) ||
+          !resolution.colors.some(color => color.ldrawCode === choice.colorCode)) {
+          throw new Error(`BL ${row?.partId ?? choice.rowId}: Zuordnung ist nicht mehr belegt. Bitte erneut prüfen.`);
+        }
+      }
+      onProgress({ stage: "mapping", completed: accepted.length, total: accepted.length });
+      const partIds = [...new Set(accepted.map(request => request.choice.ldrawId))];
+      const preparedByPart = new Map<string, PreparedPart>();
+      onProgress({ stage: "geometry", completed: 0, total: partIds.length });
+      for (const [index, ldrawId] of partIds.entries()) {
+        controller.signal.throwIfAborted();
+        const mapped = accepted.find(request => request.choice.ldrawId === ldrawId)!;
+        const row = initial.inventory!.rows.find(value => value.id === mapped.choice.rowId)!;
+        const part = preview.resolutions[row.id].parts.find(value => value.ldrawId === ldrawId)!;
+        const prepared = await prepareLibraryPart({
+          id: `inventory:${inventoryId}:${row.id}`, packageId: "catalog", ldrawId,
+          brickLinkId: row.partId, name: part.name, category: "Teileliste", keywords: [],
+          file: `parts/${ldrawId}.dat`,
+        }, controller.signal);
+        controller.signal.throwIfAborted();
+        preparedByPart.set(ldrawId, prepared);
+        onProgress({ stage: "geometry", completed: index + 1, total: partIds.length });
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
+      controller.signal.throwIfAborted();
+      onProgress({ stage: "placing", completed: 0, total: accepted.reduce((sum, request) => sum + request.quantity, 0) });
+      updateDocument(document => {
+        if (document.id !== projectId || document.inventory?.id !== inventoryId) {
+          throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
+        }
+        return placeInventoryBatch(document, accepted, preparedByPart);
+      });
+      const placed = accepted.reduce((sum, request) => sum + request.quantity, 0);
+      onProgress({ stage: "placing", completed: placed, total: placed });
+      return { placed, deferred: totalRequested - placed };
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      if (spreadControllerRef.current === controller) spreadControllerRef.current = null;
+    }
+  }, [updateDocument]);
+
   const place = useCallback(
     (position: Position3) => {
       if (toolMode === "delete" || partLoading) return;
@@ -477,23 +567,6 @@ export function useBuilder() {
     }));
   }, [selectedId, updateDocument]);
 
-  const setSelectedRotation = useCallback((angle: number) => {
-    if (!selectedId || !Number.isFinite(angle)) return;
-    const rotationY = Math.max(0, Math.min(360, Math.round(angle)));
-    updateDocument(document => {
-      if (document.imported?.instances.some(instance => instance.id === selectedId)) {
-        return setImportedRotation(document, selectedId, rotationY);
-      }
-      const brick = document.bricks.find(value => value.id === selectedId);
-      if (!brick || brick.rotation === rotationY) return document;
-      return {
-        ...document,
-        updatedAt: new Date().toISOString(),
-        bricks: document.bricks.map(value => value.id === selectedId ? { ...value, rotation: rotationY } : value),
-      };
-    });
-  }, [selectedId, updateDocument]);
-
   const setSelectedTilt = useCallback((axis: "x" | "z", angle: number) => {
     if (!selectedId || !Number.isFinite(angle)) return;
     const normalized = normalizeTiltAngle(angle);
@@ -526,6 +599,36 @@ export function useBuilder() {
       return {
         ...document,
         updatedAt: new Date().toISOString(),
+        bricks: document.bricks.map(value => value.id === selectedId ? changed : value),
+      };
+    });
+  }, [constructionGround, selectedId, updateDocument]);
+
+  const setSelectedRotation = useCallback((angle: number) => {
+    if (!selectedId || !Number.isFinite(angle)) return;
+    const rotationY = clampRotationAngle(Math.round(angle));
+    updateDocument(document => {
+      const imported = document.imported?.instances.find(instance => instance.id === selectedId);
+      if (imported && document.imported) {
+        if (rotationY === (imported.rotationY ?? 0)) return document;
+        const rotated = setImportedRotation(document, selectedId, rotationY);
+        const model = rotated.imported!;
+        const changed = model.instances.find(instance => instance.id === selectedId)!;
+        try {
+          const grounded = groundedTransform(model, selectedId,
+            { x: changed.matrix[3] / 20, y: -changed.matrix[7] / 20, z: changed.matrix[11] / 20 },
+            constructionGround(document.imported), changed.matrix);
+          return moveImported(rotated, selectedId,
+            { x: grounded[3] / 20, y: -grounded[7] / 20, z: grounded[11] / 20 }, false, grounded);
+        } catch {
+          return rotated;
+        }
+      }
+      const brick = document.bricks.find(value => value.id === selectedId);
+      if (!brick || rotationY === brick.rotation) return document;
+      const changed = clampBrickToGround({ ...brick, rotation: rotationY });
+      return {
+        ...document, updatedAt: new Date().toISOString(),
         bricks: document.bricks.map(value => value.id === selectedId ? changed : value),
       };
     });
@@ -628,6 +731,7 @@ export function useBuilder() {
     selectedPart: preparedPart?.part ?? null,
     selectedInstance: document.imported?.instances.find(instance => instance.id === selectedId) ?? null,
     selectLibraryPart, selectInventoryPart, replacePartsInventory, selectedInventory, cancelPartPreparation, partLoading, partError,
+    spreadInventoryParts,
     toolMode,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,

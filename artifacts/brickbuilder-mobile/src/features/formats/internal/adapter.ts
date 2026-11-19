@@ -42,10 +42,10 @@ const schema = z.object({
     instances: z.array(z.object({
       id: z.string(), reference: z.string().max(240).regex(/^[a-z0-9_ /.-]+\.dat$/i), colorCode: z.string().regex(/^(?:\d+|0x2[0-9a-f]{6})$/i),
       matrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]),
-       rotationY: z.number().finite().min(0).max(360).optional(),
-       rotationBaseMatrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]).optional(),
+      rotationY: z.number().finite().min(0).max(360).optional(),
       tiltX: z.number().finite().min(-180).max(180).optional(),
       tiltZ: z.number().finite().min(-180).max(180).optional(),
+      rotationBaseMatrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]).optional(),
       tiltBaseMatrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]).optional(),
       sourcePath: z.array(z.string()),
       allocation: allocationSchema.optional(),

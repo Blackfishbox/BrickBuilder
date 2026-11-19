@@ -24,7 +24,7 @@ function run(command, args, env = {}) {
 }
 run("pnpm", ["exec", "vite", "build"], { PORT: "23048", BASE_PATH: "/", VITE_NATIVE_ANDROID: "true", NODE_ENV: "production" });
 await verifyDefaultParts(app);
-// Apply to generated assets only: browser/PWA safe-area behavior stays unchanged.
+// Apply to generated assets only; browser/PWA safe-area behavior stays unchanged.
 const index = resolve(app, "dist/public/index.html");
 await writeFile(index, renderAndroidViewport(await readFile(index, "utf8")));
 if (process.env.ANDROID_RELEASE_BUILD === "true") {
@@ -38,4 +38,4 @@ await writeFile(output, bytes);
 // Native updates ship the complete local bundle. Never keep a PWA worker in it.
 await rm(resolve(app, "dist/public/sw.js"), { force: true });
 run("pnpm", ["exec", "cap", "sync", "android"]);
-console.log("Android assets synchronized with verified local catalog; optional first-party geometry API is disabled until opt-in.");
+console.log("Android assets synchronized with the offline catalog and release-only privacy details.");

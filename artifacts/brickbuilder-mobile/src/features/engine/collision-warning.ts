@@ -4,11 +4,17 @@ import { Box3, Euler, Matrix3, Matrix4, Vector3 } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
 import { importedWarningQuery } from "./imported-collision";
 import { stackingBounds } from "./stacking";
-import { activeConnections } from "../connections/engine";
+import { candidates } from "@workspace/ldraw-source";
+import { referenceLine } from "../formats/ldraw/parser";
 
 export interface CollisionWarnings {
   boxes: Map<string, Box3>;
   uncertain: boolean;
+}
+
+export interface CollisionProgress {
+  phase: "snapshot" | "preparing" | "checking";
+  percent: number;
 }
 
 function warningVolume(brick: Brick) {
@@ -33,7 +39,9 @@ function warningVolume(brick: Brick) {
  */
 export async function collisionWarnings(
   bricks: Brick[], model: ImportedModel | undefined, signal: AbortSignal, importedOffset?: number,
+  onProgress?: (progress: CollisionProgress) => void,
 ): Promise<CollisionWarnings> {
+  onProgress?.({ phase: "preparing", percent: 0 });
   const importedBoxes = model ? stackingBounds(model) : new Map<string, Box3>();
   const total = new Box3();
   for (const box of importedBoxes.values()) total.union(box);
@@ -49,39 +57,56 @@ export async function collisionWarnings(
     .filter(([, box]) => !box.isEmpty()).sort((a, b) => a[1].min.x - b[1].min.x);
   const instances = new Map(model?.instances.map(instance => [instance.id, instance]));
   const query = model ? importedWarningQuery(model) : null;
-  const connectedTargets = new Map<string, Set<string>>();
   const boxes = new Map<string, Box3>();
   let uncertain = false, sliceStart = performance.now(), work = 0;
+  let currentProgress: CollisionProgress = { phase: "preparing", percent: 0 };
   const checkpoint = async () => {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     if (++work % 32 === 0 || performance.now() - sliceStart > 8) {
       await new Promise(resolve => setTimeout(resolve, 0));
       sliceStart = performance.now();
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      onProgress?.(currentProgress);
     }
   };
+  // Count the x-overlapping pairs cheaply before narrow-phase checks. This
+  // gives the worker an exact denominator without estimating based on all
+  // possible model pairs.
+  let candidatePairs = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const box = entries[i][1];
+    let low = i + 1, high = entries.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (entries[middle][1].min.x < box.max.x - 0.0001) low = middle + 1;
+      else high = middle;
+    }
+    candidatePairs += low - i - 1;
+    currentProgress = { phase: "preparing", percent: entries.length ? ((i + 1) / entries.length) * 100 : 100 };
+    await checkpoint();
+  }
+  currentProgress = { phase: "checking", percent: 0 };
+  onProgress?.(currentProgress);
+  let checkedPairs = 0, checkedEntries = 0;
   for (let i = 0; i < entries.length; i++) {
     await checkpoint();
     const [id, box] = entries[i];
     for (let j = i + 1; j < entries.length && entries[j][1].min.x < box.max.x - 0.0001; j++) {
       await checkpoint();
+      checkedPairs++;
+      currentProgress = {
+        phase: "checking",
+        percent: ((checkedPairs + checkedEntries) / (candidatePairs + entries.length)) * 100,
+      };
       const [otherId, other] = entries[j];
       if (box.min.y >= other.max.y - 0.0001 || other.min.y >= box.max.y - 0.0001 ||
           box.min.z >= other.max.z - 0.0001 || other.min.z >= box.max.z - 0.0001) continue;
       let overlap: boolean;
       const a = instances.get(id), b = instances.get(otherId);
       if (a && b && query) {
-        if (model) {
-          let connected = connectedTargets.get(id);
-          if (!connected) {
-            connected = new Set(activeConnections(model, id).map(contact => contact.targetId));
-            connectedTargets.set(id, connected);
-          }
-          // The connector engine also checks the insertion slab for obstructions.
-          // Do not flag ordinary stud engagement merely because its open mesh
-          // cannot provide a watertight solid proof.
-          if (connected.has(otherId)) continue;
-        }
+        // A verified connector is not a body-wide exemption: the same pair can
+        // still have independently provable solid penetration elsewhere.
+        // Open or ambiguous geometry remains "unknown" and is never warned.
         const result = query(a.reference, a.matrix, b.reference, b.matrix);
         overlap = result === "overlap";
         if (result === "unknown") uncertain = true;
@@ -93,6 +118,155 @@ export async function collisionWarnings(
       }
       if (overlap) { boxes.set(id, box); boxes.set(otherId, other); }
     }
+    checkedEntries++;
+    currentProgress = {
+      phase: "checking",
+      percent: ((checkedPairs + checkedEntries) / (candidatePairs + entries.length)) * 100,
+    };
   }
+  onProgress?.({ phase: "checking", percent: 100 });
   return { boxes, uncertain };
+}
+
+interface WorkerCollisionResult {
+  boxes: [string, [number, number, number], [number, number, number]][];
+  uncertain: boolean;
+}
+
+function abortError(): DOMException {
+  return new DOMException("Aborted", "AbortError");
+}
+
+/** Keep only the geometry dependencies the checker needs before transferring
+ * the model. This avoids cloning unrelated archive data and library resources.
+ */
+async function collisionModelSnapshot(
+  model: ImportedModel,
+  signal: AbortSignal,
+  onProgress?: (progress: CollisionProgress) => void,
+): Promise<ImportedModel> {
+  const resources: ImportedModel["resources"] = {};
+  const pending: string[] = [];
+  const instances: ImportedModel["instances"] = [];
+  let work = 0, sliceStart = performance.now(), progressUnits = 0, totalWork = 1;
+  const reportProgress = (percent: number) => {
+    if (!signal.aborted) onProgress?.({ phase: "snapshot", percent: Math.min(100, percent) });
+  };
+  const checkpoint = async (report = true) => {
+    if (signal.aborted) throw abortError();
+    if (++work % 128 === 0 || performance.now() - sliceStart > 8) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (signal.aborted) throw abortError();
+      sliceStart = performance.now();
+      if (report) reportProgress(2 + 97 * Math.min(progressUnits / totalWork, 1));
+    }
+  };
+  const resourcePaths = Object.keys(model.resources);
+  let estimatedContentLength = 0;
+  for (let index = 0; index < resourcePaths.length; index++) {
+    estimatedContentLength += model.resources[resourcePaths[index]].content.length;
+    await checkpoint(false);
+    if (work % 128 === 0) reportProgress(2 * ((index + 1) / resourcePaths.length));
+  }
+  totalWork = Math.max(1, model.instances.length + estimatedContentLength);
+  for (const instance of model.instances) {
+    instances.push({
+      id: instance.id,
+      reference: instance.reference,
+      colorCode: instance.colorCode,
+      matrix: [...instance.matrix] as typeof instance.matrix,
+      sourcePath: [],
+      part: { ldrawId: instance.part.ldrawId, status: instance.part.status },
+    });
+    if (instance.part.status === "resolved") pending.push(instance.reference);
+    progressUnits++;
+    await checkpoint();
+  }
+  while (pending.length) {
+    await checkpoint();
+    progressUnits++;
+    const reference = pending.pop()!;
+    let path: string | undefined;
+    try { path = candidates(reference).find(candidate => Object.hasOwn(model.resources, candidate)); }
+    catch { continue; }
+    if (!path || Object.hasOwn(resources, path)) continue;
+    const source = model.resources[path];
+    // Geometry compilation and connector descriptions only read `content`.
+    resources[path] = { content: source.content } as ImportedModel["resources"][string];
+    let start = 0;
+    while (start < source.content.length) {
+      const newline = source.content.indexOf("\n", start);
+      const end = newline < 0 ? source.content.length : newline;
+      const line = source.content.slice(start, end);
+      progressUnits += end - start + (newline < 0 ? 0 : 1);
+      start = end + 1;
+      if (/^\s*1\s/.test(line)) {
+        try { pending.push(referenceLine(line).reference); } catch { /* Invalid lines are handled as unknown by the worker. */ }
+      }
+      await checkpoint();
+    }
+  }
+  reportProgress(100);
+  return {
+    version: 1,
+    format: model.format,
+    sourceName: model.sourceName,
+    originalBytes: [],
+    sourceText: "",
+    root: model.root,
+    sections: {},
+    instances,
+    issues: [],
+    resources,
+    legalDocuments: [],
+  };
+}
+
+/** Run the optional diagnostic off the UI thread. Terminating the dedicated
+ * worker makes cancellation immediate, even during a synchronous geometry
+ * compilation, connection-index build, or narrow-phase query.
+ */
+export async function collisionWarningsInWorker(
+  bricks: Brick[], model: ImportedModel | undefined, signal: AbortSignal, importedOffset?: number,
+  onProgress?: (progress: CollisionProgress) => void,
+): Promise<CollisionWarnings> {
+  if (signal.aborted) throw abortError();
+  onProgress?.({ phase: "preparing", percent: 0 });
+  // Non-browser test and server environments have no Worker implementation.
+  if (typeof Worker === "undefined") return collisionWarnings(bricks, model, signal, importedOffset, onProgress);
+  if (model) onProgress?.({ phase: "snapshot", percent: 0 });
+  const snapshot = model ? await collisionModelSnapshot(model, signal, onProgress) : undefined;
+  if (signal.aborted) throw abortError();
+
+  const worker = new Worker(new URL("./collision-warning.worker.ts", import.meta.url), { type: "module" });
+  return new Promise<CollisionWarnings>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      worker.terminate();
+      callback();
+    };
+    const onAbort = () => finish(() => reject(abortError()));
+    signal.addEventListener("abort", onAbort, { once: true });
+    worker.onmessage = (event: MessageEvent<WorkerCollisionResult | { progress: CollisionProgress } | { error: { name: string; message: string } }>) => {
+      const result = event.data;
+      if ("progress" in result) {
+        if (!signal.aborted) onProgress?.(result.progress);
+        return;
+      }
+      if ("error" in result) {
+        finish(() => reject(Object.assign(new Error(result.error.message), { name: result.error.name })));
+        return;
+      }
+      finish(() => resolve({
+        boxes: new Map(result.boxes.map(([id, min, max]) => [id, new Box3(new Vector3(...min), new Vector3(...max))])),
+        uncertain: result.uncertain,
+      }));
+    };
+    worker.onerror = event => finish(() => reject(new Error(event.message || "Collision worker failed")));
+    worker.onmessageerror = () => finish(() => reject(new Error("Collision worker response could not be read")));
+    worker.postMessage({ bricks, model: snapshot, importedOffset });
+  });
 }

@@ -52,6 +52,9 @@ export function reuseGeometryCache(previous: ImportedModel | undefined, next: Im
 export function hasCompiledPart(model: ImportedModel, reference: string): boolean {
   return cache.get(model)?.has(normalizeReference(reference)) ?? false;
 }
+export function getCompiledPart(model: ImportedModel, reference: string): Surface[] | undefined {
+  return cache.get(model)?.get(normalizeReference(reference));
+}
 export function installCompiledPart(model: ImportedModel, reference: string, surfaces: Surface[]): void {
   let modelCache = cache.get(model);
   if (!modelCache) { modelCache = new Map(); cache.set(model, modelCache); }
