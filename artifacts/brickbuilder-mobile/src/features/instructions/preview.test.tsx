@@ -2,10 +2,12 @@
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { PerspectiveCamera, Vector3 } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import InstructionsPanel from "./InstructionsPanel";
 import { updateInstructions } from "./model";
 import {
+  applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
   DEFAULT_INSTRUCTION_THETA,
   instructionRotationFromCameraPose,
@@ -78,6 +80,89 @@ it("shows touch rotations in the fields while zoom and pan leave the angles alon
   expect(preview.mock.lastCall![0].viewCamera.phi).toBe(DEFAULT_INSTRUCTION_PHI);
   expect(preview.mock.lastCall![0].viewCamera.distance).toBe(12);
   expect(preview.mock.lastCall![0].viewCamera.target).toEqual([4, 5, 6]);
+});
+
+it("edits and reopens a legacy combined camera without changing zoom, pan, or adding a rotation", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "b", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  const legacyCamera = {
+    theta: 1.2, phi: 0.8, distance: 10, target: [2, 3, 4] as [number, number, number],
+    referenceDistance: 20, referenceTarget: [0, 0, 0] as [number, number, number],
+  };
+  const legacyRotation: [number, number, number] = [15, 25, -35];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "legacy-step", title: "Legacy view", notes: "", partIds: ["b"], rotation: legacyRotation, camera: legacyCamera },
+  ] };
+  let savedDocument = source;
+  function Harness({ document }: { document: BuilderDocument }) {
+    const [currentDocument, setDocument] = useState(document);
+    return <InstructionsPanel document={currentDocument} onChange={plan => {
+      setDocument(current => {
+        const updated = updateInstructions(current, plan);
+        savedDocument = updated;
+        return updated;
+      });
+    }} onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness document={savedDocument} />));
+
+  const pose = (theta: number, phi: number, rotation: readonly [number, number, number]) => {
+    const camera = new PerspectiveCamera();
+    const target = new Vector3();
+    camera.position.set(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta));
+    camera.lookAt(target);
+    applyInstructionCameraRotation(camera, target, rotation);
+    return camera;
+  };
+  const initiallyDisplayed = instructionRotationFromCameraPose(
+    legacyCamera.theta, legacyCamera.phi, legacyRotation,
+  );
+  const initialProps = preview.mock.lastCall![0];
+  expect(initialProps.viewCamera).toEqual(legacyCamera);
+  expect(initialProps.viewRotation).toEqual(legacyRotation);
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value)
+    .toBe(String(initiallyDisplayed[0]));
+  expect(pose(legacyCamera.theta, legacyCamera.phi, legacyRotation).quaternion.angleTo(
+    pose(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, initiallyDisplayed).quaternion,
+  )).toBeLessThan(0.00001);
+
+  const editedRotation = [...initiallyDisplayed] as [number, number, number];
+  editedRotation[0] += 12;
+  act(() => {
+    const input = host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!;
+    input.value = String(editedRotation[0]);
+    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+  });
+
+  const editedProps = preview.mock.lastCall![0];
+  expect(editedProps.viewRotation).toEqual(editedRotation);
+  expect(editedProps.viewCamera).toEqual({
+    ...legacyCamera, theta: DEFAULT_INSTRUCTION_THETA, phi: DEFAULT_INSTRUCTION_PHI,
+  });
+  expect(editedProps.viewCamera.distance).toBe(legacyCamera.distance);
+  expect(editedProps.viewCamera.target).toEqual(legacyCamera.target);
+  const intendedPose = pose(DEFAULT_INSTRUCTION_THETA, DEFAULT_INSTRUCTION_PHI, editedRotation);
+  expect(pose(
+    editedProps.viewCamera.theta, editedProps.viewCamera.phi, editedProps.viewRotation,
+  ).quaternion.angleTo(intendedPose.quaternion)).toBeLessThan(0.00001);
+
+  savedDocument = JSON.parse(JSON.stringify(savedDocument)) as BuilderDocument;
+  expect(savedDocument.instructions?.steps[0].rotation).toEqual(editedRotation);
+  expect(savedDocument.instructions?.steps[0].camera).toEqual(editedProps.viewCamera);
+
+  act(() => root!.unmount());
+  root = createRoot(host);
+  act(() => root!.render(<Harness document={savedDocument} />));
+  const reopenedProps = preview.mock.lastCall![0];
+  expect(reopenedProps.viewRotation).toEqual(editedRotation);
+  expect(reopenedProps.viewCamera).toEqual(editedProps.viewCamera);
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-rotation-x"]')!.value)
+    .toBe(String(editedRotation[0]));
+  expect(pose(
+    reopenedProps.viewCamera.theta, reopenedProps.viewCamera.phi, reopenedProps.viewRotation,
+  ).quaternion.angleTo(intendedPose.quaternion)).toBeLessThan(0.00001);
 });
 
 it("keeps the displayed angles in sync with repeated multi-turn camera updates", () => {
