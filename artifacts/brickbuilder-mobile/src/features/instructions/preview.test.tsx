@@ -81,3 +81,22 @@ it("toggles occurrence highlighting across cumulative, empty and previous steps 
   expect(onChange).not.toHaveBeenCalled();
   expect(source).toEqual(original);
 });
+
+it("passes the enabled highlight option to PDF export", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "new", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, source: "manual", edited: true, warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["new"] },
+  ] };
+  const onExportPDF = vi.fn(async () => {});
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={onExportPDF} />));
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-highlight"]')!.click());
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-pdf"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(onExportPDF).toHaveBeenCalledOnce();
+  expect(onExportPDF.mock.calls[0][3]).toBe(true);
+});

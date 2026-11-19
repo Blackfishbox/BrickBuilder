@@ -7,9 +7,10 @@ import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BuilderDocument } from "../editor
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer } from "./software-render";
+import { applyInstructionFocus, instructionDisplayColor } from "../engine/instruction-focus";
 
 export interface InstructionImageRenderer {
-  image(visible: Set<string>, step: InstructionStep): string;
+  image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>): string;
   dispose(): void;
 }
 
@@ -31,6 +32,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   light.position.set(10, 18, 12); scene.add(light);
   const camera = new OrthographicCamera(-10, 10, 7.6, -7.6, 0.01, 100000);
   let imported: Group | undefined;
+  const brickColors = new Map<string, Color>();
+  const brickMaterials = new Map<string, MeshLambertMaterial>();
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
@@ -40,6 +43,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       const definition = BRICK_DEFINITIONS[part.type], group = new Group();
       group.userData.partId = part.id;
       const material = new MeshLambertMaterial({ color: new Color(part.color) });
+      brickColors.set(part.id, material.color.clone());
+      brickMaterials.set(part.id, material);
       const box = new Mesh(new BoxGeometry(definition.studsX * 0.96, BRICK_HEIGHT, definition.studsZ * 0.96), material);
       box.position.y = BRICK_HEIGHT / 2; group.add(box);
       for (let x = 0; x < definition.studsX; x++) for (let z = 0; z < definition.studsZ; z++) {
@@ -71,10 +76,15 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     });
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
     return {
-      image(visible, step) {
+      image(visible, step, highlightIds) {
         signal?.throwIfAborted();
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
+        for (const [id, material] of brickMaterials) {
+          material.color.copy(brickColors.get(id)!);
+          if (highlightIds !== undefined) instructionDisplayColor(material.color, highlightIds.has(id));
+        }
+        applyInstructionFocus(imported ?? null, highlightIds);
         assembly.traverse(object => {
           if (object.userData.partId) object.visible = visible.has(object.userData.partId as string);
           const ids = object.userData.brickIds as string[] | undefined;
