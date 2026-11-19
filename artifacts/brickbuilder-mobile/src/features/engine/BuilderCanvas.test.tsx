@@ -2,12 +2,14 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PerspectiveCamera, Vector3 } from "three";
+import { Box3, Group, PerspectiveCamera, Scene, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import BuilderCanvas from "./BuilderCanvas";
+import { constructionArea, createStudGridGeometry, brickConstructionBounds } from "./construction-floor";
+import { instanceIndex } from "./instance-index";
 import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "./instruction-camera";
 import * as snapping from "../connections/engine";
 import type { Contact } from "../connections/types";
@@ -16,10 +18,32 @@ import { resolve } from "node:path";
 import { gunzipSync } from "fflate";
 import { parseLDraw } from "../formats/ldraw/parser";
 import type { ImportedModel } from "../formats/types";
-import { createEmptyDocument, type ToolMode } from "../editor/model";
+import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model";
 import { moveImported } from "../editor/ldraw-editing";
+import type { Affine } from "../formats/types";
 
-const observed = vi.hoisted(() => ({ scene: undefined as SoftwareScene | undefined, preparations: 0 }));
+const observed = vi.hoisted(() => ({
+  scene: undefined as SoftwareScene | undefined,
+  scene3d: undefined as Scene | undefined,
+  camera: undefined as PerspectiveCamera | undefined,
+  cameraPose: undefined as { target: number[]; distance: number } | undefined,
+  webglEnabled: false,
+  preparations: 0,
+}));
+vi.mock("three", async importOriginal => {
+  const actual = await importOriginal<typeof import("three")>();
+  class TestWebGLRenderer {
+    readonly domElement: HTMLCanvasElement;
+    shadowMap = { enabled: false, type: undefined as unknown };
+    outputColorSpace: unknown;
+    constructor(options: { canvas: HTMLCanvasElement }) { this.domElement = options.canvas; }
+    setPixelRatio() {}
+    setSize() {}
+    render(scene: Scene, camera: PerspectiveCamera) { observed.scene3d = scene; observed.camera = camera; }
+    dispose() {}
+  }
+  return { ...actual, WebGLRenderer: TestWebGLRenderer };
+});
 vi.mock("./software-scene", async importOriginal => {
   const actual = await importOriginal<typeof import("./software-scene")>();
   return { ...actual, createSoftwareScene: async (...args: Parameters<typeof actual.createSoftwareScene>) => {
@@ -75,7 +99,8 @@ function catalogProjection() {
 }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  frames = new Map(); nextFrame = 0; observed.scene = undefined; observed.preparations = 0;
+  frames = new Map(); nextFrame = 0; observed.scene = undefined; observed.scene3d = undefined;
+  observed.camera = undefined; observed.cameraPose = undefined; observed.webglEnabled = false; observed.preparations = 0;
   resizeCallbacks = []; canvasHeight = 600;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
@@ -84,7 +109,21 @@ beforeEach(() => {
     observe() {}
     disconnect() {}
   });
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) => kind === "2d" ? context : null) as HTMLCanvasElement["getContext"]);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+    kind === "2d" ? context : observed.webglEnabled && kind === "webgl2" ? {} : null) as HTMLCanvasElement["getContext"]);
+  const sceneAdd = Scene.prototype.add;
+  vi.spyOn(Scene.prototype, "add").mockImplementation(function (...objects) {
+    observed.scene3d = this;
+    return sceneAdd.apply(this, objects);
+  });
+  const cameraLookAt = PerspectiveCamera.prototype.lookAt;
+  vi.spyOn(PerspectiveCamera.prototype, "lookAt").mockImplementation(function (target: Vector3 | number, y?: number, z?: number) {
+    observed.camera = this;
+    if (target instanceof Vector3) observed.cameraPose = {
+      target: target.toArray(), distance: this.position.distanceTo(target),
+    };
+    return cameraLookAt.call(this, target as Vector3, y, z);
+  });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({
     x: 0, y: 0, left: 0, top: 0, right: 600, bottom: canvasHeight, width: 600, height: canvasHeight, toJSON() {},
   }));
@@ -95,7 +134,100 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+function currentImportedBounds(webgl: boolean): Box3 {
+  const bounds = new Box3();
+  if (webgl) {
+    const scene = observed.scene3d!;
+    const modelRoot = scene.children.find(child => instanceIndex(child as Group)) as Group | undefined;
+    for (const entry of instanceIndex(modelRoot!)?.records.values() ?? []) {
+      if (!entry.bounds.isEmpty()) bounds.union(entry.bounds);
+    }
+  } else {
+    for (const instanceBounds of observed.scene!.instanceBounds.values()) bounds.union(instanceBounds);
+  }
+  return bounds;
+}
+
+function expectConstructionArea(bounds: Box3): void {
+  const expected = constructionArea(bounds);
+  const board = observed.scene3d!.getObjectByName("construction-floor") as import("three").Mesh;
+  const grid = observed.scene3d!.getObjectByName("construction-grid") as import("three").LineSegments;
+  expect(board.position.x).toBe(expected.centerX);
+  expect(board.position.z).toBe(expected.centerZ);
+  expect(board.geometry.parameters.width).toBe(expected.width);
+  expect(board.geometry.parameters.depth).toBe(expected.depth);
+  expect(Array.from(grid.geometry.getAttribute("position").array)).toEqual(
+    Array.from(createStudGridGeometry(expected).getAttribute("position").array),
+  );
+}
+
+function expectCameraPose(expected: { target: number[]; distance: number }): void {
+  expect(observed.cameraPose!.target).toEqual(expected.target);
+  expect(observed.cameraPose!.distance).toBeCloseTo(expected.distance, 8);
+}
+
 describe("frame-coalesced drag transactions", () => {
+  for (const webgl of [true, false]) {
+    const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
+    it(`keeps the ground and camera current for directly built parts in ${rendererName}`, () => {
+      observed.webglEnabled = webgl;
+      const original: Brick = {
+        id: "local", type: "brick-2x4", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0,
+      };
+      const props = { bricks: [original], selectedId: null, selectedType: "brick-2x4" as const,
+        selectedColor: "#B40000", toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      const camera = { ...observed.cameraPose! };
+      const renderStep = (bricks: Brick[]) => {
+        act(() => root.render(<BuilderCanvas {...props} bricks={bricks} />));
+        flushFrame();
+        const bounds = bricks.reduce((result, brick) => result.union(brickConstructionBounds(brick)), new Box3());
+        expectConstructionArea(bounds);
+        expectCameraPose(camera);
+      };
+
+      renderStep([original, { ...original, id: "added", x: 48, z: -24 }]);
+      renderStep([original, { ...original, id: "added", x: 96, z: 32 }]);
+      renderStep([original]);
+    });
+
+    it(`keeps the ground and camera current for imported parts in ${rendererName}`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 3);
+      const props = { projectId: "floor-regression", bricks: [], imported: model, selectedId: null,
+        selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl ? instanceIndex(
+          observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group,
+        ) : observed.scene).toBeDefined());
+      });
+      flushFrame();
+      const camera = { ...observed.cameraPose! };
+      const remote = (x: number, z: number) => ({
+        ...model.instances[0], id: "remote",
+        matrix: [1, 0, 0, x * 20, 0, 1, 0, 0, 0, 0, 1, z * 20] as Affine,
+      });
+      const renderStep = async (next: typeof model) => {
+        await act(async () => root.render(<BuilderCanvas {...props} imported={next} />));
+        flushFrame();
+        expectConstructionArea(currentImportedBounds(webgl));
+        expectCameraPose(camera);
+      };
+
+      const added = { ...model, instances: [...model.instances, remote(100, -60)] };
+      await renderStep(added);
+      const moved = { ...added, instances: added.instances.map(instance =>
+        instance.id === "remote" ? remote(180, 72) : instance) };
+      await renderStep(moved);
+      await renderStep({ ...moved, instances: moved.instances.filter(instance => instance.id !== "remote") });
+    });
+  }
+
   it("applies the latest instruction focus after asynchronous preparation and reuses the software scene on toggles and steps", async () => {
     const model = engineFixture(4, 3), original = structuredClone(model);
     const props = { projectId: "focus", bricks: [], imported: model, selectedId: null,
