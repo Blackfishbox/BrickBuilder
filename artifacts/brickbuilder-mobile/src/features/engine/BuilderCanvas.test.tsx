@@ -95,6 +95,30 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("frame-coalesced drag transactions", () => {
+  it("applies the latest instruction focus after asynchronous preparation and reuses the software scene on toggles and steps", async () => {
+    const model = engineFixture(4, 3), original = structuredClone(model);
+    const props = { projectId: "focus", bricks: [], imported: model, selectedId: null,
+      selectedType: "brick-1x2" as const, selectedColor: "#fff", toolMode: "select" as const,
+      onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} instructionFocusIds={new Set([model.instances[0].id])} />));
+    const current = new Set([model.instances[1].id]);
+    act(() => root.render(<BuilderCanvas {...props} instructionFocusIds={current} />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    flushFrame();
+    const scene = observed.scene!, positions = scene.positions;
+    expect(scene.instructionColors).toBeDefined();
+    const display = [...scene.instructionColors!];
+    act(() => root.render(<BuilderCanvas {...props} instructionFocusIds={new Set()} />));
+    expect(scene.instructionColors).not.toEqual(display);
+    act(() => root.render(<BuilderCanvas {...props} />));
+    expect(scene.instructionColors).toBeUndefined();
+    const cumulative = { ...model, instances: model.instances.slice(0, 2) };
+    act(() => root.render(<BuilderCanvas {...props} imported={cumulative} instructionFocusIds={current} />));
+    expect(observed.scene).toBe(scene); expect(scene.positions).toBe(positions);
+    expect(observed.preparations).toBe(1); expect(scene.transformedTriangles).toBe(0);
+    expect(scene.instructionColors).toBeDefined();
+    expect(model).toEqual(original);
+  });
   it("keeps floating diagnostics off by default and enables and clears them on demand", () => {
     const props = { bricks: [{ id: "air", type: "brick-1x2" as const, color: "#fff", x: 0, y: 3, z: 0, rotation: 0 }],
       selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff", toolMode: "select" as const,
@@ -185,6 +209,22 @@ describe("frame-coalesced drag transactions", () => {
     pointer("pointermove", 291, 300, 2);
     flushFrame();
     expect(gesture.mock.calls.at(-1)![0].camera.distance).toBeCloseTo(zoomedDistance);
+  });
+  it("reports the rotated and zoomed touch camera when an instruction gesture ends", async () => {
+    const { props } = await mount("view");
+    const onViewCameraChange = vi.fn();
+    act(() => root.render(<BuilderCanvas {...props} viewStepId="step-2" onViewCameraChange={onViewCameraChange} />));
+    const gesture = vi.spyOn(cameraGestures, "cameraGesture");
+    pointer("pointerdown", 240, 300, 1);
+    pointer("pointerdown", 290, 300, 2);
+    pointer("pointermove", 340, 330, 2);
+    pointer("pointerup", 340, 330, 2);
+    const saved = onViewCameraChange.mock.lastCall![0];
+    const moved = gesture.mock.results.at(-1)!.value;
+    expect(saved.distance).toBeCloseTo(moved.distance);
+    expect(saved.theta).toBeCloseTo(moved.theta);
+    expect(saved.target).toHaveLength(3);
+    expect(saved.referenceDistance).toBeGreaterThan(0);
   });
   for (const toolMode of ["view", "build", "select", "delete"] as const) {
     it(`takes over touches on parts in ${toolMode} without editor transactions`, async () => {

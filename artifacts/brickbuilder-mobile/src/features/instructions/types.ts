@@ -13,6 +13,14 @@ export const instructionStepSchema = z.object({
   partIds: z.array(z.string().min(1).max(160)).max(10000),
   callouts: z.array(instructionCalloutSchema).max(100).optional(),
   rotation: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]).optional(),
+  camera: z.object({
+    theta: z.number().finite(),
+    phi: z.number().finite(),
+    distance: z.number().positive().finite(),
+    target: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+    referenceDistance: z.number().positive().finite(),
+    referenceTarget: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+  }).optional(),
   sourceIndex: z.number().int().nonnegative().optional(),
 });
 
@@ -33,6 +41,7 @@ export const instructionPlanSchema = z.object({
 });
 
 export type InstructionStep = z.infer<typeof instructionStepSchema>;
+export type InstructionCamera = NonNullable<InstructionStep["camera"]>;
 export type InstructionCallout = z.infer<typeof instructionCalloutSchema>;
 export type InstructionPlan = z.infer<typeof instructionPlanSchema>;
 export type StudioLayout = NonNullable<InstructionPlan["studioLayout"]>;

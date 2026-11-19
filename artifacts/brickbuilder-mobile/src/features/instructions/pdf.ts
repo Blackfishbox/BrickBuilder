@@ -49,7 +49,7 @@ export async function exportInstructionPDF(
         callouts.slice(0, 3), renderCallout,
       ) + 4;
       step.partIds.forEach(id => visible.add(id));
-      const highlightIds = options.highlight ? instructionHighlightIds(document, step) : undefined;
+      const highlightIds = options.highlight && index > 0 ? instructionHighlightIds(document, step) : undefined;
       pdf.addImage(renderer.image(visible, step, highlightIds), "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
       const text = (value: string, bold = false) => {
@@ -62,7 +62,6 @@ export async function exportInstructionPDF(
       };
       const calloutSummary = callouts.length ? ` · ${callouts.length} Baugruppen einsetzen` : "";
       text(`${step.partIds.length} neue Teile${calloutSummary} · ${visible.size} Teile bis zu diesem Schritt`, true);
-      if (options.highlight) text("Türkis: neue Teile und einzusetzende Baugruppen · Hellgrau: bereits verbaute Teile");
       if (step.notes) { y += 3; text(step.notes); }
       const missing = document.imported?.instances.filter(part => visible.has(part.id) && part.part.status !== "resolved") ?? [];
       if (missing.length) {
