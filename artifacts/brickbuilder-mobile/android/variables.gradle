@@ -13,4 +13,7 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+    // Capacitor Filesystem uses this value for its Kotlin Gradle plugin.
+    // 2.4.20 is the first stable release containing the build-cache fix.
+    kotlin_version = '2.4.20'
 }
