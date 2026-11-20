@@ -36,6 +36,14 @@ allprojects {
         formats = ['HTML', 'JSON']
         scanBuildEnv = true
         skipTestGroups = false
+        analyzers {
+            nodeAudit {
+                // The workspace pnpm audit runs separately; Dependency-Check's
+                // Yarn Audit also scans embedded Gradle-plugin lockfiles and
+                // fails on the temporary Kotlin plugin lockfile.
+                enabled = false
+            }
+        }
     }
 }
 
