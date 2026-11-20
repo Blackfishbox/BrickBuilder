@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { renderView, ViewExportError, type ViewExporter } from "./view-export";
 import { Link2, TriangleAlert, Cloud, MousePointer2 } from "lucide-react";
 import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
@@ -68,6 +69,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import type { MessageId } from "@/i18n/messages";
 
 interface BuilderCanvasProps {
+  viewExporterRef?: MutableRefObject<ViewExporter | null>;
   showConstructionControls?: boolean;
   darkMode?: boolean;
   /** Presentation only: never changes project part transforms. */
@@ -379,6 +381,7 @@ function softwareWarning(scene: SoftwareScene, locale: "en" | "de", t: ReturnTyp
 }
 
 export function BuilderCanvas({
+  viewExporterRef,
   showConstructionControls = true,
   darkMode = false,
   viewRotation,
@@ -426,6 +429,20 @@ export function BuilderCanvas({
   const interactionTimeRef = useRef(-Infinity);
   const buildControllerRef = useRef<AbortController | null>(null);
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!viewExporterRef) return;
+    const exporter: ViewExporter = async format => {
+      const camera = cameraRef.current;
+      if (!camera || softwareSceneRef.current ||
+        (propsRef.current.imported && sceneModelRef.current !== propsRef.current.imported)) {
+        throw new ViewExportError("unavailable");
+      }
+      const roots = [brickRootRef.current, importedRootRef.current].filter((root): root is Group => root !== null);
+      return renderView(roots, camera, format);
+    };
+    viewExporterRef.current = exporter;
+    return () => { if (viewExporterRef.current === exporter) viewExporterRef.current = null; };
+  }, [viewExporterRef]);
   const [renderWarning, setRenderWarning] = useState<string | null>(null);
   const [buildAttempt, setBuildAttempt] = useState(0);
   const [forceCompatibility, setForceCompatibility] = useState(false);

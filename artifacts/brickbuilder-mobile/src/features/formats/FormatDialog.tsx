@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { ViewExportError, type ViewExporter, type ViewFormat } from '../engine/view-export';
 import { AlertTriangle, ChevronDown, Download, FileUp, LoaderCircle, X } from 'lucide-react';
 import type { BuilderDocument } from '@/features/editor/model';
 import type { ImportedModel } from './types';
@@ -27,6 +28,7 @@ const EXPORTS: { format: ExportFormat; label: MessageId; note: MessageId }[] = [
 ];
 
 interface Props {
+  viewExporterRef?: MutableRefObject<ViewExporter | null>;
   document: BuilderDocument;
   initialMode?: 'import' | 'export';
   onClose(): void;
@@ -132,14 +134,15 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
   );
 }
 
-export default function FormatDialog({ document, initialMode = 'import', onClose, onImport }: Props) {
+export default function FormatDialog({ document, viewExporterRef, initialMode = 'import', onClose, onImport }: Props) {
   const { t } = useI18n();
   const [preview, setPreview] = useState<BuilderDocument | null>(null);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
-  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [exporting, setExporting] = useState<ExportFormat | ViewFormat | null>(null);
+  const [rendered, setRendered] = useState(false);
   const [exportError, setExportError] = useState('');
   const [partsListIssues, setPartsListIssues] = useState<PartsListIssue[]>([]);
   const [partsListExported, setPartsListExported] = useState(false);
@@ -184,6 +187,7 @@ export default function FormatDialog({ document, initialMode = 'import', onClose
   };
 
   const doExport = async (format: ExportFormat) => {
+    setRendered(false);
     setExporting(format); setExportError(''); setPartsListIssues([]); setPartsListExported(false);
     try {
       const { bytes, filename, mime } = await exportModel(document, format);
@@ -194,6 +198,25 @@ export default function FormatDialog({ document, initialMode = 'import', onClose
       if (e instanceof BrickLinkExportError) setPartsListIssues(e.issues);
     }
     finally { setExporting(null); }
+  };
+
+  const doRender = async (format: ViewFormat) => {
+    setExporting(format); setExportError(''); setRendered(false);
+    setPartsListIssues([]); setPartsListExported(false);
+    try {
+      // Let the busy state paint before geometry traversal and GPU rendering.
+      await new Promise(resolve => setTimeout(resolve, 40));
+      const exporter = viewExporterRef?.current;
+      if (!exporter) throw new ViewExportError('unavailable');
+      const bytes = await exporter(format);
+      const filename = `${document.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').slice(0, 100) || 'model'}-4k.${format}`;
+      await exportFile(bytes, filename, format === 'png' ? 'image/png' : 'image/svg+xml');
+      setRendered(true);
+    } catch (error) {
+      setExportError(error instanceof ViewExportError
+        ? t(`render.${error.reason}`)
+        : t('render.failed'));
+    } finally { setExporting(null); }
   };
 
   const shown = (preview ?? document) as WithImported;
@@ -252,6 +275,18 @@ export default function FormatDialog({ document, initialMode = 'import', onClose
               </button>
             ))}
           </div>
+          <h3>{t('render.title')}</h3>
+          <p className="fmt-muted">{t('render.note')}</p>
+          <div className="fmt-exports">
+            {(['png', 'svg'] as const).map(format => <button key={format} type="button"
+              className="fmt-export" disabled={exporting !== null}
+              onClick={() => void doRender(format)} data-testid={`button-export-${format}`}>
+              {exporting === format ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}
+              <span><b>{t(format === 'png' ? 'render.png' : 'render.svg')}</b>
+                <small>{t(format === 'png' ? 'render.pngNote' : 'render.svgNote')}</small></span>
+            </button>)}
+          </div>
+          {rendered && <p className="fmt-muted" role="status">{t('render.ready')}</p>}
           {exportError && <div className="fmt-error" role="alert" data-testid="status-export-error">{exportError}</div>}
           {partsListIssues.length > 0 && <div className="fmt-error" data-testid="bricklink-export-issues">
             <b>{t('format.unmappedCount', { count: partsListIssues.reduce((sum, issue) => sum + issue.quantity, 0) })}</b>

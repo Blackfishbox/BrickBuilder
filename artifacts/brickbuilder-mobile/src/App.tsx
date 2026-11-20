@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { ViewExporter } from '@/features/engine/view-export';
 import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
 import { useBuilder } from '@/features/editor/useBuilder';
@@ -76,6 +77,7 @@ function App() {
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [formatsOpen, setFormatsOpen] = useState(false);
+  const viewExporterRef = useRef<ViewExporter | null>(null);
   const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [finePositionOpen, setFinePositionOpen] = useState(false);
@@ -362,6 +364,7 @@ function App() {
           <div className="canvas-host">
               <Suspense fallback={<div className="canvas-loading">{t("canvas.loading")}</div>}>
               {!instructionsOpen && <BuilderCanvas
+                viewExporterRef={viewExporterRef}
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                 darkMode={theme === 'dark'}
@@ -619,7 +622,7 @@ function App() {
           </section>
         </div>
       )}
-      {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
+      {formatsOpen && <FormatDialog document={editor.document} viewExporterRef={viewExporterRef} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal, highlight) => {
