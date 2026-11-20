@@ -33,14 +33,14 @@ describe("bounded progressive SVG export", () => {
       expect(svg.match(/<use /g)).toHaveLength(160_001);
       expect(svg.match(/<path /g)).toHaveLength(1);
       expect(svg).not.toMatch(/<image|<rect|data:image|<foreignObject/);
-      expect(new Set(progress.map(value => value.phase))).toEqual(new Set(["project", "sort", "write"]));
+      expect(new Set(progress.map(value => value.phase))).toEqual(new Set(["project", "sort", "visibility", "write"]));
       expect(progress.at(-1)).toEqual({ phase: "write", completed: 160_001, total: 160_001 });
       expect(heartbeats).toBeGreaterThan(10);
       expect(model.count).toBe(160_001);
     } finally { clearInterval(timer); }
   }, 30_000);
 
-  it.each(["project", "sort", "write"] as const)("can cancel during %s and immediately start again", async phase => {
+  it.each(["project", "sort", "visibility", "write"] as const)("can cancel during %s and immediately start again", async phase => {
     const { model, camera } = fixture(1024);
     const controller = new AbortController();
     await expect(renderView([model], camera, "svg", {
@@ -152,7 +152,8 @@ describe("bounded progressive SVG export", () => {
     const timer = setInterval(() => ticks++, 1);
     try {
       const svg = decode(await renderView([new Mesh(geometry, material)], camera, "svg"));
-      expect(svg.match(/<path /g)?.length).toBe(count);
+      // Coplanar triangles share paths to eliminate internal antialiasing seams.
+      expect(svg.match(/M/g)?.length).toBe(count);
       expect(svg).not.toMatch(/<image|data:image/);
       expect(svg.endsWith("</svg>")).toBe(true);
       expect(svg.length).toBeLessThanOrEqual(SVG_LIMITS.outputBytes);

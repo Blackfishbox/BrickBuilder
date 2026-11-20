@@ -1,5 +1,5 @@
 export type ViewExportProgress = {
-  phase: "project" | "sort" | "write";
+  phase: "project" | "sort" | "visibility" | "write";
   completed: number;
   total?: number;
 };

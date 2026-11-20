@@ -2,8 +2,9 @@ import { ViewExportError } from "./view-export-job";
 
 /**
  * Export-owned payload ceiling (excluding the already-loaded model / platform share):
- * 600k faces * (9 floats + two sort indices) < 26 MiB;
+ * 600k faces * 17 doubles < 78 MiB; visibility lists/sort scratch < 24 MiB;
  * encoded chunks + final file <= 32 MiB; bounded reuse cache / scratch < 2 MiB.
+ * Visibility fragments use this SAME face budget, not a second unbounded store.
  * No DOM tree, expanded Mesh hierarchy, unbounded strings or Array.sort allocations.
  */
 export const SVG_LIMITS = {
@@ -11,19 +12,21 @@ export const SVG_LIMITS = {
   inputTriangles: 5_000_000,
   outputBytes: 16 * 1024 * 1024,
   reuseEntries: 2048,
+  visibilityOperations: 24_000_000,
+  visibilityDepth: 128,
 } as const;
 
 const PAGE = 4096;
-const STRIDE = 9; // screen xy * 3, depth, packed RGB, opacity
+const STRIDE = 17; // xy*3, mean z, base RGB, alpha, z*3, irradiance*3, surface ID, emissive RGB
 
 export class SvgFaces {
-  private pages: Float32Array[] = [];
+  private pages: Float64Array[] = [];
   count = 0;
 
   add(values: readonly number[]) {
     if (this.count >= SVG_LIMITS.faces) throw new ViewExportError("complex");
     const page = Math.floor(this.count / PAGE);
-    if (!this.pages[page]) this.pages.push(new Float32Array(PAGE * STRIDE));
+    if (!this.pages[page]) this.pages.push(new Float64Array(PAGE * STRIDE));
     this.pages[page].set(values, (this.count % PAGE) * STRIDE);
     this.count++;
   }
