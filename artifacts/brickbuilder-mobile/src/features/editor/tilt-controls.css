@@ -1,8 +1,8 @@
 .tilt-controls { position: relative; color: #365346; font-size: 11px; }
 .tilt-controls summary {
-  display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 7px 10px;
+  display: grid; place-items: center; width: 40px; min-height: 40px; padding: 0;
   border: 1px solid #dcded3; border-radius: 9px; background: #f8f7ef; color: #536c5f;
-  cursor: pointer; font-size: 10px; font-weight: 800; list-style: none; touch-action: manipulation;
+  cursor: pointer; list-style: none; touch-action: manipulation;
 }
 .tilt-controls summary::-webkit-details-marker { display: none; }
 .tilt-controls summary:focus-visible, .tilt-panel input:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
@@ -25,13 +25,18 @@
 @media (max-width: 900px) {
   .mobile-selection-actions .tilt-controls { position: relative; flex: 0 0 auto; }
   .mobile-selection-actions .tilt-controls summary {
-    width: auto; min-width: 54px; min-height: 40px; padding: 7px 6px; gap: 4px;
+    width: 40px; min-width: 40px; min-height: 40px; padding: 0;
     border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; font-size: 9px;
   }
   .mobile-selection-actions .tilt-panel {
-    position: absolute; z-index: 50; right: 0; bottom: calc(100% + 8px); width: min(240px, calc(100vw - 48px));
-    max-height: calc(100dvh - 180px); overflow-y: auto;
+    position: fixed; z-index: 100; left: 50%; right: auto; bottom: calc(125px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); box-sizing: border-box; width: min(300px, calc(100vw - 16px));
+    max-height: calc(100dvh - 150px); overflow-y: auto;
   }
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .mobile-selection-actions .tilt-panel { bottom: calc(56px + env(safe-area-inset-bottom)); }
 }
 
 .dark .tilt-controls { color: #d5e4da; }

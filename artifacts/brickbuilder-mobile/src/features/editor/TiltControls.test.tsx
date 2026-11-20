@@ -42,6 +42,7 @@ it("shows only three whole-degree sliders for rotation and tilt", () => {
   expect(host.querySelector('[data-testid="value-tilt-x"]')?.textContent).toBe("12°");
   expect(host.querySelector('[data-testid="value-tilt-z"]')?.textContent).toBe("-24°");
   expect(host.querySelector('[aria-label="Drehung und Neigung einstellen"]')).toBeTruthy();
+  expect(host.querySelector('[aria-label="Drehung und Neigung einstellen"]')?.textContent?.trim()).toBe("");
 });
 
 it("sends slider changes as whole-degree values", () => {

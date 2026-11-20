@@ -112,8 +112,10 @@ export default function TiltControls({
   });
 
   return (
-    <details className="tilt-controls" onToggle={event => onOpenChange?.(event.currentTarget.open)}>
-      <summary aria-label="Drehung und Neigung einstellen"><Rotate3d size={15} /><span>Drehen / Neigen</span></summary>
+    <details className="tilt-controls" data-testid="tilt-controls-menu" onToggle={event => onOpenChange?.(event.currentTarget.open)}>
+      <summary aria-label="Drehung und Neigung einstellen" title="Drehung und Neigung" data-testid="button-tilt-controls">
+        <Rotate3d size={17} aria-hidden="true" />
+      </summary>
       <div className="tilt-panel" role="group" aria-label="Stein drehen und neigen">
         <strong>Drehung und Neigung</strong>
         <small>Y-Drehung: 0° bis 360° · X/Z-Neigung: −180° bis 179°</small>

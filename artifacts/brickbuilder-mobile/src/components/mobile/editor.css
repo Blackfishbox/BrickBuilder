@@ -173,8 +173,8 @@
 .selection-action.danger-action:hover { background: #f3e7df; }
 .rotation-selection { position: relative; color: #536c5f; font-size: 10px; }
 .rotation-selection > summary {
-  display: flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid #dcded3;
-  border-radius: 9px; background: #f8f7ef; cursor: pointer; font-weight: 800; list-style: none;
+  display: grid; place-items: center; width: 40px; min-height: 40px; padding: 0; border: 1px solid #dcded3;
+  border-radius: 9px; background: #f8f7ef; cursor: pointer; list-style: none;
 }
 .rotation-selection > summary::-webkit-details-marker { display: none; }
 .rotation-selection > summary:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
@@ -283,12 +283,13 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .mobile-selection-actions > button { flex-shrink: 0; }
   .rotation-selection-mobile { flex: 0 0 auto; }
   .rotation-selection-mobile > summary {
-    justify-content: center; min-width: 44px; min-height: 40px; padding: 0 7px;
+    width: 40px; min-width: 40px; min-height: 40px; padding: 0;
     border: 0; background: #f0eee4; font-size: 9px;
   }
   .rotation-selection-mobile .rotation-selection-panel {
-    position: absolute; z-index: 50; right: 0; bottom: calc(100% + 8px);
-    box-sizing: border-box; width: min(300px, 86vw); margin: 0;
+    position: fixed; z-index: 100; left: 50%; right: auto; bottom: calc(125px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); box-sizing: border-box; width: min(300px, calc(100vw - 16px)); max-height: calc(100dvh - 150px);
+    margin: 0; overflow-y: auto;
     border-color: #dcded3; background: #faf9f3; box-shadow: 0 6px 18px rgba(39,57,48,.18);
   }
   .mobile-selection-label { flex: 0 1 auto; }
@@ -297,7 +298,7 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
     .mobile-selection-actions button { width: 32px; }
     .mobile-selection-label { max-width: 38px; font-size: 8px; }
     .mobile-selection-actions .fine-position summary { padding: 8px; }
-    .mobile-selection-actions .tilt-controls summary { min-width: 48px; font-size: 8px; }
+    .mobile-selection-actions .tilt-controls summary { min-width: 40px; }
   }
   .canvas-stage.has-selection { grid-template-rows: 38px minmax(0,1fr) auto; }
   .context-label { font-size: 8px; }
@@ -317,6 +318,10 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .dock-tool.active { color: #a84f38; background: #f3e8dd; }
   .dock-parts { gap: 6px; min-width: 74px; height: 42px; padding: 0 13px; border-radius: 12px; background: #d85d41; color: #fff8ed; font-size: 11px; font-weight: 800; box-shadow: 0 2px #b84b33; }
   .parts-drawer { padding-left: 19px; padding-right: 19px; }
+}
+
+@media (max-width: 760px) and (orientation: landscape) and (max-height: 560px) {
+  .rotation-selection-mobile .rotation-selection-panel { bottom: calc(56px + env(safe-area-inset-bottom)); }
 }
 
 .dark .rotation-selection, .dark .rotation-selection-list label { color: #d5e4da; }

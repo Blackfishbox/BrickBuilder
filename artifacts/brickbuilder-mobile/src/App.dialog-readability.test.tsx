@@ -27,7 +27,10 @@ vi.mock("@/features/catalog/client", () => ({
   }),
   previewInventory: vi.fn(),
 }));
-vi.mock("@/features/engine/BuilderCanvas", () => ({ default: () => <div data-testid="mock-canvas" /> }));
+vi.mock("@/features/engine/BuilderCanvas", () => ({
+  default: ({ showConstructionControls }: { showConstructionControls?: boolean }) =>
+    <div data-testid="mock-canvas" data-construction-controls={String(showConstructionControls)} />,
+}));
 vi.mock("@/features/parts/PartsLibrary", () => ({ default: () => <div>Teilekatalog</div> }));
 vi.mock("@/features/catalog/EvidencedColorPicker", () => ({ default: () => <div>Farbauswahl</div> }));
 vi.mock("@/features/inventory/InventoryThumbnail", () => ({ default: () => <div aria-hidden="true" /> }));
@@ -58,7 +61,7 @@ afterEach(() => {
   Object.defineProperty(window, "innerHeight", { configurable: true, value: oldHeight });
 });
 
-async function mount(theme: "light" | "dark") {
+async function mount(theme: "light" | "dark", withSelection = false) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubEnv("VITE_NATIVE_ANDROID", "true");
   oldWidth = window.innerWidth;
@@ -74,14 +77,14 @@ async function mount(theme: "light" | "dark") {
     document,
     bricks: document.bricks,
     imported: undefined,
-    selectedId: null,
+    selectedId: withSelection ? "selected-brick" : null,
     selectedInstance: null,
     selectedPart: null,
     selectedInventory: null,
     selectedType: "brick-2x4",
     selectedColor: "#d75b3f",
     selectedColorCode: "4",
-    toolMode: "view",
+    toolMode: withSelection ? "select" : "view",
     projectName: "Mobile-Dialoge",
     projects: [],
     brickCount: 0,
@@ -135,6 +138,27 @@ async function mount(theme: "light" | "dark") {
 }
 
 const documentRef = globalThis.document;
+
+it("hides the canvas status controls for every open mobile selection menu", async () => {
+  const container = await mount("light", true);
+  const canvas = container.querySelector<HTMLElement>('[data-testid="mock-canvas"]')!;
+  expect(canvas.dataset.constructionControls).toBe("true");
+
+  for (const selector of [
+    '[data-testid="group-selection-menu"]',
+    '.mobile-selection-actions [data-testid="fine-position-menu"]',
+    '.mobile-selection-actions [data-testid="tilt-controls-menu"]',
+  ]) {
+    const menu = container.querySelector<HTMLElement>(selector)!;
+    const summary = menu.querySelector("summary")!;
+    expect(summary.textContent?.trim()).toBe("");
+    await act(async () => summary.click());
+    expect(menu.matches("details[open]")).toBe(true);
+    expect(canvas.dataset.constructionControls).toBe("false");
+    await act(async () => summary.click());
+    expect(canvas.dataset.constructionControls).toBe("true");
+  }
+});
 
 function openProjectMenu(container: HTMLElement) {
   act(() => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());

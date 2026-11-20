@@ -18,6 +18,7 @@ import {
   FilePlus2,
   FileDown,
   FileUp,
+  Group,
   HardDrive,
   Hammer,
   LoaderCircle,
@@ -74,6 +75,7 @@ function App() {
   const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [finePositionOpen, setFinePositionOpen] = useState(false);
+  const [groupSelectionOpen, setGroupSelectionOpen] = useState(false);
   const [tiltControlsOpen, setTiltControlsOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -84,6 +86,7 @@ function App() {
   const [colorTargetsOpen, setColorTargetsOpen] = useState(false);
   const [colorTargetQuery, setColorTargetQuery] = useState("");
   useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
+  useEffect(() => { setGroupSelectionOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setTiltControlsOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { setAdditionalRotationIds([]); setRotationTargetQuery(""); }, [editor.selectedId, editor.document.id]);
@@ -101,9 +104,13 @@ function App() {
     ? [editor.selectedId, ...additionalRotationIds.filter(id => id !== editor.selectedId && availableRotationIds.has(id))]
     : [];
   const rotationSelection = (mobile = false) => (
-    <details className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}>
-      <summary>{mobile ? `Gruppe${rotationTargetIds.length > 1 ? ` · ${rotationTargetIds.length}` : ""}`
-        : `Teile gemeinsam bewegen und drehen${rotationTargetIds.length > 1 ? ` (${rotationTargetIds.length} ausgewählt)` : ""}`}</summary>
+    <details key={`rotation-selection-${editor.selectedId ?? "none"}-${editor.toolMode}`}
+      className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}
+      data-testid={mobile ? "group-selection-menu" : undefined}
+      onToggle={event => setGroupSelectionOpen(event.currentTarget.open)}>
+      <summary aria-label="Gruppenauswahl öffnen" title="Gruppenauswahl" data-testid="button-group-selection">
+        <Group size={17} aria-hidden="true" />
+      </summary>
       <div className="rotation-selection-panel">
         <label className="rotation-selection-search">
           <span className="sr-only">Teile zur Gruppenauswahl suchen</span>
@@ -342,7 +349,7 @@ function App() {
           <div className="canvas-host">
             <Suspense fallback={<div className="canvas-loading">3D-Arbeitsfläche wird geladen …</div>}>
               {!instructionsOpen && <BuilderCanvas
-                showConstructionControls={!finePositionOpen && !tiltControlsOpen}
+                showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                  darkMode={theme === 'dark'}
                 bricks={editor.bricks}
@@ -378,9 +385,9 @@ function App() {
               <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? "Stein"}</span>
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
-              <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
+              <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               {rotationSelection(true)}
-              <TiltControls key={`tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
+              <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                 tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                 rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
                 onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
@@ -444,13 +451,13 @@ function App() {
                   </button>
                 </div>
                 {rotationSelection()}
-                <TiltControls key={`desktop-tilt-${editor.selectedId}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
+                <TiltControls key={`desktop-tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                   tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                   rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
                   onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
                   onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                   onOpenChange={setTiltControlsOpen} />
-                <FinePositionControls key={editor.selectedId} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
+                <FinePositionControls key={`desktop-fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>
             ) : (
               <div className="selection-empty" data-testid="status-no-selection">

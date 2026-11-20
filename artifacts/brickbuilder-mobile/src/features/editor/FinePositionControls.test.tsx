@@ -12,6 +12,7 @@ it("exposes six touch adjustments of exactly one LDU in world coordinates", asyn
     expect(container.querySelector("summary")?.getAttribute("aria-label")).toBe("Feinjustierung öffnen");
     const buttons = container.querySelectorAll("button");
     expect(buttons).toHaveLength(6);
+    expect([...buttons].every(button => !button.textContent?.trim() && button.querySelector("svg"))).toBe(true);
     await act(async () => { buttons.forEach(button => button.click()); });
     expect(onNudge.mock.calls.map(([delta]) => delta)).toEqual([
       { x: -0.05, y: 0, z: 0 }, { x: 0.05, y: 0, z: 0 },
