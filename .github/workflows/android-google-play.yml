@@ -163,7 +163,16 @@ jobs:
           exit 1
       - name: Check resolved Android dependencies for advisories
         working-directory: artifacts/brickbuilder-mobile/android
-        run: bash gradlew --no-daemon --max-workers=2 dependencyCheckAggregate
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "${NVD_API_KEY:-}" ]; then
+            echo "::error::Missing GitHub Actions secret NVD_API_KEY. Add a free key from https://nvd.nist.gov/developers/request-an-api-key in the repository Actions secrets."
+            exit 1
+          fi
+          bash gradlew --no-daemon --max-workers=2 \
+            "-PdependencyCheck.nvd.apiKey=$NVD_API_KEY" \
+            dependencyCheckAggregate
       - name: Upload Android dependency security reports
         if: always()
         uses: actions/upload-artifact@v4
