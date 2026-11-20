@@ -6,13 +6,18 @@ import { brickTransformMatrix } from "../editor/brick-transform";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { createInstructionRenderer } from "./render";
+import { exportInstructionPDF } from "./pdf";
 
-const { frames } = vi.hoisted(() => ({ frames: vi.fn() }));
+const { frames, rendererDispose, forceContextLoss } = vi.hoisted(() => ({
+  frames: vi.fn(), rendererDispose: vi.fn(), forceContextLoss: vi.fn(),
+}));
 vi.mock("three", async importOriginal => {
   const three = await importOriginal<typeof import("three")>();
   return { ...three, WebGLRenderer: class {
     domElement = { toDataURL: () => "data:image/jpeg;base64,webgl" };
-    setPixelRatio() {} setSize() {} setClearColor() {} dispose() {} forceContextLoss() {}
+    setPixelRatio() {} setSize() {} setClearColor() {}
+    dispose() { rendererDispose(); }
+    forceContextLoss() { forceContextLoss(); }
     render(scene: Scene, camera: Camera) {
       scene.updateMatrixWorld(true); camera.updateMatrixWorld(true); frames(scene, camera);
     }
@@ -123,4 +128,49 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
     expect(context.stroke).toHaveBeenCalledOnce();
     expect(JSON.stringify(document)).toBe(before);
   } finally { renderer.dispose(); }
+});
+
+it("releases the WebGL renderer and context when PDF setup is canceled during imported geometry", async () => {
+  const document = createEmptyDocument("Canceled WebGL export");
+  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 test.dat";
+  const imported = {
+    version: 1 as const, format: "mpd" as const, sourceName: "test.mpd", sourceText,
+    originalBytes: [], ...parseLDraw(sourceText),
+    resources: {
+      "parts/test.dat": {
+        path: "parts/test.dat", source: "embedded" as const,
+        content: "0 Test triangle\n3 16 0 0 0 20 0 0 0 20 0",
+      },
+    },
+    legalDocuments: [],
+  };
+  imported.instances.forEach(instance => { instance.part.status = "resolved"; });
+  document.imported = imported;
+  const partId = imported.instances[0].id;
+  const plan = {
+    version: 1 as const, edited: false, source: "ldraw" as const, warnings: [],
+    steps: [{ id: "step", title: "Step", notes: "", partIds: [partId] }],
+  };
+  const controller = new AbortController();
+  const canvas = { width: 0, height: 0, getContext: () => null, toDataURL: () => "data:image/jpeg;base64,test" };
+  vi.stubGlobal("document", { createElement: () => canvas });
+  let elapsed = 0;
+  const now = vi.spyOn(performance, "now").mockImplementation(() => (elapsed += 7));
+  let geometryPreparationYielded = false;
+  vi.stubGlobal("setTimeout", (callback: () => void) => {
+    geometryPreparationYielded = true;
+    controller.abort();
+    queueMicrotask(callback);
+    return 0;
+  });
+
+  try {
+    await expect(exportInstructionPDF(document, plan, { signal: controller.signal })).rejects.toThrow();
+    expect(geometryPreparationYielded).toBe(true);
+    expect(rendererDispose).toHaveBeenCalledOnce();
+    expect(forceContextLoss).toHaveBeenCalledOnce();
+  } finally {
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  }
 });
