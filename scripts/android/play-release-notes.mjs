@@ -6,11 +6,28 @@ const workflowName = "Build and publish closed Google Play test";
 const outputDirectory = "generated-artifacts/google-play/whatsnew";
 
 const RELEASE_NOTE_TRAILER = "Release-Notes-DE";
+const COMPLETE_RELEASE_NOTE_TRAILER = "Release-Notes-DE-Complete";
+const RELEASE_AUTOMATION_FILES = new Set([
+  ".github/workflows/android-google-play.yml",
+  "artifacts/brickbuilder-mobile/android/build.gradle",
+  "artifacts/brickbuilder-mobile/android/variables.gradle",
+  "scripts/android/play-release-notes.mjs",
+  "scripts/android/play-release-notes.test.mjs",
+]);
 
 /** Every non-merge commit since the previous successful Play release must state its actual user-visible change. */
 export function summarizeCommitMessages(messages) {
   if (!messages.length) {
     throw new Error("No commits found for this release. Add German release notes or provide them manually.");
+  }
+  const completeNotes = messages.flatMap(message =>
+    [...message.matchAll(/^Release-Notes-DE-Complete:\s*(.*?)\s*$/gim)].map(match => match[1].trim()),
+  );
+  if (completeNotes.length > 0) {
+    if (completeNotes.length !== 1 || !completeNotes[0]) {
+      throw new Error("A release batch must contain exactly one non-empty Release-Notes-DE-Complete trailer.");
+    }
+    return validateNotes(completeNotes[0]);
   }
   const notes = [], seen = new Set();
   for (const message of messages) {
@@ -95,9 +112,28 @@ export function releaseNotesSince(base, git = (...args) => execFileSync("git", a
   // unrelated main history, including commits predating Android releases.
   // Failed Android builds remain on this first-parent path and must be included.
   const output = base
-    ? git("log", "--first-parent", "--reverse", "--format=%B%x00", `${base}..HEAD`, "--")
-    : git("log", "--first-parent", "-1", "--format=%B%x00", "HEAD", "--");
-  return summarizeCommitMessages(output.split("\0").map(message => message.trim()).filter(Boolean));
+    ? git("log", "--first-parent", "--reverse", "--format=%H%x00%B%x00", `${base}..HEAD`, "--")
+    : git("log", "--first-parent", "-1", "--format=%H%x00%B%x00", "HEAD", "--");
+  const fields = output.split("\0");
+  const messages = [];
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const sha = fields[index].trim();
+    const message = fields[index + 1].trim();
+    if (!sha || !message) continue;
+
+    const hasReleaseNote = new RegExp(
+      `^(?:${RELEASE_NOTE_TRAILER}|${COMPLETE_RELEASE_NOTE_TRAILER}):\\s*\\S`, "im",
+    ).test(message);
+    if (!hasReleaseNote) {
+      const files = git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r", sha, "--")
+        .split(/\r?\n/).map(file => file.trim()).filter(Boolean);
+      // Build, dependency-scan and release-note maintenance does not belong in
+      // Play's user-facing changelog. Keep requiring trailers for app changes.
+      if (files.length > 0 && files.every(file => RELEASE_AUTOMATION_FILES.has(file))) continue;
+    }
+    messages.push(message);
+  }
+  return summarizeCommitMessages(messages);
 }
 
 async function main() {

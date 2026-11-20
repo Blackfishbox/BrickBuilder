@@ -18,6 +18,19 @@ test("deduplicates identical notes from multiple commits without inventing summa
   ]), "• Teilefarben bleiben besser erkennbar.");
 });
 
+test("a complete release note summarizes a batch with missing or oversized historical trailers", () => {
+  const summary = "Mehrfachauswahl lässt sich gemeinsam bewegen und drehen. Kurzes Tippen wählt Teile aus; langes Drücken dreht die Kamera.";
+  assert.equal(summarizeCommitMessages([
+    "Older change without a release trailer",
+    "Recent change\n\nRelease-Notes-DE: This historical note is superseded by the complete batch summary.",
+    `Prepare release\n\nRelease-Notes-DE-Complete: ${summary}`,
+  ]), summary);
+  assert.throws(() => summarizeCommitMessages([
+    "First summary\n\nRelease-Notes-DE-Complete: Zusammenfassung eins.",
+    "Second summary\n\nRelease-Notes-DE-Complete: Zusammenfassung zwei.",
+  ]), /exactly one/);
+});
+
 test("requires a precise note in every included commit", () => {
   assert.throws(() => summarizeCommitMessages(["Adjust workflow", "Fix camera\n\nRelease-Notes-DE: Die Ansicht bleibt beim Drehen erhalten."]), /Adjust workflow.*must contain exactly one/s);
   assert.throws(() => summarizeCommitMessages(["Missing trailer"]), /Release-Notes-DE/);
@@ -81,20 +94,46 @@ test("API failures and stale runs cannot silently publish", async () => {
 
 test("reads first-parent messages since the last release, including merge notes and failed attempts", () => {
   const calls = [];
+  const commits = [
+    ["b".repeat(40), "Merge current main\n\nRelease-Notes-DE: Importierte Anleitungen zeigen Drehungen und Callouts."],
+    ["c".repeat(40), "Fix retry\n\nRelease-Notes-DE: Importierte Anleitungen zeigen Drehungen und Callouts."],
+  ];
   assert.equal(releaseNotesSince("a".repeat(40), (...args) => {
     calls.push(args);
-    return "Merge current main\n\nRelease-Notes-DE: Importierte Anleitungen zeigen Drehungen und Callouts.\0" +
-      "Fix retry\n\nRelease-Notes-DE: Importierte Anleitungen zeigen Drehungen und Callouts.\0";
+    if (args[0] === "log") return commits.map(([sha, message]) => `${sha}\0${message}\0`).join("");
+    return "";
   }), "• Importierte Anleitungen zeigen Drehungen und Callouts.");
-  assert.deepEqual(calls[0], ["log", "--first-parent", "--reverse", "--format=%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
+  assert.deepEqual(calls[0], ["log", "--first-parent", "--reverse", "--format=%H%x00%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
+});
+
+test("skips only unannotated release-pipeline changes, not app changes", () => {
+  const messages = [
+    ["b".repeat(40), "Adjust Play workflow retries"],
+    ["c".repeat(40), "Improve mobile selection\n\nRelease-Notes-DE: Die Teileauswahl ist auf kleinen Displays besser erreichbar."],
+  ];
+  const git = (...args) => {
+    if (args[0] === "log") return messages.map(([sha, message]) => `${sha}\0${message}\0`).join("");
+    if (args[0] === "diff-tree" && args[5] === "b".repeat(40)) {
+      return ".github/workflows/android-google-play.yml\n";
+    }
+    return "artifacts/brickbuilder-mobile/src/App.tsx\n";
+  };
+  assert.equal(releaseNotesSince("a".repeat(40), git),
+    "• Die Teileauswahl ist auf kleinen Displays besser erreichbar.");
+
+  const appCommit = "d".repeat(40);
+  assert.throws(() => releaseNotesSince("a".repeat(40), (...args) => {
+    if (args[0] === "log") return `${appCommit}\0Change mobile behavior\0`;
+    return "artifacts/brickbuilder-mobile/src/App.tsx\n";
+  }), /must contain exactly one/);
 });
 
 test("uses only the latest commit as baseline for an initial manual release", () => {
   const calls = [];
   const notes = releaseNotesSince(null, (...args) => {
     calls.push(args);
-    return "Publish Android improvements\n\nRelease-Notes-DE: Android-Installation und Teilevorschau wurden verbessert.\0";
+    return "a".repeat(40) + "\0Publish Android improvements\n\nRelease-Notes-DE: Android-Installation und Teilevorschau wurden verbessert.\0";
   });
   assert.equal(notes, "• Android-Installation und Teilevorschau wurden verbessert.");
-  assert.deepEqual(calls[0], ["log", "--first-parent", "-1", "--format=%B%x00", "HEAD", "--"]);
+  assert.deepEqual(calls[0], ["log", "--first-parent", "-1", "--format=%H%x00%B%x00", "HEAD", "--"]);
 });
