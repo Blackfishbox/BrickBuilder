@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import { ViewExportError, type ViewExporter, type ViewFormat } from '../engine/view-export';
+import { ViewExportError, type ViewExporter, type ViewFormat, type ViewExportProgress } from '../engine/view-export';
 import { AlertTriangle, ChevronDown, Download, FileUp, LoaderCircle, X } from 'lucide-react';
 import type { BuilderDocument } from '@/features/editor/model';
 import type { ImportedModel } from './types';
@@ -143,6 +143,9 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState<ExportFormat | ViewFormat | null>(null);
   const [rendered, setRendered] = useState(false);
+  const [viewProgress, setViewProgress] = useState<ViewExportProgress | null>(null);
+  const [viewCancelled, setViewCancelled] = useState(false);
+  const viewController = useRef<AbortController | null>(null);
   const [exportError, setExportError] = useState('');
   const [partsListIssues, setPartsListIssues] = useState<PartsListIssue[]>([]);
   const [partsListExported, setPartsListExported] = useState(false);
@@ -150,10 +153,14 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
   const controller = useRef<AbortController | null>(null);
   const [progress, setProgress] = useState<GeometryProgress | null>(null);
   const [mode, setMode] = useState<'import' | 'export'>(initialMode);
-  useEffect(() => () => { controller.current?.abort(); token.current++; }, []);
+  useEffect(() => () => {
+    controller.current?.abort(); viewController.current?.abort(); viewController.current = null; token.current++;
+  }, []);
+
+  const close = () => { viewController.current?.abort(); onClose(); };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !creating) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !creating) { viewController.current?.abort(); onClose(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [creating, onClose]);
@@ -188,6 +195,7 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
 
   const doExport = async (format: ExportFormat) => {
     setRendered(false);
+    setViewCancelled(false);
     setExporting(format); setExportError(''); setPartsListIssues([]); setPartsListExported(false);
     try {
       const { bytes, filename, mime } = await exportModel(document, format);
@@ -201,38 +209,59 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
   };
 
   const doRender = async (format: ViewFormat) => {
+    if (viewController.current) return;
+    const operation = new AbortController();
+    viewController.current = operation;
     setExporting(format); setExportError(''); setRendered(false);
+    setViewCancelled(false);
+    setViewProgress(format === 'svg' ? { phase: 'project', completed: 0 } : null);
     setPartsListIssues([]); setPartsListExported(false);
     try {
       // Let the busy state paint before geometry traversal and GPU rendering.
       await new Promise(resolve => setTimeout(resolve, 40));
+      if (operation.signal.aborted) throw new ViewExportError('cancelled');
       const exporter = viewExporterRef?.current;
       if (!exporter) throw new ViewExportError('unavailable');
-      const bytes = await exporter(format);
+      const bytes = await exporter(format, {
+        signal: operation.signal,
+        onProgress: value => { if (!operation.signal.aborted) setViewProgress(value); },
+      });
+      if (operation.signal.aborted) throw new ViewExportError('cancelled');
+      setViewProgress(null);
       const filename = `${document.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').slice(0, 100) || 'model'}-4k.${format}`;
       await exportFile(bytes, filename, format === 'png' ? 'image/png' : 'image/svg+xml');
-      setRendered(true);
+      if (!operation.signal.aborted) setRendered(true);
     } catch (error) {
+      if (viewController.current !== operation) return;
+      if (operation.signal.aborted || (error instanceof ViewExportError && error.reason === 'cancelled')) {
+        if (viewController.current === operation) setViewCancelled(true);
+        return;
+      }
       setExportError(error instanceof ViewExportError
         ? t(`render.${error.reason}`)
         : t('render.failed'));
-    } finally { setExporting(null); }
+    } finally {
+      if (viewController.current === operation) {
+        viewController.current = null;
+        setViewProgress(null); setExporting(null);
+      }
+    }
   };
 
   const shown = (preview ?? document) as WithImported;
 
   return (
-    <div className="drawer-scrim fmt-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget && !creating) onClose(); }}>
+    <div className="drawer-scrim fmt-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget && !creating) close(); }}>
       <section className="parts-drawer fmt-drawer rise-in" role="dialog" aria-modal="true" aria-labelledby="fmt-title" data-testid="dialog-formats">
         <div className="drawer-handle" />
         <div className="drawer-heading">
           <div><p className="popover-eyebrow">{t('format.files')}</p><h2 id="fmt-title">{mode === 'import' ? t('format.import') : t('format.export')}</h2></div>
-          <button type="button" className="icon-button" onClick={onClose} disabled={creating} aria-label={t('format.close')} data-testid="button-close-formats"><X size={18} /></button>
+          <button type="button" className="icon-button" onClick={close} disabled={creating} aria-label={t('format.close')} data-testid="button-close-formats"><X size={18} /></button>
         </div>
 
         <div className="fmt-mode-tabs" role="tablist" aria-label={t('format.fileAction')}>
           <button type="button" role="tab" aria-selected={mode === 'import'} className={mode === 'import' ? 'is-active' : ''}
-            onClick={() => setMode('import')} data-testid="tab-format-import"><FileUp size={16} /> {t('format.importTab')}</button>
+            disabled={exporting !== null} onClick={() => setMode('import')} data-testid="tab-format-import"><FileUp size={16} /> {t('format.importTab')}</button>
           <button type="button" role="tab" aria-selected={mode === 'export'} className={mode === 'export' ? 'is-active' : ''}
             onClick={() => setMode('export')} data-testid="tab-format-export"><Download size={16} /> {t('format.exportTab')}</button>
         </div>
@@ -286,6 +315,15 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
                 <small>{t(format === 'png' ? 'render.pngNote' : 'render.svgNote')}</small></span>
             </button>)}
           </div>
+          {viewProgress && <div className="fmt-loading" role="status" style={{ flexWrap: 'wrap' }} data-testid="status-svg-progress">
+            <LoaderCircle className="spin" size={15} />
+            <span>{t(`render.progress.${viewProgress.phase}`, { count: viewProgress.completed })}
+              <progress aria-label={t('render.svg')} max={viewProgress.total || 1}
+                value={viewProgress.total ? viewProgress.completed : undefined} style={{ display: 'block', width: '100%' }} />
+            </span>
+            <button type="button" onClick={() => viewController.current?.abort()} data-testid="button-cancel-view-export">{t('render.cancel')}</button>
+          </div>}
+          {viewCancelled && <p className="fmt-muted" role="status">{t('render.cancelled')}</p>}
           {rendered && <p className="fmt-muted" role="status">{t('render.ready')}</p>}
           {exportError && <div className="fmt-error" role="alert" data-testid="status-export-error">{exportError}</div>}
           {partsListIssues.length > 0 && <div className="fmt-error" data-testid="bricklink-export-issues">

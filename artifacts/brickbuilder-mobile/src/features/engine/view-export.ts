@@ -1,16 +1,13 @@
 import {
-  Color, Group, InstancedMesh, Material, Matrix4, Mesh, MeshLambertMaterial,
+  InstancedMesh, Mesh,
   Object3D, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer,
 } from "three";
 import { createBuilderLighting } from "./lighting";
+import { ViewExportError, type ViewExportOptions } from "./view-export-job";
+export { ViewExportError, type ViewExportOptions, type ViewExportProgress } from "./view-export-job";
 
 export type ViewFormat = "png" | "svg";
-export type ViewExporter = (format: ViewFormat) => Promise<Uint8Array>;
-export class ViewExportError extends Error {
-  constructor(public readonly reason: "unavailable" | "empty" | "complex" | "gpu") {
-    super(reason);
-  }
-}
+export type ViewExporter = (format: ViewFormat, options?: ViewExportOptions) => Promise<Uint8Array>;
 
 /** Preserve the entire viewport, including portrait framing, without camera refitting. */
 export function viewExportSize(aspect: number): { width: number; height: number } {
@@ -33,76 +30,27 @@ export function triangleCount(roots: readonly Object3D[]): number {
   return count;
 }
 
-/** SVGRenderer does not support InstancedMesh: expand draws, sharing geometry only. */
-export function vectorModel(roots: readonly Object3D[]): Group {
-  if (triangleCount(roots) > 150_000) throw new ViewExportError("complex");
-  const group = new Group();
-  const matrix = new Matrix4();
-  const color = new Color();
-  for (const root of roots) {
-    root.updateWorldMatrix(true, true);
-    root.traverseVisible(object => {
-      if (!(object instanceof Mesh)) return;
-      const count = object instanceof InstancedMesh ? object.count : 1;
-      for (let index = 0; index < count; index++) {
-        const sourceMaterials: Material[] = Array.isArray(object.material) ? object.material : [object.material];
-        const materials = sourceMaterials.map(source => {
-          const original = source as MeshLambertMaterial;
-          const material = new MeshLambertMaterial({
-            color: original.color ?? 0xffffff, opacity: source.opacity,
-            transparent: source.transparent, side: source.side, vertexColors: source.vertexColors,
-          });
-          if (object instanceof InstancedMesh && object.instanceColor) {
-            object.getColorAt(index, color);
-            material.color.multiply(color);
-          }
-          return material;
-        });
-        const mesh = new Mesh(object.geometry, Array.isArray(object.material) ? materials : materials[0]);
-        mesh.matrixAutoUpdate = false;
-        if (object instanceof InstancedMesh) {
-          object.getMatrixAt(index, matrix);
-          mesh.matrix.multiplyMatrices(object.matrixWorld, matrix);
-        } else mesh.matrix.copy(object.matrixWorld);
-        group.add(mesh);
-      }
-    });
-  }
-  return group;
-}
-
 /** A separate renderer never resizes, clears or mutates the interactive canvas. */
 export async function renderView(
   roots: readonly Object3D[], currentCamera: PerspectiveCamera, format: ViewFormat,
+  options: ViewExportOptions = {},
 ): Promise<Uint8Array> {
-  if (!triangleCount(roots)) throw new ViewExportError("empty");
+  if (options.signal?.aborted) throw new ViewExportError("cancelled");
+  currentCamera.updateWorldMatrix(true, false);
   const camera = currentCamera.clone();
+  // A clone has no parent; preserve world pose even when the source camera has one.
+  currentCamera.matrixWorld.decompose(camera.position, camera.quaternion, camera.scale);
+  camera.matrixAutoUpdate = false;
+  camera.matrix.copy(currentCamera.matrixWorld);
   camera.updateMatrixWorld(true);
   const { width, height } = viewExportSize(camera.aspect);
+  if (format === "svg") {
+    const { renderSvgView } = await import("./svg-view-export");
+    return renderSvgView(roots, camera, width, height, options);
+  }
+  if (!triangleCount(roots)) throw new ViewExportError("empty");
   const scene = new Scene();
   scene.add(createBuilderLighting());
-  if (format === "svg") {
-    const { SVGRenderer } = await import("three/addons/renderers/SVGRenderer.js");
-    const model = vectorModel(roots);
-    scene.add(model);
-    try {
-      const renderer = new SVGRenderer();
-      renderer.setSize(width, height);
-      renderer.setQuality("high");
-      renderer.setClearColor(new Color(0x000000), 0);
-      renderer.render(scene, camera);
-      const svg = renderer.domElement;
-      svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-      svg.style.backgroundColor = "transparent";
-      return new TextEncoder().encode(new XMLSerializer().serializeToString(svg));
-    } finally {
-      model.traverse(object => {
-        if (object instanceof Mesh) {
-          for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
-        }
-      });
-    }
-  }
   // Clone hierarchy/transforms, but retain shared, immutable GPU geometry and materials.
   for (const root of roots) scene.add(root.clone(true));
   let renderer: WebGLRenderer | undefined;

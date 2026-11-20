@@ -431,14 +431,14 @@ export function BuilderCanvas({
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
   useEffect(() => {
     if (!viewExporterRef) return;
-    const exporter: ViewExporter = async format => {
+    const exporter: ViewExporter = async (format, options) => {
       const camera = cameraRef.current;
       if (!camera || softwareSceneRef.current ||
         (propsRef.current.imported && sceneModelRef.current !== propsRef.current.imported)) {
         throw new ViewExportError("unavailable");
       }
       const roots = [brickRootRef.current, importedRootRef.current].filter((root): root is Group => root !== null);
-      return renderView(roots, camera, format);
+      return renderView(roots, camera, format, options);
     };
     viewExporterRef.current = exporter;
     return () => { if (viewExporterRef.current === exporter) viewExporterRef.current = null; };

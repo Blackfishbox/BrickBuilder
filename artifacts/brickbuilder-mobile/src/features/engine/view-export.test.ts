@@ -2,9 +2,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   BoxGeometry, Color, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
-  PerspectiveCamera, Scene, Vector3,
+  PerspectiveCamera, Scene,
 } from "three";
-import { renderView, triangleCount, vectorModel, viewExportSize } from "./view-export";
+import { renderView, triangleCount, viewExportSize } from "./view-export";
 
 function sample() {
   const geometry = new BoxGeometry();
@@ -29,31 +29,25 @@ describe("current view image export", () => {
     expect(() => viewExportSize(Number.NaN)).toThrow("unavailable");
   });
 
-  it("expands instanced faces with the correct color and world transform", () => {
-    const { root, mesh, geometry } = sample();
+  it("exports instanced faces with distinct colors without expanding the source", async () => {
+    const { root, mesh } = sample();
     expect(triangleCount([root])).toBe(24);
-    const group = vectorModel([root]);
-    expect(group.children).toHaveLength(2);
-    const [first, second] = group.children as Mesh<BoxGeometry, MeshLambertMaterial>[];
-    expect(first.geometry).toBe(geometry);
-    expect(first.material.color.getHexString()).toBe("ff0000");
-    expect(second.material.color.getHexString()).toBe("0000ff");
-    expect(new Vector3().setFromMatrixPosition(first.matrix).toArray()).toEqual([-1, 3, 0]);
-    expect(new Vector3().setFromMatrixPosition(second.matrix).toArray()).toEqual([1, 3, 0]);
-    expect(first.material).not.toBe(mesh.material);
+    const camera = new PerspectiveCamera(42, 1, 0.1, 100);
+    camera.position.set(5, 6, 10); camera.lookAt(0, 3, 0);
+    const text = new TextDecoder().decode(await renderView([root], camera, "svg"));
+    const svg = new DOMParser().parseFromString(text, "image/svg+xml");
+    const fills = [...svg.querySelectorAll("[fill]")].map(node => node.getAttribute("fill")!);
+    expect(fills.some(fill => /^#[a-f0-9]{2}0000$/.test(fill))).toBe(true);
+    expect(fills.some(fill => /^#0000[a-f0-9]{2}$/.test(fill))).toBe(true);
     expect(root.children).toEqual([mesh]);
     expect(root.position.y).toBe(3);
   });
 
-  it("excludes hidden meshes and fails explicitly for empty or excessive geometry", async () => {
+  it("excludes hidden meshes and fails explicitly for empty geometry", async () => {
     const { root, mesh } = sample();
     mesh.visible = false;
     expect(triangleCount([root])).toBe(0);
-    expect(vectorModel([root]).children).toHaveLength(0);
     await expect(renderView([root], new PerspectiveCamera(), "svg")).rejects.toThrow("empty");
-    mesh.visible = true;
-    mesh.count = 20_000;
-    expect(() => vectorModel([root])).toThrow("complex");
   });
 
   it("writes real SVG paths, keeps camera pose and excludes other scene objects", async () => {
