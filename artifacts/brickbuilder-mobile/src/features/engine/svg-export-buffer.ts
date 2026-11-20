@@ -12,7 +12,7 @@ export const SVG_LIMITS = {
   inputTriangles: 10_000_000,
   outputBytes: 32 * 1024 * 1024,
   reuseEntries: 4096,
-  visibilityOperations: 96_000_000,
+  visibilityOperations: 384_000_000,
   visibilityDepth: 256,
 } as const;
 

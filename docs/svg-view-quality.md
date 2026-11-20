@@ -156,7 +156,7 @@ promise about every SVG editor/version.
 - 10,000,000 input triangles.
 - 900,000 retained vector triangles **including all generated fragments** and
   original triangles, even when an original was subsequently replaced.
-- 96,000,000 visibility work units and 256 partition levels.
+- 384,000,000 visibility work units and 256 partition levels.
 - 32 MiB encoded output, without an intermediate giant joined string.
 - At most 4,096 path reuse entries and approximately 24 KiB per compound batch.
 - Export-owned numeric face payload <117 MiB, visibility/sort lists and scratch
