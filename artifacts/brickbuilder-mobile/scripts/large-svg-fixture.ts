@@ -3,12 +3,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { largeSvgModel } from "../test-fixtures/large-svg-model";
 import { renderSvgView } from "../src/features/engine/svg-view-export";
+import { collectByteSource } from "../src/types/byte-source";
 
 // Outputs stay outside Git and release assets.
 const output = new URL("../../../generated-artifacts/android-svg-share/", import.meta.url);
 const fixture = largeSvgModel();
 try {
-  const bytes = await renderSvgView([fixture.model], fixture.camera, 2160, 3840);
+  const bytes = await collectByteSource(renderSvgView([fixture.model], fixture.camera, 2160, 3840));
   const report = {
     sourceTriangles: fixture.triangles,
     bytes: bytes.length,

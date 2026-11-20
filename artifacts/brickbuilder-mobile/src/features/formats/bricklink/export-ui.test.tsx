@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { Capacitor } from "@capacitor/core";
 import { createEmptyDocument } from "@/features/editor/model";
 import FormatDialog from "../FormatDialog";
 import { BrickLinkExportError } from "./export";
@@ -27,6 +28,7 @@ function open(
 }
 it("exports the current document through the existing file download action", async () => {
   vi.useFakeTimers();
+  vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
   const create = vi.fn(() => "blob:parts-list"), revoke = vi.fn();
   vi.stubGlobal("URL", class extends URL { static createObjectURL = create; static revokeObjectURL = revoke; });
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
@@ -34,7 +36,7 @@ it("exports the current document through the existing file download action", asy
   const document = open('export');
   await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="button-export-bricklink"]')!.click());
   expect(exporter).toHaveBeenCalledWith(document, "bricklink");
-  expect(create).toHaveBeenCalledOnce(); expect(click).toHaveBeenCalledOnce();
+  expect(create, host.textContent ?? '').toHaveBeenCalledOnce(); expect(click).toHaveBeenCalledOnce();
   expect(host.textContent).toContain("BrickLink-XML erstellt");
   act(() => vi.runAllTimers()); expect(revoke).toHaveBeenCalledWith("blob:parts-list");
 });

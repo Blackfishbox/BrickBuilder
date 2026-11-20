@@ -2,7 +2,7 @@ import { Color, SRGBColorSpace } from "three";
 import { SvgBytes, SvgFaces } from "./svg-export-buffer";
 
 /** Gouraud diffuse illumination, interpolated in linear light by SVG itself. */
-export function surfaceStyle(f: SvgFaces, id: number, bytes: SvgBytes): { style: string; plane: string } {
+export function surfaceStyle(f: SvgFaces, id: number, bytes: SvgBytes, idPrefix = ""): { style: string; plane: string } {
   const x = f.get(id, 0), y = f.get(id, 1);
   const ux = f.get(id, 2) - x, uy = f.get(id, 3) - y;
   const vx = f.get(id, 4) - x, vy = f.get(id, 5) - y;
@@ -28,7 +28,7 @@ export function surfaceStyle(f: SvgFaces, id: number, bytes: SvgBytes): { style:
   const x1 = f.get(id, first * 2), y1 = f.get(id, first * 2 + 1);
   const x2 = x1 + gx * (max - min) / norm, y2 = y1 + gy * (max - min) / norm;
   const n = (v: number) => Number(v.toFixed(6));
-  const name = `g${id}`;
+  const name = `${idPrefix}g${id}`;
   bytes.append(`<defs><linearGradient id="${name}" gradientUnits="userSpaceOnUse" x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" color-interpolation="linearRGB"><stop stop-color="${hex(min)}"/><stop offset="1" stop-color="${hex(max)}"/></linearGradient></defs>`);
   return { style: ` fill="url(#${name})"${opacity}`, plane: planeKey };
 }

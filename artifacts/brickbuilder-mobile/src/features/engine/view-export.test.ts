@@ -4,7 +4,11 @@ import {
   BoxGeometry, Color, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
   PerspectiveCamera, Scene,
 } from "three";
-import { renderView, triangleCount, viewExportSize } from "./view-export";
+import { renderView as renderViewSource, triangleCount, viewExportSize } from "./view-export";
+import { collectByteSource } from "../../types/byte-source";
+
+const renderView = async (...args: Parameters<typeof renderViewSource>) =>
+  collectByteSource(await renderViewSource(...args));
 
 function sample() {
   const geometry = new BoxGeometry();

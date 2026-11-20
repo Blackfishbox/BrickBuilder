@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import { Resvg } from "@resvg/resvg-js";
 import {
   BufferGeometry, Color, DoubleSide, Float32BufferAttribute, FrontSide, Matrix4, Mesh,
-  MeshBasicMaterial, MeshLambertMaterial, PlaneGeometry, Vector3,
+  MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera, PlaneGeometry, Vector3,
 } from "three";
-import { renderSvgView } from "./svg-view-export";
+import { renderSvgView as renderSvgViewSource } from "./svg-view-export";
 import { projectedTriangle, vehicleFixture, visualCamera } from "./svg-visual-fixtures";
 import { SvgFaces, SVG_LIMITS } from "./svg-export-buffer";
 import { visibleOrder } from "./svg-visibility";
+import { collectByteSource } from "../../types/byte-source";
 
 const SIZE = 256;
 const decode = (b: Uint8Array) => new TextDecoder().decode(b);
+const renderSvgView = async (...args: Parameters<typeof renderSvgViewSource>) =>
+  collectByteSource(renderSvgViewSource(...args));
 function raster(svg: string, background?: string) {
   const image = new Resvg(svg, { background }).render();
   return image.pixels;
@@ -177,5 +180,53 @@ describe("rendered vector surface regressions", () => {
     } finally { Object.defineProperty(SVG_LIMITS, budget, { value: original, configurable: true }); }
     const camera = visualCamera();
     expect(decode(await renderSvgView([projectedTriangle(camera, [[-1, -1, 0.5], [1, -1, 0.5], [0, 1, 0.5]], "red")], camera, SIZE, SIZE))).toContain("<path");
+  });
+
+  it("splits an over-budget view and preserves cross-tile overlap in one SVG", async () => {
+    const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.z = 8;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    const makeTriangle = (points: number[], color: string) => {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute("position", new Float32BufferAttribute(points, 3));
+      return new Mesh(geometry, new MeshLambertMaterial({ color, side: DoubleSide }));
+    };
+    const objects = [
+      makeTriangle([-2.4, 1, 0, 0.5, 1, 0, 0.2, 2.7, 0], "#ed3237"),
+      makeTriangle([-0.4, 1.2, 0.4, 2.4, 1.2, 0.4, 0.1, 2.8, 0.4], "#3151e8"),
+    ];
+    const colors = ["#35a862", "#ffb22e", "#8239c7", "#42c1be", "#d43584"];
+    for (const [centerX, centerY] of [[-2, 2], [2, 2], [-2, -2], [2, -2]]) {
+      for (let index = 0; index < 5; index++) {
+        const x = centerX + (index % 2) * 0.16;
+        const y = centerY + Math.floor(index / 2) * 0.14;
+        objects.push(makeTriangle([x, y, 0, x + 0.06, y, 0, x, y + 0.06, 0], colors[index]));
+      }
+    }
+    const originalLimit = SVG_LIMITS.faces;
+    const originalOutputLimit = SVG_LIMITS.outputBytes;
+    try {
+      const referenceSvg = decode(await renderSvgView(objects, camera, SIZE, SIZE));
+      const reference = raster(referenceSvg);
+      Object.defineProperty(SVG_LIMITS, "faces", { value: 20, configurable: true });
+      const segmentedSvg = decode(await renderSvgView(objects, camera, SIZE, SIZE));
+      const segmented = raster(segmentedSvg);
+      expect(segmentedSvg).toContain('<svg x="');
+      expect(segmentedSvg.match(/<svg x="/g)).toHaveLength(4);
+      expect(segmentedSvg).not.toContain("<image");
+      expect(segmented).toEqual(reference);
+
+      Object.defineProperty(SVG_LIMITS, "faces", { value: originalLimit, configurable: true });
+      Object.defineProperty(SVG_LIMITS, "outputBytes", { value: 1_000, configurable: true });
+      const outputSegmentedSvg = decode(await renderSvgView(objects, camera, SIZE, SIZE));
+      expect(new TextEncoder().encode(outputSegmentedSvg).byteLength).toBeGreaterThan(1_000);
+      expect(outputSegmentedSvg).toContain('<svg x="');
+      expect(raster(outputSegmentedSvg)).toEqual(reference);
+    } finally {
+      Object.defineProperty(SVG_LIMITS, "faces", { value: originalLimit, configurable: true });
+      Object.defineProperty(SVG_LIMITS, "outputBytes", { value: originalOutputLimit, configurable: true });
+      for (const object of objects) object.geometry.dispose();
+    }
   });
 });

@@ -4,11 +4,12 @@ import {
   BackSide, BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Group, InstancedMesh,
   Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Vector3,
 } from "three";
-import { renderView, type ViewExportProgress } from "./view-export";
+import { renderView as renderViewSource, type ViewExportProgress } from "./view-export";
 import { SVG_LIMITS, SvgBytes, SvgFaces } from "./svg-export-buffer";
 import { Resvg } from "@resvg/resvg-js";
-import { renderSvgView } from "./svg-view-export";
+import { renderSvgView as renderSvgViewSource } from "./svg-view-export";
 import { svgCompatibilityFixture, svgCompatibilitySamples } from "../../../test-fixtures/svg-compatibility";
+import { collectByteSource } from "../../types/byte-source";
 
 function fixture(count = 1) {
   const geometry = new BufferGeometry();
@@ -21,6 +22,10 @@ function fixture(count = 1) {
 }
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+const renderView = async (...args: Parameters<typeof renderViewSource>) =>
+  collectByteSource(await renderViewSource(...args));
+const renderSvgView = async (...args: Parameters<typeof renderSvgViewSource>) =>
+  collectByteSource(renderSvgViewSource(...args));
 
 describe("bounded progressive SVG export", () => {
   it("renders the external compatibility fixture with reused colors, alpha, depth order and clipped paths", async () => {
@@ -56,6 +61,10 @@ describe("bounded progressive SVG export", () => {
       faces: 900_000,
       inputTriangles: 10_000_000,
       outputBytes: 32 * 1024 * 1024,
+      totalOutputBytes: 512 * 1024 * 1024,
+      totalProjectionTriangles: 250_000_000,
+      maxTiles: 256,
+      maxTileDepth: 8,
       reuseEntries: 4096,
       visibilityOperations: 384_000_000,
       visibilityDepth: 256,

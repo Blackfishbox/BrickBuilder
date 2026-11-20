@@ -151,18 +151,33 @@ the actual programs in headless mode, **not** an interactive editor
 round-trip, a large-model performance test, a gradient qualification, or a
 promise about every SVG editor/version.
 
-## Enforced budgets
+## Enforced budgets and segmented output
 
-- 10,000,000 input triangles.
-- 900,000 retained vector triangles **including all generated fragments** and
-  original triangles, even when an original was subsequently replaced.
-- 384,000,000 visibility work units and 256 partition levels.
-- 32 MiB encoded output, without an intermediate giant joined string.
+The exporter first tries one viewport. If a per-segment budget is reached, it
+clips the view into smaller, non-overlapping SVG viewports and retries each
+viewport independently. Every segment still runs the full visibility ordering
+for all faces that cross it; this is not a simple concatenation of independently
+sorted model layers. The result is one valid SVG document containing the
+clipped viewports. Existing projected mesh and instance bounds skip geometry
+that cannot appear in a viewport, reducing repeated traversal for spatially
+separated builds without introducing a blocking bounds scan.
+
+- Source triangles are scanned in batches of 10,000,000 without retaining an
+  input-triangle list. Repeated tile passes count toward a 250,000,000 cumulative
+  projection-work ceiling.
+- 900,000 retained vector triangles **per segment**, including all generated
+  visibility fragments and original triangles, even when an original was
+  subsequently replaced.
+- 384,000,000 visibility work units and 256 partition levels per segment.
+- 32 MiB encoded output per segment; the merged SVG is streamed and capped at
+  512 MiB total and 256 segments.
 - At most 4,096 path reuse entries and approximately 24 KiB per compound batch.
 - Export-owned numeric face payload <117 MiB, visibility/sort lists and scratch
-  budgeted <36 MiB, encoded chunks plus finished output <=64 MiB, bounded
-  reuse/scratch <4 MiB (approximately 221 MiB total payload envelope, excluding
-  the already loaded model, JS engine overhead and platform sharing).
+  budgeted <36 MiB, one segment's encoded chunks plus finished output <=64 MiB,
+  bounded reuse/scratch <4 MiB (approximately 221 MiB peak export payload,
+  excluding the already loaded model, JS engine overhead and platform sharing).
+  Segments are written sequentially so the exporter does not retain every
+  segment in memory.
 
 These raised ceilings permit more complex exports but do not guarantee that a
 device can complete them. The SVG renderer can now temporarily require over
@@ -172,12 +187,13 @@ terminated by the operating system before reaching a configured guard. The
 native Android large-file and background/foreground acceptance test remains
 separate and has not been performed.
 
-All additional fragments count against the same face store, not an unaccounted
-second geometry cache. Traversal, projection, sorting, visibility partitioning,
-emission and byte copying cooperate with the cancellation/task-yield mechanism.
-Every budget exhaustion throws the localized complexity error; an incomplete
-or degraded file is never returned as a successful SVG. An over-budget detailed
-model may need hidden parts or PNG even when its input count is below 900,000.
+All additional fragments count against the active segment's face store, not an
+unaccounted second geometry cache. Traversal, projection, sorting, visibility
+partitioning, emission and byte copying cooperate with cancellation and task
+yielding. If the exporter still reaches the total work/file/segment ceiling, it
+shows the localized complexity error and does not share or download an
+incomplete SVG. A highly overlapping cluster may not become simpler when the
+viewport is split; hiding parts or using PNG can still be necessary.
 
 ## Honest limitations
 

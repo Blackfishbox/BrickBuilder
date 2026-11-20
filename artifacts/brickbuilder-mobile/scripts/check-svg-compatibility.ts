@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { renderSvgView } from "../src/features/engine/svg-view-export";
 import { svgCompatibilityFixture, svgCompatibilitySamples } from "../test-fixtures/svg-compatibility";
+import { collectByteSource } from "../src/types/byte-source";
 
 // Fail explicitly when a program is missing; this is an opt-in external check,
 // not a silently skipped part of the ordinary unit suite.
@@ -20,7 +21,7 @@ await mkdir(output, { recursive: true });
 const path = (name: string) => fileURLToPath(new URL(name, output));
 const fixture = svgCompatibilityFixture();
 try {
-  const bytes = await renderSvgView(fixture.roots, fixture.camera, fixture.width, fixture.height);
+  const bytes = await collectByteSource(renderSvgView(fixture.roots, fixture.camera, fixture.width, fixture.height));
   await writeFile(path("reference.svg"), bytes);
   const renderers = [
     { name: "Inkscape", command: "inkscape", args: [

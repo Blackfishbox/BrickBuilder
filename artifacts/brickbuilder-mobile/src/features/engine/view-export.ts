@@ -4,10 +4,11 @@ import {
 } from "three";
 import { createBuilderLighting } from "./lighting";
 import { ViewExportError, type ViewExportOptions } from "./view-export-job";
+import type { ByteSource } from "../../types/byte-source";
 export { ViewExportError, type ViewExportOptions, type ViewExportProgress } from "./view-export-job";
 
 export type ViewFormat = "png" | "svg";
-export type ViewExporter = (format: ViewFormat, options?: ViewExportOptions) => Promise<Uint8Array>;
+export type ViewExporter = (format: ViewFormat, options?: ViewExportOptions) => Promise<ByteSource>;
 
 /** Preserve the entire viewport, including portrait framing, without camera refitting. */
 export function viewExportSize(aspect: number): { width: number; height: number } {
@@ -34,7 +35,7 @@ export function triangleCount(roots: readonly Object3D[]): number {
 export async function renderView(
   roots: readonly Object3D[], currentCamera: PerspectiveCamera, format: ViewFormat,
   options: ViewExportOptions = {},
-): Promise<Uint8Array> {
+): Promise<ByteSource> {
   if (options.signal?.aborted) throw new ViewExportError("cancelled");
   currentCamera.updateWorldMatrix(true, false);
   const camera = currentCamera.clone();

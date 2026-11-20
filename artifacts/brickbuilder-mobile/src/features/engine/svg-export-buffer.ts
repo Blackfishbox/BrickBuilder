@@ -8,9 +8,13 @@ import { ViewExportError } from "./view-export-job";
  * No DOM tree, expanded Mesh hierarchy, unbounded strings or Array.sort allocations.
  */
 export const SVG_LIMITS = {
-  faces: 900_000,
-  inputTriangles: 10_000_000,
-  outputBytes: 32 * 1024 * 1024,
+  faces: 900_000, // retained faces, per viewport segment
+  inputTriangles: 10_000_000, // source scan batch size, not a whole-export cap
+  outputBytes: 32 * 1024 * 1024, // encoded vector content, per segment
+  totalOutputBytes: 512 * 1024 * 1024,
+  totalProjectionTriangles: 250_000_000,
+  maxTiles: 256,
+  maxTileDepth: 8,
   reuseEntries: 4096,
   visibilityOperations: 384_000_000,
   visibilityDepth: 256,

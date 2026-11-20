@@ -3,8 +3,7 @@ import {
 } from "three";
 
 /** Distinct, visible coplanar faces; no downloaded parts or private model needed. */
-export function largeSvgModel() {
-  const triangles = 160_001;
+export function largeSvgModel(triangles = 160_001) {
   const positions = new Float32Array(triangles * 9);
   for (let index = 0; index < triangles; index++) {
     const x = (index % 401) / 200.5 - 1;
