@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import App from "./App";
+import { I18nProvider, LANGUAGE_STORAGE_KEY } from "@/i18n/I18nProvider";
 import { createEmptyDocument } from "@/features/editor/model";
 import { parseInventory } from "@/features/inventory/import";
 import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
@@ -65,7 +66,7 @@ afterEach(() => {
   Object.defineProperty(window, "innerHeight", { configurable: true, value: oldHeight });
 });
 
-async function mount(theme: "light" | "dark", withSelection = false) {
+async function mount(theme: "light" | "dark", withSelection = false, language: "en" | "de" = "de") {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubEnv("VITE_NATIVE_ANDROID", "true");
   oldWidth = window.innerWidth;
@@ -73,6 +74,7 @@ async function mount(theme: "light" | "dark", withSelection = false) {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
   localStorage.setItem(COLOR_THEME_STORAGE_KEY, theme);
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
 
   const document = createEmptyDocument("Mobile-Dialoge");
   document.inventory = parseInventory("part_id,color_id,quantity\n3001,5,2", "mobile.csv");
@@ -135,7 +137,7 @@ async function mount(theme: "light" | "dark", withSelection = false) {
   host = documentRef.createElement("div");
   documentRef.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => root!.render(<App />));
+  await act(async () => root!.render(<I18nProvider><App /></I18nProvider>));
   expect(documentRef.documentElement.classList.contains("dark")).toBe(theme === "dark");
   expect(documentRef.documentElement.style.colorScheme).toBe(theme);
   return host;
@@ -152,6 +154,22 @@ it("switches to selection mode and selects a tapped part from the view canvas", 
 
   expect(editor.setToolMode).toHaveBeenCalledWith("select");
   expect(editor.select).toHaveBeenCalledWith("imported-part-17");
+});
+
+it("starts in English and switches the visible app labels to German", async () => {
+  const container = await mount("light", false, "en");
+  expect(container.textContent).toContain("View");
+  openProjectMenu(container);
+  const language = container.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
+  expect(language.value).toBe("en");
+  await act(async () => {
+    language.value = "de";
+    language.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(documentRef.documentElement.lang).toBe("de");
+  expect(container.textContent).toContain("Ansicht");
+  expect(container.textContent).toContain("Bauen");
+  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("de");
 });
 
 it("hides the canvas status controls for every open mobile selection menu", async () => {

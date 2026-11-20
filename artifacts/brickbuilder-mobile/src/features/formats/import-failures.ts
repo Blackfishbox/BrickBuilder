@@ -6,6 +6,7 @@ export interface ImportPartFailure {
   brickLinkIds: string[];
   count: number;
   reasons: string[];
+  reasonCodes: string[];
 }
 
 const normalize = (reference: string) => reference.replaceAll('\\', '/').toLowerCase();
@@ -23,12 +24,17 @@ export function getImportPartFailures(model?: ImportedModel): ImportPartFailure[
         .filter(issue => (issue.code === 'missing-part' || issue.code === 'geometry-invalid')
           && issue.reference && normalize(issue.reference) === key)
         .map(issue => issue.message);
+      const reasonCodes = [...new Set(model.issues
+        .filter(issue => (issue.code === 'missing-part' || issue.code === 'geometry-invalid')
+          && issue.reference && normalize(issue.reference) === key)
+        .map(issue => issue.code))];
       group = {
         reference: instance.reference,
         ldrawId: instance.part.ldrawId || instance.reference,
         brickLinkIds: [],
         count: 0,
         reasons: [...new Set(reasons)],
+        reasonCodes: reasonCodes.length ? reasonCodes : ['missing-part'],
       };
       if (!group.reasons.length) group.reasons.push('Keine nutzbare Teilegeometrie verfügbar.');
       groups.set(key, group);

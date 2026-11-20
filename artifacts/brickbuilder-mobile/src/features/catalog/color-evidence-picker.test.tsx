@@ -57,7 +57,7 @@ it("offers an intersection for mixed selections and locks all inventory recolori
     locked={false} current={[palette[1]]} mobile onChange={onChange} />));
   expect(container.querySelector('[aria-label="Red auswählen"]')).not.toBeNull();
   expect(container.querySelector('[aria-label="Blue auswählen"]')).toBeNull();
-  expect(container.textContent).toContain("ohne Nachweis schränken die Auswahl nicht ein");
+  expect(container.textContent).toContain("Teil ohne Nachweis schränkt die Auswahl nicht ein");
   await act(async () => root.render(<EvidencedColorPicker palette={palette} references={["base"]}
     locked current={[palette[0]]} onChange={onChange} />));
   const red = container.querySelector<HTMLButtonElement>('[aria-label="Red auswählen"]')!;

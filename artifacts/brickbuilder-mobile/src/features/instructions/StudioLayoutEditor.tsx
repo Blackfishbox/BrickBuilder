@@ -4,6 +4,8 @@ import { readZip } from "@/features/formats/zip";
 import { editStudioLayout, inspectStudioLayout, type StudioLayoutField, type StudioLayoutItem } from "./studio-layout";
 import type { StudioLayout } from "./types";
 import "./studio-layout.css";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { MessageId } from "@/i18n/messages";
 
 interface Props { layout: StudioLayout; originalBytes?: number[]; onChange: (layout: StudioLayout) => void }
 
@@ -17,11 +19,11 @@ function sniff(bytes: Uint8Array): string | null {
 }
 const localPath = (p: string) => !!p && p.length < 300 && !/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith("//") && !p.split(/[\\/]/).includes("..");
 const fieldKey = (nodeId: number, attr: string) => `${nodeId}:${attr}`;
-const hint: Record<StudioLayoutField["kind"], string> = {
-  boolean: "", number: "Eine Zahl, z. B. 12.5",
-  vector2: "Zwei Zahlen mit Leerzeichen, z. B. 10 20",
-  vector4: "Vier Zahlen mit Leerzeichen, z. B. 0 0 120 80",
-  color: "R:G:B:A, je 0 bis 1, z. B. 1:0.5:0:1",
+const hint: Record<StudioLayoutField["kind"], MessageId | ""> = {
+  boolean: "", number: "studio.numberHint",
+  vector2: "studio.vector2Hint",
+  vector4: "studio.vector4Hint",
+  color: "studio.colorHint",
 };
 
 type ImageState = { status: "loading" } | { status: "none" } | { status: "error"; message: string } | { status: "ready"; urls: Record<string, string>; skipped: number };
@@ -52,6 +54,17 @@ function useStudioImages(paths: string[], originalBytes?: number[]): ImageState 
 }
 
 function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem; field: StudioLayoutField; layout: StudioLayout; onChange: (l: StudioLayout) => void }) {
+  const { t } = useI18n();
+  const labels: Record<string, MessageId> = {
+    IsLocked: "studio.field.pageLock", RectOffset: "studio.field.stepOffset", rect: "studio.field.imageRect",
+    rotation: "studio.field.rotation", opacity: "studio.field.opacity", fliped_H: "studio.field.flipH", fliped_V: "studio.field.flipV",
+    IsUseBgColor: "studio.field.useBackground", BgColor: "studio.field.background", IsUseBorder: "studio.field.useBorder",
+    BorderColor: "studio.field.borderColor", BorderThickness: "studio.field.borderThickness", BorderRadius: "studio.field.cornerRadius",
+    Thickness: "studio.field.arrowThickness", Color: "studio.field.arrowColor", IsVisible: "studio.field.dividerVisible",
+    DividerThickness: "studio.field.lineThickness", DividerColor: "studio.field.lineColor", LRBT: "studio.field.padding",
+    Horizontal: "studio.field.horizontalMargin", Vertical: "studio.field.verticalMargin",
+  };
+  const label = t(labels[field.attribute] ?? "studio.layoutTitle");
   const value = item.attributes[field.attribute] ?? "";
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState<string | null>(null);
@@ -59,12 +72,12 @@ function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem
   const edited = layout.edits.some(e => e.nodeId === item.nodeId && e.attribute === field.attribute);
   const id = `sle-${item.nodeId}-${field.attribute}`;
   const tid = `${item.nodeId}-${field.attribute.toLowerCase()}`;
-  const formatHint = field.attribute === "opacity" ? "Eine Zahl zwischen 0 und 1." : hint[field.kind];
+  const formatHint = field.attribute === "opacity" ? t("studio.opacityHint") : hint[field.kind] ? t(hint[field.kind] as MessageId) : "";
 
   const apply = (next: string) => {
     if (next === value) { setError(null); return; }
     try { onChange(editStudioLayout(layout, item.nodeId, field.attribute, next)); setError(null); }
-    catch { setError(`Ungültiger Wert. ${formatHint}`.trim()); }
+    catch { setError(t("studio.invalidValue", { hint: formatHint })); }
   };
   const reset = () => {
     const filtered = { ...layout, edits: layout.edits.filter(e => !(e.nodeId === item.nodeId && e.attribute === field.attribute)) };
@@ -76,15 +89,15 @@ function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem
       <div className={`sle-field sle-bool${edited ? " is-edited" : ""}`}>
         <label htmlFor={id}>
           <input id={id} type="checkbox" checked={value === "True"} onChange={e => apply(e.target.checked ? "True" : "False")} data-testid={`checkbox-studio-layout-${tid}`} />
-          <span>{field.label}</span>
+          <span>{label}</span>
         </label>
-        {edited && <button className="ins-ghost sle-reset" onClick={reset} aria-label={`${field.label} zurücksetzen`} data-testid={`button-studio-layout-reset-${tid}`}><RotateCcw size={14} /></button>}
+        {edited && <button className="ins-ghost sle-reset" onClick={reset} aria-label={t("studio.resetField", { name: label })} data-testid={`button-studio-layout-reset-${tid}`}><RotateCcw size={14} /></button>}
       </div>
     );
   }
   return (
     <div className={`sle-field${edited ? " is-edited" : ""}`}>
-      <label htmlFor={id}>{field.label}</label>
+      <label htmlFor={id}>{label}</label>
       <div className="sle-inputrow">
         {field.kind === "color" && <i className="sle-swatch" style={{ background: colorCss(value) }} aria-hidden="true" />}
         <input id={id} type="text" inputMode={field.kind === "number" ? "decimal" : "text"} autoComplete="off" spellCheck={false}
@@ -92,7 +105,7 @@ function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem
           onChange={e => setDraft(e.target.value)} onBlur={() => apply(draft)}
           onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setDraft(value); setError(null); } }}
           data-testid={`input-studio-layout-${tid}`} />
-        {edited && <button className="ins-ghost sle-reset" onClick={reset} aria-label={`${field.label} zurücksetzen`} data-testid={`button-studio-layout-reset-${tid}`}><RotateCcw size={14} /></button>}
+        {edited && <button className="ins-ghost sle-reset" onClick={reset} aria-label={t("studio.resetField", { name: label })} data-testid={`button-studio-layout-reset-${tid}`}><RotateCcw size={14} /></button>}
       </div>
       {error ? <small id={`${id}-err`} className="sle-error" role="alert" data-testid={`error-studio-layout-${tid}`}>{error}</small>
         : formatHint && <small className="sle-hint">{formatHint}</small>}
@@ -106,12 +119,19 @@ function colorCss(v: string) {
   return `rgba(${n.slice(0, 3).map(c => Math.round(c * 255)).join(",")},${n[3]})`;
 }
 
-const itemName = (item: StudioLayoutItem) => ({ Page: "Seite", Step: "Schritt-Slot", Image: "Bild", Colors: "Callout-Farben", ArrowStyle: "Callout-Pfeil", Divider: "Callout-Trennlinie", Padding: "Callout-Innenabstand", Margin: "Callout-Abstand" } as Record<string, string>)[item.label] ?? item.label;
+function itemName(item: StudioLayoutItem, t: ReturnType<typeof useI18n>["t"]): string {
+  const keys: Record<string, MessageId> = {
+    Page: "studio.name.page", Step: "studio.name.step", Image: "studio.name.image", Colors: "studio.name.colors",
+    ArrowStyle: "studio.name.arrow", Divider: "studio.name.divider", Padding: "studio.name.padding", Margin: "studio.name.margin",
+  };
+  return keys[item.label] ? t(keys[item.label]) : item.label;
+}
 
 export default function StudioLayoutEditor({ layout, originalBytes, onChange }: Props) {
+  const { t } = useI18n();
   const { view, error } = useMemo(() => {
     try { return { view: inspectStudioLayout(layout), error: null }; }
-    catch (e) { return { view: null, error: e instanceof Error ? e.message : "Studio-Layout konnte nicht gelesen werden." }; }
+    catch (e) { return { view: null, error: e instanceof Error ? e.message : t("studio.layoutError") }; }
   }, [layout]);
   const [pageIndex, setPageIndex] = useState(0);
   const [history, setHistory] = useState<StudioLayout[]>([]);
@@ -132,39 +152,39 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
   }
 
   return (
-    <section className="ins-card sle-root" aria-label="Studio-Seitenlayout bearbeiten" data-testid="panel-studio-layout">
+    <section className="ins-card sle-root" aria-label={t("studio.layout")} data-testid="panel-studio-layout">
       <header className="sle-head">
         <div>
-          <small>Studio-Seitenlayout</small>
-          <strong data-testid="text-studio-layout-summary">{pages.length} Seiten · {layout.edits.length} Änderungen</strong>
+          <small>{t("studio.layoutTitle")}</small>
+          <strong data-testid="text-studio-layout-summary">{t("studio.pageSummary", { pages: pages.length, changes: layout.edits.length })}</strong>
         </div>
-        <button className="ins-ghost" onClick={undo} disabled={!history.length} aria-label="Letzte Layoutänderung rückgängig" data-testid="button-studio-layout-undo"><Undo2 size={15} /></button>
-        <button className="ins-ghost" onClick={resetAll} disabled={!layout.edits.length} data-testid="button-studio-layout-reset-all">Alle zurücksetzen</button>
+        <button className="ins-ghost" onClick={undo} disabled={!history.length} aria-label={t("studio.undo")} data-testid="button-studio-layout-undo"><Undo2 size={15} /></button>
+        <button className="ins-ghost" onClick={resetAll} disabled={!layout.edits.length} data-testid="button-studio-layout-reset-all">{t("studio.resetAll")}</button>
       </header>
       <p className="ins-hint" data-testid="text-studio-layout-explainer">
-        Hier änderst du einzelne Attribute der originalen Studio-Seiten. Das ist keine vollständige Seitendarstellung; Vorlagen, unbekannte Inhalte und eigene Layouts bleiben unverändert erhalten. Neue Callouts, Pfeile oder Seiten lassen sich nicht anlegen. Das PDF bleibt eine einfache Schrittausgabe. Die Werte sind Studio-Rohwerte; ob Studio sie genau so darstellt, ist nicht geprüft.
+        {t("studio.explainer")}
       </p>
 
       {pages.length === 0 ? (
-        <p className="ins-hint" data-testid="text-studio-layout-no-pages">Keine bearbeitbaren Seiten in den Studio-Daten gefunden.</p>
+        <p className="ins-hint" data-testid="text-studio-layout-no-pages">{t("studio.noPages")}</p>
       ) : (
         <>
           <div className="sle-pager">
-            <button className="ins-icon" onClick={() => setPageIndex(current - 1)} disabled={current === 0} aria-label="Vorherige Seite" data-testid="button-studio-layout-prev-page"><ChevronLeft size={18} /></button>
+            <button className="ins-icon" onClick={() => setPageIndex(current - 1)} disabled={current === 0} aria-label={t("studio.previousPage")} data-testid="button-studio-layout-prev-page"><ChevronLeft size={18} /></button>
             <label className="sle-pagejump">
-              <span className="sr-only">Seitennummer</span>
+              <span className="sr-only">{t("studio.pageNumber")}</span>
               <select value={current} onChange={e => setPageIndex(Number(e.target.value))} data-testid="select-studio-layout-page">
-                {pages.map((p, i) => <option key={p.nodeId} value={i}>Seite {i + 1}{p.steps.length ? ` · Schritt ${p.steps.join(", ")}` : ""}</option>)}
+                {pages.map((p, i) => <option key={p.nodeId} value={i}>{t("studio.page", { page: i + 1 })}{p.steps.length ? ` · ${t("studio.stepNumber", { number: p.steps.join(", ") })}` : ""}</option>)}
               </select>
             </label>
-            <button className="ins-icon" onClick={() => setPageIndex(current + 1)} disabled={current === pages.length - 1} aria-label="Nächste Seite" data-testid="button-studio-layout-next-page"><ChevronRight size={18} /></button>
+            <button className="ins-icon" onClick={() => setPageIndex(current + 1)} disabled={current === pages.length - 1} aria-label={t("instruction.next")} data-testid="button-studio-layout-next-page"><ChevronRight size={18} /></button>
           </div>
           <dl className="sle-meta" data-testid={`card-studio-layout-page-${page.nodeId}`}>
-            <div><dt>Vorlage</dt><dd data-testid="text-studio-layout-template">{page.template}</dd></div>
-            <div><dt>Schritte (Studio-Nummern)</dt><dd data-testid="text-studio-layout-steps">{page.steps.length ? page.steps.join(", ") : "keine"}</dd></div>
+            <div><dt>{t("studio.template")}</dt><dd data-testid="text-studio-layout-template">{page.template}</dd></div>
+            <div><dt>{t("studio.stepsStudio")}</dt><dd data-testid="text-studio-layout-steps">{page.steps.length ? page.steps.join(", ") : t("studio.none")}</dd></div>
           </dl>
-          {images.status === "error" && <p className="sle-status" role="status" data-testid="status-studio-layout-images"><ImageOff size={14} /> Bilder nicht verfügbar: {images.message}</p>}
-          {images.status === "ready" && images.skipped > 0 && <p className="sle-status" role="status" data-testid="status-studio-layout-images">{images.skipped} Bilder fehlen oder sind kein PNG/JPEG.</p>}
+          {images.status === "error" && <p className="sle-status" role="status" data-testid="status-studio-layout-images"><ImageOff size={14} /> {t("studio.imagesUnavailable", { reason: images.message })}</p>}
+          {images.status === "ready" && images.skipped > 0 && <p className="sle-status" role="status" data-testid="status-studio-layout-images">{t("studio.imagesMissing", { count: images.skipped })}</p>}
 
           <ul className="sle-items">
             {page.items.map(item => (
@@ -172,12 +192,12 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
                 <div className="sle-itemhead">
                   {item.imagePath !== undefined && (
                     images.status === "ready" && images.urls[item.imagePath]
-                      ? <img src={images.urls[item.imagePath]} alt={`Studio-Bild ${item.imagePath}`} data-testid={`img-studio-layout-${item.nodeId}`} />
-                      : <span className="sle-noimg" aria-label="Kein Bild verfügbar"><ImageOff size={16} /></span>
+                       ? <img src={images.urls[item.imagePath]} alt={t("studio.image", { path: item.imagePath })} data-testid={`img-studio-layout-${item.nodeId}`} />
+                       : <span className="sle-noimg" aria-label={t("studio.noImage")}><ImageOff size={16} /></span>
                   )}
-                  <b>{itemName(item)}</b>
+                   <b>{itemName(item, t)}</b>
                   {item.imagePath && <small>{item.imagePath}</small>}
-                  {item.label === "Step" && item.attributes.SerializedIndex && <small>Schritt {item.attributes.SerializedIndex}</small>}
+                   {item.label === "Step" && item.attributes.SerializedIndex && <small>{t("studio.stepNumber", { number: item.attributes.SerializedIndex })}</small>}
                 </div>
                 {item.fields.map(field => <FieldEditor key={fieldKey(item.nodeId, field.attribute)} item={item} field={field} layout={layout} onChange={change} />)}
               </li>
@@ -189,13 +209,13 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
       {view.calloutStyles.length > 0 && (
         <div className="sle-styles">
           <button className="ins-ghost ins-more" onClick={() => setShowStyles(s => !s)} aria-expanded={showStyles} data-testid="button-studio-layout-toggle-styles">
-            Globale Callout-Stile ({view.calloutStyles.length}) {showStyles ? "ausblenden" : "anzeigen"}
+            {t("studio.globalCalloutStyles", { count: view.calloutStyles.length })} {showStyles ? t("studio.hide") : t("studio.show")}
           </button>
           {showStyles && (
             <ul className="sle-items">
               {view.calloutStyles.map(item => (
                 <li key={item.nodeId} className="sle-item" data-testid={`item-studio-layout-style-${item.nodeId}`}>
-                  <div className="sle-itemhead"><b>{itemName(item)}</b></div>
+                   <div className="sle-itemhead"><b>{itemName(item, t)}</b></div>
                   {item.fields.map(field => <FieldEditor key={fieldKey(item.nodeId, field.attribute)} item={item} field={field} layout={layout} onChange={change} />)}
                 </li>
               ))}
@@ -204,7 +224,7 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
         </div>
       )}
       {view.unsupportedCount > 0 && (
-        <p className="ins-hint" data-testid="text-studio-layout-unsupported">{view.unsupportedCount} platzierte Callouts, Pfeile oder Inhalte bleiben unverändert erhalten und sind hier nicht bearbeitbar.</p>
+        <p className="ins-hint" data-testid="text-studio-layout-unsupported">{t("studio.unsupported", { count: view.unsupportedCount })}</p>
       )}
     </section>
   );

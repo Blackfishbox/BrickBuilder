@@ -48,6 +48,8 @@ import PrivacyDialog from '@/features/privacy/PrivacyDialog';
 import EvidencedColorPicker from '@/features/catalog/EvidencedColorPicker';
 import { resolveColor } from '@/features/formats/colors';
 import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/color-theme';
+import { useI18n } from '@/i18n/I18nProvider';
+import { isGeneratedProjectName } from '@/i18n/project-name';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -60,9 +62,11 @@ const BuilderCanvas = lazy(() => import('@/features/engine/BuilderCanvas'));
 const InstructionsPanel = lazy(() => import('@/features/instructions/InstructionsPanel'));
 
 function App() {
+  const { locale, setLocale, t } = useI18n();
   const catalog = useCatalog();
   const COLORS = catalogPalette().map(color => ({ name: color.name, value: color.hex, ldrawCode: color.ldrawCode }));
   const editor = useBuilder();
+  const displayedProjectName = isGeneratedProjectName(editor.projectName) ? t("project.new") : editor.projectName;
   const [theme, setTheme] = useState<ColorTheme>(readColorTheme);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [partsOpen, setPartsOpen] = useState(false);
@@ -93,7 +97,8 @@ function App() {
   useEffect(() => { applyColorTheme(theme); }, [theme]);
   const availableRotationTargets = [
     ...editor.document.bricks.map((brick, index) => ({
-      id: brick.id, label: `#${index + 1} · ${BRICK_DEFINITIONS[brick.type].label} · lokal`,
+      id: brick.id, label: `#${index + 1} · ${t(brick.type === "brick-2x4" ? "brick.classic" :
+        brick.type === "brick-2x2" ? "brick.square" : "brick.narrow")} · ${t("editor.local")}`,
     })),
     ...(editor.imported?.instances ?? []).map((instance, index) => ({
       id: instance.id, label: `#${index + 1} · LDraw ${instance.part.ldrawId}${instance.part.name ? ` · ${instance.part.name}` : ""}`,
@@ -108,16 +113,16 @@ function App() {
       className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}
       data-testid={mobile ? "group-selection-menu" : undefined}
       onToggle={event => setGroupSelectionOpen(event.currentTarget.open)}>
-      <summary aria-label="Gruppenauswahl öffnen" title="Gruppenauswahl" data-testid="button-group-selection">
+      <summary aria-label={t("group.open")} title={t("group.title")} data-testid="button-group-selection">
         <Group size={17} aria-hidden="true" />
       </summary>
       <div className="rotation-selection-panel">
         <label className="rotation-selection-search">
-          <span className="sr-only">Teile zur Gruppenauswahl suchen</span>
-          <input aria-label="Teile zur Gruppenauswahl suchen" value={rotationTargetQuery}
-            onChange={event => setRotationTargetQuery(event.target.value)} placeholder="LDraw-ID oder Teilname" />
+          <span className="sr-only">{t("group.search")}</span>
+          <input aria-label={t("group.search")} value={rotationTargetQuery}
+            onChange={event => setRotationTargetQuery(event.target.value)} placeholder={t("editor.idOrName")} />
         </label>
-        <p>{rotationTargetIds.length} Teile ausgewählt. Ziehen oder drehen bewegt die Gruppe gemeinsam.</p>
+        <p>{t("group.selectedSummary", { count: rotationTargetIds.length })}</p>
         <div className="rotation-selection-list">
           {availableRotationTargets.filter(target => target.id !== editor.selectedId &&
             target.label.toLowerCase().includes(rotationTargetQuery.trim().toLowerCase())).map(target => (
@@ -143,7 +148,7 @@ function App() {
   const currentColors = colorInstances.length ? colorInstances.map(instance => ({
     ldrawCode: instance.colorCode, name: instance.color?.name ?? resolveColor(instance.colorCode)?.name ?? `LDraw ${instance.colorCode}`,
     value: instance.color?.hex ?? resolveColor(instance.colorCode)?.hex ?? "#ff00ff",
-  })) : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? "Eigene Farbe",
+  })) : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? t("color.custom"),
     value: editor.selectedColor, ldrawCode: editor.selectedColorCode ?? "" }];
   const colorPicker = (mobile = false) => <EvidencedColorPicker palette={COLORS} current={currentColors}
     references={colorReferences} locked={false} mobile={mobile}
@@ -184,10 +189,10 @@ function App() {
     setSaveMessage('');
     try {
       await editor.save();
-      setSaveMessage('Auf diesem Gerät gespeichert');
+      setSaveMessage(t("save.saved"));
       window.setTimeout(() => setSaveMessage(''), 2600);
     } catch {
-      setSaveMessage('Speichern fehlgeschlagen');
+      setSaveMessage(t("save.failed"));
     }
   };
 
@@ -197,7 +202,7 @@ function App() {
       setConfirmNew(false);
       setProjectMenu(false);
     } catch {
-      setSaveMessage('Vorheriges Projekt konnte nicht gesichert werden');
+      setSaveMessage(t("save.previousFailed"));
     }
   };
 
@@ -205,9 +210,9 @@ function App() {
     try {
       const opened = await editor.openProject(id);
       setProjectMenu(false);
-      if (!opened) setRestoreMessage('Projekt wurde nicht gefunden');
+      if (!opened) setRestoreMessage(t("project.notFound"));
     } catch {
-      setRestoreMessage('Projekt konnte nicht geöffnet werden');
+      setRestoreMessage(t("project.openFailed"));
     }
     window.setTimeout(() => setRestoreMessage(''), 3000);
   };
@@ -215,13 +220,13 @@ function App() {
   const setMode = (mode: ToolMode) => editor.setToolMode(mode);
   const selectedBrick = BRICKS.find((brick) => brick.type === editor.selectedType) ?? BRICKS[0];
   const selectedColor = COLORS.find(color => color.ldrawCode === editor.selectedColorCode) ??
-    COLORS.find((color) => color.value.toLowerCase() === editor.selectedColor.toLowerCase()) ?? { name: "Eigene Farbe", value: editor.selectedColor, ldrawCode: "" };
+    COLORS.find((color) => color.value.toLowerCase() === editor.selectedColor.toLowerCase()) ?? { name: t("color.custom"), value: editor.selectedColor, ldrawCode: "" };
 
   if (!editor.isReady) {
     return (
-      <main className="editor-shell boot-screen" data-testid="status-loading-project">
+        <main className="editor-shell boot-screen" data-testid="status-loading-project">
         <LoaderCircle className="spin" size={24} />
-        <span>Lokales Projekt wird geöffnet …</span>
+        <span>{t("editor.loading")}</span>
       </main>
     );
   }
@@ -238,41 +243,49 @@ function App() {
             data-testid="button-project-menu"
           >
             <span className="project-dot" />
-            <span className="project-title" data-testid="text-project-name">{editor.projectName || 'Neues Modell'}</span>
+            <span className="project-title" data-testid="text-project-name">{displayedProjectName}</span>
             <ChevronDown size={15} />
           </button>
           {projectMenu && (
-            <div className="project-popover rise-in">
-              <p className="popover-eyebrow">WORKSHOP</p>
-            <label className="rename-label" htmlFor="project-name">Projektname</label>
+          <div className="project-popover rise-in">
+              <p className="popover-eyebrow">{t("project.workshop")}</p>
+              <label className="rename-label" htmlFor="project-name">{t("project.name")}</label>
               <input
                 id="project-name"
                 className="project-name-input"
-                value={editor.projectName}
+                value={displayedProjectName}
                 onChange={(event) => editor.setProjectName(event.target.value)}
                 maxLength={48}
                 data-testid="input-project-name"
               />
               <button type="button" className="popover-action" onClick={() => setConfirmNew(true)} data-testid="button-new-project">
-                <FilePlus2 size={16} /> Neues Projekt beginnen
+                <FilePlus2 size={16} /> {t("project.newAction")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setFormatsMode('import'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-import">
-                <FileUp size={16} /> Datei importieren
+                <FileUp size={16} /> {t("project.import")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setFormatsMode('export'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-export">
-                <FileDown size={16} /> Datei exportieren
+                <FileDown size={16} /> {t("project.export")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setInstructionsOpen(true); setProjectMenu(false); }} data-testid="button-open-instructions">
-                <PackageOpen size={16} /> Bauanleitung bearbeiten / PDF
+                <PackageOpen size={16} /> {t("project.instructions")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setStorageOpen(true); setProjectMenu(false); }} data-testid="button-open-storage">
-                <HardDrive size={16} /> Offline-Speicher verwalten
+                <HardDrive size={16} /> {t("project.storage")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setPrivacyOpen(true); setProjectMenu(false); }} data-testid="button-open-privacy">
-                <FilePlus2 size={16} /> Datenschutz (Android)
+                <FilePlus2 size={16} /> {t("project.privacy")}
               </button>
-              <div className="saved-projects" aria-label="Gespeicherte Projekte">
-                <p>Auf diesem Gerät</p>
+              <label className="language-row">
+                <span>{t("language")}</span>
+                <select data-testid="select-language" aria-label={t("language")} value={locale}
+                  onChange={event => setLocale(event.target.value as "en" | "de")}>
+                  <option value="en">{t("english")}</option>
+                  <option value="de">{t("german")}</option>
+                </select>
+              </label>
+            <div className="saved-projects" aria-label={t("editor.savedProjects")}>
+                <p>{t("project.device")}</p>
                 {editor.projects.length ? editor.projects.map((project) => (
                   <button
                     key={project.id}
@@ -281,10 +294,10 @@ function App() {
                     onClick={() => void openProject(project.id)}
                     data-testid={`button-open-project-${project.id}`}
                   >
-                    <span>{project.name || 'Neues Modell'}</span>
-                    <small>{project.brickCount} Steine</small>
+                    <span>{isGeneratedProjectName(project.name) ? t("project.new") : project.name}</span>
+                    <small>{t(project.brickCount === 1 ? "project.savedCount.one" : "project.savedCount", { count: project.brickCount })}</small>
                   </button>
-                )) : <span className="no-saved-projects">Noch keine Projekte gespeichert</span>}
+                )) : <span className="no-saved-projects">{t("project.empty")}</span>}
               </div>
             </div>
           )}
@@ -295,23 +308,23 @@ function App() {
             className={`connectivity ${online ? 'is-online' : 'is-offline'}`}
             role="status"
             aria-label={online
-              ? 'Das Gerät meldet eine Netzwerkverbindung; Internetzugriff wird nicht geprüft.'
-              : 'Das Gerät meldet keine Netzwerkverbindung. Lokale Projekte bleiben verfügbar.'}
+              ? t("connectivity.onlineDescription")
+              : t("connectivity.offlineDescription")}
             title={online
-              ? 'Netzwerk erkannt – die App prüft damit nicht, ob Internetzugriff besteht.'
-              : 'Offline – lokale Projekte bleiben verfügbar.'}
+              ? t("editor.networkInfo")
+              : t("connectivity.offlineDescription")}
             data-testid="status-connectivity"
           >
             {online ? <Wifi size={15} /> : <WifiOff size={15} />}
-            <span>{online ? 'Netzwerk erkannt' : 'Offline'}</span>
+            <span>{online ? t("connectivity.onlineLabel") : t("connectivity.offlineLabel")}</span>
           </div>
           <button
             type="button"
             className="theme-toggle"
             onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}
-            aria-label={theme === 'dark' ? 'Helles Erscheinungsbild aktivieren' : 'Dunkles Erscheinungsbild aktivieren'}
+            aria-label={theme === 'dark' ? t("theme.lightAction") : t("theme.darkAction")}
             aria-pressed={theme === 'dark'}
-            title={theme === 'dark' ? 'Helles Erscheinungsbild' : 'Dunkles Erscheinungsbild'}
+            title={theme === 'dark' ? t("theme.lightTitle") : t("theme.darkTitle")}
             data-testid="button-toggle-theme"
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
@@ -323,31 +336,31 @@ function App() {
             disabled={editor.isSaving}
             data-testid="button-save"
           >
-            {editor.isSaving ? <LoaderCircle className="spin" size={16} /> : saveMessage === 'Auf diesem Gerät gespeichert' ? <Check size={16} /> : <Save size={16} />}
-            <span>{editor.isSaving ? 'Speichert' : 'Speichern'}</span>
+            {editor.isSaving ? <LoaderCircle className="spin" size={16} /> : saveMessage === t("save.saved") ? <Check size={16} /> : <Save size={16} />}
+            <span>{editor.isSaving ? t("save.saving") : t("save.action")}</span>
           </button>
         </div>
       </header>
 
       <section className="work-area">
-        <div className={`canvas-stage${editor.selectedId && editor.toolMode !== 'view' ? ' has-selection' : ''}`} aria-label="3D model workspace">
+        <div className={`canvas-stage${editor.selectedId && editor.toolMode !== 'view' ? ' has-selection' : ''}`} aria-label={t("canvas.workspace")}>
           <div className="canvas-topline">
             <div className="canvas-context">
-              <span className="context-label">{editor.toolMode === 'view' ? 'ANSICHT' : 'BAUBEREICH'}</span>
+              <span className="context-label">{editor.toolMode === 'view' ? t("canvas.view") : t("canvas.buildArea")}</span>
               <span className="context-divider" />
-              <span className="brick-count" data-testid="text-brick-count">{editor.brickCount} {editor.brickCount === 1 ? 'Stein' : 'Steine'}</span>
+              <span className="brick-count" data-testid="text-brick-count">{t(editor.brickCount === 1 ? "canvas.partCount.one" : "canvas.partCount", { count: editor.brickCount })}</span>
             </div>
             <div className="history-controls">
-              <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label="Undo" data-testid="button-undo">
+              <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="button-undo">
                 <Undo2 size={17} />
               </button>
-              <button type="button" className="icon-button compact" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label="Redo" data-testid="button-redo">
+              <button type="button" className="icon-button compact" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label={t("history.redo")} data-testid="button-redo">
                 <Redo2 size={17} />
               </button>
             </div>
           </div>
           <div className="canvas-host">
-            <Suspense fallback={<div className="canvas-loading">3D-Arbeitsfläche wird geladen …</div>}>
+              <Suspense fallback={<div className="canvas-loading">{t("canvas.loading")}</div>}>
               {!instructionsOpen && <BuilderCanvas
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
@@ -369,26 +382,26 @@ function App() {
                 onMoveGroup={editor.moveGroup}
               />}
             </Suspense>
-            {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">Vollständiger Zuordnungskatalog nicht verfügbar. Vorhandene Nachweise bleiben erhalten. <button type="button" onClick={() => setPartsOpen(true)}>Katalog unter „Steine“ erneut laden</button></div>}
+            {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">{t("catalog.error")} <button type="button" onClick={() => setPartsOpen(true)}>{t("catalog.retry")}</button></div>}
             {editor.partError && !partsOpen && <p role="alert" className="canvas-part-error" data-testid="status-part-error">{editor.partError}</p>}
             {activeInventoryRow && (
               <div className="inventory-mode-banner" role="status" data-testid="status-inventory-mode">
-                <span>Meine Teileliste: BL {activeInventoryRow.partId} · Farbe {activeInventoryRow.colorId} · LDraw {editor.selectedInventory!.ldrawId}</span>
-                <button type="button" onClick={() => { setPartsTab('inventory'); setPartsOpen(true); }} data-testid="button-inventory-mode-open">Liste</button>
+                <span>{t("inventory.banner", { partId: activeInventoryRow.partId, colorId: activeInventoryRow.colorId, ldrawId: editor.selectedInventory!.ldrawId })}</span>
+                <button type="button" onClick={() => { setPartsTab('inventory'); setPartsOpen(true); }} data-testid="button-inventory-mode-open">{t("inventory.open")}</button>
               </div>
             )}
             {editor.brickCount === 0 && (
               <div className="canvas-hint" aria-hidden="true">
                 <span className="hint-cross">+</span>
-                <span>{editor.toolMode === 'view' ? 'Nur ansehen · zum Platzieren „Bauen“ wählen' : 'Raster antippen, um den ersten Stein zu setzen'}</span>
+                <span>{editor.toolMode === 'view' ? t("editor.viewHint") : t("editor.tapGrid")}</span>
               </div>
             )}
           </div>
           {editor.selectedId && editor.toolMode !== 'view' && (
             <div className="mobile-selection-actions" data-testid="mobile-selection-actions">
-              <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? "Stein"}</span>
-              <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher" title="Höher (+1 Platte)">↑</button>
-              <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer" title="Tiefer (−1 Platte)">↓</button>
+              <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? t("editor.stone")}</span>
+              <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")} title={t("editor.placeHigher")}>↑</button>
+              <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")} title={t("editor.placeLower")}>↓</button>
               <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               {rotationSelection(true)}
               <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
@@ -397,20 +410,20 @@ function App() {
                 onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
                 onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                 onOpenChange={setTiltControlsOpen} />
-              <button type="button" onClick={editor.deleteSelected} aria-label="Ausgewählten Stein entfernen" data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
+              <button type="button" onClick={editor.deleteSelected} aria-label={t("editor.deleteSelected")} data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
           )}
         </div>
 
-        <aside className="tool-rail" aria-label="Bauwerkzeuge">
+        <aside className="tool-rail" aria-label={t("editor.workspace")}>
           <div className="rail-section">
-            <div className="section-heading"><span>01</span><h2>Werkzeug</h2></div>
+            <div className="section-heading"><span>01</span><h2>{t("editor.tool")}</h2></div>
             <div className="tool-segment">
               {([
-                { mode: 'view' as const, icon: Eye, label: 'Ansicht' },
-                { mode: 'build' as const, icon: Hammer, label: 'Bauen' },
-                { mode: 'select' as const, icon: MousePointer2, label: 'Auswahl' },
-                { mode: 'delete' as const, icon: Trash2, label: 'Löschen' },
+                { mode: 'view' as const, icon: Eye, label: t("editor.viewMode") },
+                { mode: 'build' as const, icon: Hammer, label: t("editor.buildMode") },
+                { mode: 'select' as const, icon: MousePointer2, label: t("editor.selectMode") },
+                { mode: 'delete' as const, icon: Trash2, label: t("editor.deleteMode") },
               ]).map(({ mode, icon: Icon, label }) => (
                 <button
                   key={mode}
@@ -427,31 +440,31 @@ function App() {
           </div>
 
           <div className="rail-section parts-section">
-            <div className="section-heading"><span>02</span><h2>Stein</h2></div>
+            <div className="section-heading"><span>02</span><h2>{t("editor.part")}</h2></div>
             <button type="button" className="active-piece" onClick={() => setPartsOpen(true)} data-testid="button-selected-piece">
               <span aria-hidden="true"><Box size={28} /></span>
-              <span className="piece-copy"><strong>{editor.selectedPart ? `LDraw ${editor.selectedPart.ldrawId}` : "LDraw-Teil wählen"}</strong><small>{editor.selectedPart?.name ?? "Offline-Bibliothek öffnen"}</small></span>
+              <span className="piece-copy"><strong>{editor.selectedPart ? `LDraw ${editor.selectedPart.ldrawId}` : t("editor.choosePart")}</strong><small>{editor.selectedPart?.name ?? t("editor.openOfflineLibrary")}</small></span>
               <ChevronDown size={16} className="piece-chevron" />
             </button>
-            <div className="color-heading"><span>FARBE</span><span className="color-name">{selectedColor.name}</span></div>
+            <div className="color-heading"><span>{t("editor.color")}</span><span className="color-name">{selectedColor.name}</span></div>
             {colorPicker()}
             {editor.selectedInstance && <button type="button" className="selection-action"
-              onClick={() => setColorsOpen(true)}>Mehrere Teile gemeinsam färben</button>}
+              onClick={() => setColorsOpen(true)}>{t("editor.moreColors")}</button>}
           </div>
 
           <div className="rail-section selection-section">
-            <div className="section-heading"><span>03</span><h2>Ausgewählt</h2></div>
+            <div className="section-heading"><span>03</span><h2>{t("editor.selected")}</h2></div>
             {editor.selectedId && editor.toolMode !== 'view' ? (
               <>
                 <div className="selection-detail" role="status" data-testid="status-selected-brick">
                   <span className="selection-mark"><Box size={16} /></span>
-                  <span><strong>{editor.selectedInstance ? editor.selectedInstance.part.ldrawId : `${selectedBrick.dimensions} Stein`}</strong><small>Kann bearbeitet werden</small></span>
+                  <span><strong>{editor.selectedInstance ? editor.selectedInstance.part.ldrawId : `${selectedBrick.dimensions} ${t("editor.stone")}`}</strong><small>{t("editor.editable")}</small></span>
                 </div>
                 <div className="selection-actions">
-                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(0.4)} aria-label="Stein eine Plattenhöhe höher">↑ Höher</button>
-                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(-0.4)} aria-label="Stein eine Plattenhöhe tiefer">↓ Tiefer</button>
+                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")}>↑ {t("editor.higher")}</button>
+                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")}>↓ {t("editor.lower")}</button>
                   <button type="button" className="selection-action danger-action" onClick={editor.deleteSelected} data-testid="button-delete-selected">
-                    <Trash2 size={16} /><span>Entfernen</span>
+                    <Trash2 size={16} /><span>{t("editor.remove")}</span>
                   </button>
                 </div>
                 {rotationSelection()}
@@ -466,7 +479,7 @@ function App() {
             ) : (
               <div className="selection-empty" data-testid="status-no-selection">
                 <span className="empty-symbol"><Command size={16} /></span>
-                <span>Wähle einen Stein<br />im Baubereich</span>
+                <span>{t("editor.emptySelection")}</span>
               </div>
             )}
           </div>
@@ -474,34 +487,36 @@ function App() {
           <div className="rail-bottom">
             <div className="save-status" role="status" data-testid="status-save">
               <span className={`save-dot ${editor.isSaving ? 'busy' : ''}`} />
-              <span>{editor.saveError || saveMessage || (editor.isSaving ? 'Änderungen werden gespeichert' : editor.savedAt ? `Gespeichert ${new Date(editor.savedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : 'Änderungen bleiben auf diesem Gerät')}</span>
+              <span>{editor.saveError || saveMessage || (editor.isSaving ? t("save.inProgress") : editor.savedAt
+                ? t("save.savedAt", { time: new Date(editor.savedAt).toLocaleTimeString(locale === "de" ? "de-DE" : "en-GB", { hour: '2-digit', minute: '2-digit' }) })
+                : t("save.localNotice"))}</span>
             </div>
             {restoreMessage && <div className="toast-note" role="status" data-testid="status-restore">{restoreMessage}</div>}
             <button type="button" className="more-controls" onClick={() => setProjectMenu(true)} data-testid="button-workshop-menu">
-              <Settings2 size={16} /><span>Werkstatt</span><Menu size={15} />
+              <Settings2 size={16} /><span>{t("editor.workshop")}</span><Menu size={15} />
             </button>
           </div>
         </aside>
       </section>
 
-      <nav className="mobile-dock" aria-label="Editor tools">
-        <button type="button" className="dock-history" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label="Undo" data-testid="mobile-button-undo"><Undo2 size={19} /></button>
-        <button type="button" className={`dock-tool ${editor.toolMode === 'view' ? 'active' : ''}`} onClick={() => setMode('view')} aria-pressed={editor.toolMode === 'view'} data-testid="mobile-button-view"><Eye size={18} /><span>Ansicht</span></button>
-        <button type="button" className={`dock-tool ${editor.toolMode === 'build' ? 'active' : ''}`} onClick={() => setMode('build')} aria-pressed={editor.toolMode === 'build'} data-testid="mobile-button-build"><Hammer size={18} /><span>Bauen</span></button>
-        <button type="button" className={`dock-tool ${editor.toolMode === 'select' ? 'active' : ''}`} onClick={() => setMode('select')} aria-pressed={editor.toolMode === 'select'} data-testid="mobile-button-select"><MousePointer2 size={18} /><span>Auswahl</span></button>
-        <button type="button" className={`dock-tool dock-delete ${editor.toolMode === 'delete' ? 'active' : ''}`} onClick={() => setMode('delete')} aria-pressed={editor.toolMode === 'delete'} data-testid="mobile-button-delete"><Trash2 size={17} /><span>Löschen</span></button>
+      <nav className="mobile-dock" aria-label={t("editor.workspace")}>
+        <button type="button" className="dock-history" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="mobile-button-undo"><Undo2 size={19} /></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'view' ? 'active' : ''}`} onClick={() => setMode('view')} aria-pressed={editor.toolMode === 'view'} data-testid="mobile-button-view"><Eye size={18} /><span>{t("editor.viewMode")}</span></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'build' ? 'active' : ''}`} onClick={() => setMode('build')} aria-pressed={editor.toolMode === 'build'} data-testid="mobile-button-build"><Hammer size={18} /><span>{t("editor.buildMode")}</span></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'select' ? 'active' : ''}`} onClick={() => setMode('select')} aria-pressed={editor.toolMode === 'select'} data-testid="mobile-button-select"><MousePointer2 size={18} /><span>{t("editor.selectMode")}</span></button>
+        <button type="button" className={`dock-tool dock-delete ${editor.toolMode === 'delete' ? 'active' : ''}`} onClick={() => setMode('delete')} aria-pressed={editor.toolMode === 'delete'} data-testid="mobile-button-delete"><Trash2 size={17} /><span>{t("editor.deleteMode")}</span></button>
         <button
           type="button"
           className="dock-color"
           onClick={() => setColorsOpen(true)}
-          aria-label="Steinfarbe auswählen"
+          aria-label={t("editor.partColor")}
           data-testid="mobile-button-colors"
         >
           <span className="dock-color-dot" style={{ '--swatch-color': selectedColor.value } as CSSProperties}><Palette size={13} /></span>
-          <span>Farbe</span>
+          <span>{t("editor.colorMode")}</span>
         </button>
-        <button type="button" className="dock-parts" onClick={() => setPartsOpen(true)} data-testid="mobile-button-parts"><Plus size={19} /><span>Steine</span></button>
-        <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label="Redo" data-testid="mobile-button-redo"><Redo2 size={19} /></button>
+        <button type="button" className="dock-parts" onClick={() => setPartsOpen(true)} data-testid="mobile-button-parts"><Plus size={19} /><span>{t("editor.partsTool")}</span></button>
+        <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label={t("history.redo")} data-testid="mobile-button-redo"><Redo2 size={19} /></button>
       </nav>
 
       {colorsOpen && (
@@ -509,17 +524,17 @@ function App() {
           <section className="color-drawer rise-in" role="dialog" aria-modal="true" aria-labelledby="colors-title" data-testid="drawer-colors">
             <div className="drawer-handle" />
             <div className="drawer-heading">
-              <div><p className="popover-eyebrow">STEINFARBE</p><h2 id="colors-title">Farbe auswählen</h2></div>
-              <button type="button" className="icon-button" onClick={() => setColorsOpen(false)} aria-label="Farbauswahl schließen" data-testid="button-close-colors"><X size={18} /></button>
+              <div><p className="popover-eyebrow">{t("editor.sectionColor")}</p><h2 id="colors-title">{t("color.title")}</h2></div>
+              <button type="button" className="icon-button" onClick={() => setColorsOpen(false)} aria-label={t("color.close")} data-testid="button-close-colors"><X size={18} /></button>
             </div>
             {editor.selectedInstance && <details className="color-evidence-status"
               onToggle={event => setColorTargetsOpen(event.currentTarget.open)}>
-              <summary>Mehrere Teile gemeinsam färben</summary>
-              <p>Zusätzlich zum ausgewählten Teil. Unbekannte Teile liefern keine Einschränkung; Teilelistenfarben bleiben fest.</p>
+              <summary>{t("editor.moreColors")}</summary>
+              <p>{t("color.additionalHelp")}</p>
               {colorTargetsOpen && <>
-              <input aria-label="Teile zum gemeinsamen Färben suchen" value={colorTargetQuery}
-                onChange={event => setColorTargetQuery(event.target.value)} placeholder="LDraw-ID oder Name" />
-              <p>{additionalColorIds.length} zusätzlich ausgewählt. Maximal 40 Treffer; Suche bei Bedarf verfeinern.</p>
+              <input aria-label={t("color.searchParts")} value={colorTargetQuery}
+                onChange={event => setColorTargetQuery(event.target.value)} placeholder={t("editor.idOrName")} />
+              <p>{t("color.results", { count: additionalColorIds.length })}</p>
               <div style={{ maxHeight: 180, overflowY: "auto" }}>
               {editor.imported?.instances.map((instance, index) => ({ instance, index })).filter(({ instance }) =>
                 instance.id !== editor.selectedId && `${instance.part.ldrawId} ${instance.part.name ?? ""}`
@@ -541,20 +556,20 @@ function App() {
           <section className="parts-drawer rise-in" role="dialog" aria-modal="true" aria-labelledby="parts-title" data-testid="drawer-parts">
             <div className="drawer-handle" />
             <div className="drawer-heading">
-              <div><p className="popover-eyebrow">DEINE STEINE</p><h2 id="parts-title">Steinauswahl</h2></div>
-              <button type="button" className="icon-button" onClick={() => setPartsOpen(false)} aria-label="Steinauswahl schließen" data-testid="button-close-parts"><X size={18} /></button>
+              <div><p className="popover-eyebrow">{t("editor.partsSection")}</p><h2 id="parts-title">{t("editor.partSelectionHeading")}</h2></div>
+              <button type="button" className="icon-button" onClick={() => setPartsOpen(false)} aria-label={t("editor.closeParts")} data-testid="button-close-parts"><X size={18} /></button>
             </div>
-            <div className="inv-tabs" role="tablist" aria-label="Teilequelle" onKeyDown={event => {
+            <div className="inv-tabs" role="tablist" aria-label={t("editor.partsSource")} onKeyDown={event => {
               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
               event.preventDefault();
               const target = event.key === 'Home' ? 'ldraw' : event.key === 'End' ? 'inventory' : partsTab === 'ldraw' ? 'inventory' : 'ldraw';
               setPartsTab(target);
               window.document.getElementById(`tab-${target}`)?.focus();
             }}>
-              <button type="button" role="tab" id="tab-ldraw" tabIndex={partsTab === 'ldraw' ? 0 : -1} aria-controls="panel-ldraw" aria-selected={partsTab === 'ldraw'} onClick={() => setPartsTab('ldraw')} data-testid="tab-ldraw">LDraw-Katalog</button>
-              <button type="button" role="tab" id="tab-inventory" tabIndex={partsTab === 'inventory' ? 0 : -1} aria-controls="panel-inventory" aria-selected={partsTab === 'inventory'} onClick={() => setPartsTab('inventory')} data-testid="tab-inventory">Meine Teileliste</button>
+              <button type="button" role="tab" id="tab-ldraw" tabIndex={partsTab === 'ldraw' ? 0 : -1} aria-controls="panel-ldraw" aria-selected={partsTab === 'ldraw'} onClick={() => setPartsTab('ldraw')} data-testid="tab-ldraw">{t("editor.offlineCatalogTab")}</button>
+              <button type="button" role="tab" id="tab-inventory" tabIndex={partsTab === 'inventory' ? 0 : -1} aria-controls="panel-inventory" aria-selected={partsTab === 'inventory'} onClick={() => setPartsTab('inventory')} data-testid="tab-inventory">{t("editor.inventoryListTab")}</button>
             </div>
-            {editor.partLoading && <p role="status">LDraw-Geometrie wird geladen …</p>}
+            {editor.partLoading && <p role="status">{t("editor.loadingGeometry")}</p>}
             {editor.partError && <p role="alert">{editor.partError}</p>}
             {partsTab === 'inventory' ? (
               <div id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory">
@@ -568,7 +583,7 @@ function App() {
                 />
               </div>
             ) : (
-            <div id="panel-ldraw" role="tabpanel" aria-labelledby="tab-ldraw" aria-label="LDraw-Bibliothek">
+            <div id="panel-ldraw" role="tabpanel" aria-labelledby="tab-ldraw" aria-label={t("editor.ldrawLibrary")}>
                 <PartsLibrary
                   online={online}
                   selectedPartId={editor.selectedPart?.ldrawId}
@@ -585,7 +600,7 @@ function App() {
                 />
               </div>
             )}
-            <p className="drawer-footnote"><span className="local-lock" /> Installierte Teilepakete bleiben offline verfügbar</p>
+            <p className="drawer-footnote"><span className="local-lock" /> {t("editor.morePartsOffline")}</p>
           </section>
         </div>
       )}
@@ -594,18 +609,18 @@ function App() {
         <div className="modal-scrim">
           <section className="confirm-card rise-in" role="dialog" aria-modal="true" aria-labelledby="new-project-title" data-testid="dialog-new-project">
             <div className="confirm-icon"><FilePlus2 size={21} /></div>
-            <h2 id="new-project-title">Neu anfangen?</h2>
-            <p>Dein aktuelles Modell bleibt auf diesem Gerät gespeichert. Ein leeres Projekt wird geöffnet.</p>
+            <h2 id="new-project-title">{t("editor.chooseNew")}</h2>
+            <p>{t("editor.keepEditing")}</p>
             <div className="confirm-actions">
-              <button type="button" className="cancel-button" onClick={() => setConfirmNew(false)} data-testid="button-cancel-new">Weiterbauen</button>
-              <button type="button" className="confirm-button" onClick={() => void startProject()} data-testid="button-confirm-new">Neues Projekt</button>
+              <button type="button" className="cancel-button" onClick={() => setConfirmNew(false)} data-testid="button-cancel-new">{t("editor.cancelNew")}</button>
+              <button type="button" className="confirm-button" onClick={() => void startProject()} data-testid="button-confirm-new">{t("editor.confirmNew")}</button>
             </div>
-            <button type="button" className="confirm-close" onClick={() => setConfirmNew(false)} aria-label="Close dialog" data-testid="button-close-new"><X size={17} /></button>
+            <button type="button" className="confirm-close" onClick={() => setConfirmNew(false)} aria-label={t("editor.closeNew")} data-testid="button-close-new"><X size={17} /></button>
           </section>
         </div>
       )}
       {formatsOpen && <FormatDialog document={editor.document} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
-      {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">Bauanleitung wird geladen …</div>}>
+      {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal, highlight) => {
             const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
@@ -613,7 +628,8 @@ function App() {
             ]);
             const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal, highlight });
             signal.throwIfAborted();
-            const name = editor.document.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "Modell";
+            const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
+            const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");
             await exportFile(bytes, `${name}-Bauanleitung.pdf`, "application/pdf");
           }} />
       </Suspense>}

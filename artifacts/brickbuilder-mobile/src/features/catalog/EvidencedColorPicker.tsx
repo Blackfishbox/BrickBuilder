@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { ensureColorEvidence, useColorEvidence } from "./client";
 import { evidencePalette, selectionColorEvidence, type EvidenceSwatch } from "./color-evidence";
 import manifest from "./color-evidence-manifest.json";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface Props {
   palette: EvidenceSwatch[];
@@ -13,6 +14,7 @@ interface Props {
   onChange(color: EvidenceSwatch): void;
 }
 export default function EvidencedColorPicker({ palette, current, references, locked, mobile, onChange }: Props) {
+  const { t } = useI18n();
   const evidence = useColorEvidence();
   useEffect(() => { void ensureColorEvidence().catch(() => undefined); }, []);
   const result = selectionColorEvidence(references, evidence.index);
@@ -20,22 +22,22 @@ export default function EvidencedColorPicker({ palette, current, references, loc
   const selected = (code: string) => current.some(c => c.ldrawCode === code);
   return <>
     <p className="color-evidence-status" role="status" data-testid="color-evidence-status">
-      {locked ? "Farbe ist für diese Auswahl festgelegt." : result.known
-        ? `${result.known > 1 ? "Gemeinsam nachgewiesene" : "Nachgewiesene"} Farben · Stand ${manifest.snapshotDate}.`
-        : "Farbverfügbarkeit unbekannt – freie Palette."}
-      {!locked && result.known > 0 && result.codes?.length === 0 && " Keine gemeinsam eindeutig zugeordneten Farben im Snapshot."}
-      {result.unknown > 0 && result.known > 0 && ` ${result.unknown} Teil(e) ohne Nachweis schränken die Auswahl nicht ein.`}
-      {result.ambiguous > 0 && ` ${result.ambiguous} mehrdeutige Teilezuordnung(en): keine Einschränkung daraus abgeleitet.`}
-      {result.unmappedColors > 0 && ` ${result.unmappedColors} beobachtete RB-Farbzuordnung(en) ohne eindeutigen LDraw-Farbcode.`}
-      {evidence.status === "loading" && " Lokale Nachweise werden geladen …"}
-      {evidence.status === "error" && <> {evidence.error} <button type="button" onClick={() => void ensureColorEvidence().catch(() => undefined)}>Erneut prüfen</button></>}
+      {locked ? t("color.locked") : result.known
+        ? t(result.known > 1 ? "color.observedMany" : "color.observed", { date: manifest.snapshotDate })
+        : t("color.unknown")}
+      {!locked && result.known > 0 && result.codes?.length === 0 && t("color.noMatches")}
+      {result.unknown > 0 && result.known > 0 && ` ${t(result.unknown === 1 ? "color.unknownParts" : "color.unknownPartsMany", { count: result.unknown })}`}
+      {result.ambiguous > 0 && ` ${t(result.ambiguous === 1 ? "color.ambiguousParts" : "color.ambiguousPartsMany", { count: result.ambiguous })}`}
+      {result.unmappedColors > 0 && ` ${t(result.unmappedColors === 1 ? "color.unmapped" : "color.unmappedMany", { count: result.unmappedColors })}`}
+      {evidence.status === "loading" && t("color.loadingEvidence")}
+      {evidence.status === "error" && <> {evidence.error} <button type="button" onClick={() => void ensureColorEvidence().catch(() => undefined)}>{t("color.retryEvidence")}</button></>}
     </p>
-    <div className={mobile ? "mobile-color-grid" : "color-grid"} role="group" aria-label="Steinfarbe"
+    <div className={mobile ? "mobile-color-grid" : "color-grid"} role="group" aria-label={t("color.swatches")}
       style={{ maxHeight: mobile ? "45vh" : 180, overflowY: "auto" }}>
       {visible.map(color => <button key={color.ldrawCode} type="button"
         className={`${mobile ? "mobile-color-option" : "swatch"} ${selected(color.ldrawCode) ? "selected" : ""}`}
         style={mobile ? undefined : { "--swatch-color": color.value } as CSSProperties}
-        aria-label={`${color.name} auswählen`} aria-pressed={selected(color.ldrawCode)}
+        aria-label={t("color.selectName", { name: color.name })} aria-pressed={selected(color.ldrawCode)}
         disabled={locked} onClick={() => onChange(color)}
         data-testid={`${mobile ? "mobile" : "button"}-color-${color.name.toLowerCase()}`}>
         {mobile && <><span style={{ "--swatch-color": color.value } as CSSProperties} /><span>{color.name}</span></>}
@@ -43,21 +45,17 @@ export default function EvidencedColorPicker({ palette, current, references, loc
       </button>)}
     </div>
     {preserved.length > 0 && <div className="color-evidence-status" data-testid="preserved-colors">
-      <strong>Aktuelle Farben bleiben erhalten</strong>
+      <strong>{t("color.currentPreserved")}</strong>
       {preserved.map(color => <div key={color.ldrawCode}>
         <span className="preserved-color-dot" style={{ background: color.value }} />
-        {color.name} · LDraw {color.ldrawCode} · {result.codes === undefined ? "nicht in der Palette" : "nicht gemeinsam nachgewiesen"}
+         {color.name} · LDraw {color.ldrawCode} · {result.codes === undefined ? t("color.notInPalette") : t("color.notProven")}
       </div>)}
     </div>}
-    <details className="color-evidence-status"><summary>Herkunft und Grenzen der Farbnachweise</summary>
-      <p>Rebrickable-Elementtabelle sowie öffentliche Inventare offizieller Sets und Minifiguren · {manifest.snapshotDate}.
-        Die Quellen werden getrennt erfasst; enthalten sind auch Ersatzteile und veröffentlichte Inventarversionen.
-        Beobachtete Kombinationen sind kein BrickLink-Lagerbestand,
-        keine Preisangabe und kein vollständiger Nachweis aller jemals hergestellten Farben.
-        Fehlender Nachweis bedeutet nicht „unmöglich“. Varianten werden nur über exakte, eindeutige LDraw-Zuordnungen verwendet.</p>
-      <p>{manifest.attribution} {manifest.license}</p>
-      <p><a href="https://rebrickable.com/downloads/" target="_blank" rel="noreferrer">Datenquelle</a>
-        {" · "}<a href={manifest.termsUrl} target="_blank" rel="noreferrer">Nutzungsbedingungen</a></p>
+    <details className="color-evidence-status"><summary>{t("color.evidenceTitle")}</summary>
+      <p>{t("color.evidenceDescription", { date: manifest.snapshotDate })}</p>
+      <p>{t("color.attributionPrefix")} <a href="https://rebrickable.com/downloads/" target="_blank" rel="noreferrer">Rebrickable</a> {t("color.attributionSuffix")} {t("color.license")}</p>
+      <p><a href="https://rebrickable.com/downloads/" target="_blank" rel="noreferrer">{t("color.source")}</a>
+        {" · "}<a href={manifest.termsUrl} target="_blank" rel="noreferrer">{t("color.terms")}</a></p>
     </details>
   </>;
 }

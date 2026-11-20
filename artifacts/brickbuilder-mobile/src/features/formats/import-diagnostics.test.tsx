@@ -47,8 +47,8 @@ describe("catalog information versus real import warnings", () => {
     model.issues.push({ code: "missing-part", reference: "unavailable.dat", message: "Geometrie fehlt" });
     const warned = renderToStaticMarkup(<Report model={model} bricks={0} />);
     expect(warned).toContain('class="fmt-warn"');
-    expect(warned).toContain("1 Importwarnungen");
-    expect(warned).toContain("Geometrie fehlt");
+    expect(warned).toContain("1 Importwarnung");
+    expect(warned).toContain("LDraw-Geometrie für unavailable.dat ist nicht verfügbar");
   });
   it("repairs stale catalog color warnings without changing original source data", () => {
     const model = modelFor(["288", "297", "8", "1009007"].map(code => `1 ${code} 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat`).join("\n"));

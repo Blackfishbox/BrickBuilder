@@ -64,6 +64,8 @@ import {
 } from "@/features/editor/model";
 import { brickTransformMatrix } from "@/features/editor/brick-transform";
 import { brickConstructionBounds, constructionArea, createStudGridGeometry, type ConstructionArea } from "./construction-floor";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { MessageId } from "@/i18n/messages";
 
 interface BuilderCanvasProps {
   showConstructionControls?: boolean;
@@ -368,9 +370,12 @@ function fitImportedView(
   makeCameraPosition(camera, state.target, state.theta, state.phi, state.distance);
 }
 
-function softwareWarning(scene: SoftwareScene): string {
+function softwareWarning(scene: SoftwareScene, locale: "en" | "de", t: ReturnType<typeof useI18n>["t"]): string {
   const samples = scene.triangleCount - scene.free.length;
-  return `Kompatibilitätsansicht ohne WebGL: ${samples.toLocaleString("de-DE")} von ${scene.sourceTriangles.toLocaleString("de-DE")} Dreiecken. Während der Bewegung sind Details reduziert; alle Projektdaten bleiben erhalten.`;
+  return t("canvas.compatibility", {
+    shown: samples.toLocaleString(locale === "de" ? "de-DE" : "en-US"),
+    total: scene.sourceTriangles.toLocaleString(locale === "de" ? "de-DE" : "en-US"),
+  });
 }
 
 export function BuilderCanvas({
@@ -395,6 +400,11 @@ export function BuilderCanvas({
   onMove,
   onMoveGroup,
 }: BuilderCanvasProps) {
+  const { locale, t } = useI18n();
+  const localeRef = useRef(locale);
+  const translateRef = useRef(t);
+  localeRef.current = locale;
+  translateRef.current = t;
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
@@ -473,8 +483,8 @@ export function BuilderCanvas({
     overlay.contacts = model && id ? activeConnections(model, id) : [];
     overlay.previews = [];
     const instance = model?.instances.find(value => value.id === id);
-    setConnectionStatus(overlay.contacts.length ? `${overlay.contacts.length} geprüfte Verbindung${overlay.contacts.length === 1 ? "" : "en"}` :
-      instance && model ? hasUsableConnections(model, instance.id) ? "Keine aktive Verbindung" : "Keine nutzbaren Verbindungsdaten · freie Platzierung" : "");
+    setConnectionStatus(overlay.contacts.length ? translateRef.current("canvas.connectionCount", { count: overlay.contacts.length }) :
+      instance && model ? hasUsableConnections(model, instance.id) ? translateRef.current("canvas.noConnection") : translateRef.current("canvas.connectionDataUnavailable") : "");
   };
   const updateImportedSelection = () => {
     const old = selectionOutlineRef.current;
@@ -850,13 +860,13 @@ export function BuilderCanvas({
           sceneModelRef.current = imported;
           setSceneStatus(null);
           refreshConstructionAreaRef.current?.();
-          if (software) setRenderWarning(softwareWarning(software));
+          if (software) setRenderWarning(softwareWarning(software, localeRef.current, translateRef.current));
           updateImportedSelection();
           refreshConnections();
           return;
         }
       } catch (error) {
-        setRenderWarning(`Darstellung konnte nicht aktualisiert werden: ${error instanceof Error ? error.message : String(error)}. Die bisherige Ansicht bleibt erhalten.`);
+        setRenderWarning(translateRef.current("canvas.renderUpdateError", { reason: error instanceof Error ? error.message : String(error) }));
         return;
       }
     }
@@ -868,15 +878,15 @@ export function BuilderCanvas({
           sceneModelRef.current = imported; setSceneStatus(null);
           refreshConstructionAreaRef.current?.();
           refreshConnections();
-          setRenderWarning(softwareWarning(softwareSceneRef.current));
+          setRenderWarning(softwareWarning(softwareSceneRef.current, localeRef.current, translateRef.current));
           invalidatorRef.current?.(); return;
         }
-      } catch (error) { setRenderWarning(`Kompatibilitätsansicht konnte nicht aktualisiert werden: ${String(error)}`); return; }
+      } catch (error) { setRenderWarning(translateRef.current("canvas.compatibilityUpdateError", { reason: String(error) })); return; }
     }
     const controller = new AbortController();
     buildControllerRef.current = controller;
     setRenderWarning(null);
-    setSceneStatus(imported ? "3D-Modell wird vorbereitet …" : null);
+    setSceneStatus(imported ? translateRef.current("canvas.prepareModel") : null);
     const build = async () => {
       if (!imported) {
         if (previous) { scene.remove(previous); disposeImported(previous); }
@@ -888,12 +898,12 @@ export function BuilderCanvas({
         return;
       }
       let lastProgress = 0;
-      const progress = (stage: string) => (completed: number, total: number) => {
+      const progress = (stage: MessageId) => (completed: number, total: number) => {
         if (controller.signal.aborted || performance.now() - lastProgress < 80) return;
         lastProgress = performance.now();
-        setSceneStatus(`${stage}: ${completed} / ${total}`);
+        setSceneStatus(translateRef.current("canvas.progress", { stage: translateRef.current(stage), done: completed, total }));
       };
-      await prepareGeometry(imported, { signal: controller.signal, onProgress: progress("Geometrie") });
+      await prepareGeometry(imported, { signal: controller.signal, onProgress: progress("canvas.geometryStage") });
       let root: Group | null = null, bounds: Box3;
       let software: SoftwareScene | undefined;
       if (rendererRef.current instanceof WebGLRenderer && !forceCompatibility) {
@@ -901,7 +911,7 @@ export function BuilderCanvas({
           const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
           const maxGeometryBytes = (memory <= 1 ? 32 : memory <= 2 ? 64 : 96) * 1024 * 1024;
           root = await createImportedGroupAsync(imported, {
-            signal: controller.signal, onProgress: progress("3D-Szene"), maxGeometryBytes,
+            signal: controller.signal, onProgress: progress("canvas.sceneStage"), maxGeometryBytes,
           });
         } catch (error) {
           if (!(error instanceof SceneBudgetExceeded)) throw error;
@@ -917,7 +927,7 @@ export function BuilderCanvas({
         } catch (error) { disposeImported(root); throw error; }
       }
       else {
-        software = await createSoftwareScene(imported, { signal: controller.signal, onProgress: progress("Kompatibilitätsansicht") });
+        software = await createSoftwareScene(imported, { signal: controller.signal, onProgress: progress("canvas.compatibilityStage") });
         controller.signal.throwIfAborted();
         if (rendererRef.current instanceof WebGLRenderer) {
           const previousRenderer = rendererRef.current;
@@ -926,7 +936,7 @@ export function BuilderCanvas({
           const fallback = new FallbackRenderer();
           fallback.domElement.className = "builder-webgl-canvas";
           fallback.domElement.setAttribute("data-renderer", "canvas-fallback");
-          fallback.domElement.setAttribute("aria-label", "3D-Kompatibilitätsansicht");
+          fallback.domElement.setAttribute("aria-label", translateRef.current("canvas.fallbackAria"));
           fallback.domElement.style.touchAction = "none";
           const rectangle = hostRef.current!.getBoundingClientRect();
           fallback.setSize(rectangle.width, rectangle.height);
@@ -934,7 +944,7 @@ export function BuilderCanvas({
           rendererRef.current = fallback;
         }
         bounds = software.bounds.clone();
-        setRenderWarning(softwareWarning(software));
+        setRenderWarning(softwareWarning(software, localeRef.current, translateRef.current));
       }
       if (controller.signal.aborted) { if (root) disposeImported(root); return; }
       if (previous) { scene.remove(previous); disposeImported(previous); }
@@ -971,7 +981,7 @@ export function BuilderCanvas({
     void build().catch(error => {
       if (controller.signal.aborted) return;
       setSceneStatus(null);
-      setRenderWarning(`3D-Aufbau fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}. Projektdaten bleiben erhalten.`);
+      setRenderWarning(translateRef.current("canvas.buildFailed", { reason: error instanceof Error ? error.message : String(error) }));
     });
     invalidatorRef.current?.();
     return () => {
@@ -1010,7 +1020,7 @@ export function BuilderCanvas({
       }).catch(error => {
         if (!controller.signal.aborted) {
           setCollisionState({ count: 0, uncertain: true, pending: false, failed: true, progress: null });
-          setToggleToast("Kollisionsprüfung konnte nicht abgeschlossen werden");
+          setToggleToast(translateRef.current("canvas.collisionFailedToast"));
           console.error(error);
         }
       });
@@ -1230,10 +1240,9 @@ export function BuilderCanvas({
         if (overlayRef.current) {
           overlayRef.current.contacts = result.contacts;
         }
-        setConnectionStatus(result.status === "candidate" && result.contacts.length
-          ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen` :
-          result.status === "candidate" ? `Magnetisch eingerastet · ${result.contacts.length} Verbindung${result.contacts.length === 1 ? "" : "en"} · zum Lösen weiterziehen` :
-          result.status === "no-data" ? "Keine nutzbaren Verbindungsdaten · freie Platzierung" : "Keine passende Verbindung · freie Platzierung");
+        setConnectionStatus(result.status === "candidate"
+          ? translateRef.current("canvas.magnetSnapped", { count: result.contacts.length })
+          : result.status === "no-data" ? translateRef.current("canvas.connectionDataUnavailable") : translateRef.current("canvas.noMatchingConnection"));
         const position = { x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20 };
         drag.destination = { ...position, y: position.y + offset };
       } else {
@@ -1590,50 +1599,50 @@ export function BuilderCanvas({
   }, []);
 
   const compatibilityHint = rendererRef.current instanceof FallbackRenderer && bricks.length > 1200
-    ? "Kompatibilitätsansicht ohne WebGL: begrenzte Details bei großen Projekten; alle Steine bleiben gespeichert."
+    ? t("canvas.compatibilityLarge")
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
     {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
       {collisionState.pending ? <>
-        {collisionState.progress?.phase === "snapshot" ? "Importmodell wird vorbereitet"
-          : collisionState.progress?.phase === "preparing" ? "Kollisionsprüfung wird vorbereitet" : "Kollisionen werden geprüft"}
+        {collisionState.progress?.phase === "snapshot" ? t("canvas.collisionPreparingModel")
+          : collisionState.progress?.phase === "preparing" ? t("canvas.collisionPreparing") : t("canvas.collisionChecking")}
         {collisionState.progress && <> · {Math.floor(collisionState.progress.percent)} %</>}
-        {collisionState.progress && <progress className="ml-2 h-2 w-20 align-middle" aria-label="Fortschritt der Kollisionsprüfung"
+        {collisionState.progress && <progress className="ml-2 h-2 w-20 align-middle" aria-label={t("canvas.collisionProgress")}
           max={100} value={collisionState.progress.percent} />}
         {!collisionState.progress && " …"}
       </> : collisionState.count
-        ? `${collisionState.count} Teile kollidieren · orange markiert`
-        : collisionState.failed ? "Kollisionsprüfung nicht abgeschlossen"
-        : collisionState.uncertain ? "Keine Kollisionen nachgewiesen · einige Geometrien nicht eindeutig prüfbar"
-        : "Keine Kollisionen erkannt"}
+        ? t("canvas.colliding", { count: collisionState.count })
+        : collisionState.failed ? t("canvas.collisionFailed")
+        : collisionState.uncertain ? t("canvas.collisionUncertain")
+        : t("canvas.noCollision")}
     </div>}
     {showFloating && floatingCount > 0 && <div role="status" aria-live="polite" data-testid="floating-warning"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg border border-red-300 bg-red-50/95 p-3 text-xs text-red-900 shadow"
       style={{ pointerEvents: "none", top: sceneStatus || renderWarning || compatibilityHint ? 100 : 8 }}>
-      <strong>{floatingCount} {floatingCount === 1 ? "Teil schwebt möglicherweise" : "Teile schweben möglicherweise"} · rot markiert</strong>
-      <p>Keine geometrische Verbindung zum Boden gefunden. Kontaktprüfung anhand der Geometriegrenzen, keine Statikprüfung.</p>
+      <strong>{t(floatingCount === 1 ? "canvas.floatingOne" : "canvas.floatingMany", { count: floatingCount })}</strong>
+      <p>{t("canvas.floatingInfo")}</p>
     </div>}
     {showConstructionControls && toolMode !== "view" && <div data-testid="construction-controls" className="absolute bottom-2 left-2 right-2 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
-        aria-pressed={showConnections} aria-label="Verbindungen anzeigen"
+        aria-pressed={showConnections} aria-label={t("canvas.showConnections")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-        title={showConnections ? "Verbindungen aktiv" : "Verbindungen inaktiv"}
-        onClick={() => { setShowConnections(!showConnections); setToggleToast(`Verbindungen ${showConnections ? "inaktiv" : "aktiv"}`); }}>
+        title={t(showConnections ? "canvas.connectionsOn" : "canvas.connectionsOff")}
+        onClick={() => { setShowConnections(!showConnections); setToggleToast(t(showConnections ? "canvas.connectionsOff" : "canvas.connectionsOn")); }}>
         <Link2 size={20} aria-hidden="true" />
       </button>
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
-        aria-pressed={showCollisions} aria-label="Kollisionswarnung anzeigen"
+        aria-pressed={showCollisions} aria-label={t("canvas.showCollisionWarning")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-        title={showCollisions ? "Kollisionswarnung aktiv" : "Kollisionswarnung inaktiv"}
-        onClick={() => { setShowCollisions(!showCollisions); setToggleToast(`Kollisionswarnung ${showCollisions ? "inaktiv" : "aktiv"}`); }}>
+        title={t(showCollisions ? "canvas.collisionOn" : "canvas.collisionOff")}
+        onClick={() => { setShowCollisions(!showCollisions); setToggleToast(t(showCollisions ? "canvas.collisionOff" : "canvas.collisionOn")); }}>
         <TriangleAlert size={20} aria-hidden="true" />
       </button>
       <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
-        aria-pressed={showFloating} aria-label="Schwebewarnung anzeigen"
+        aria-pressed={showFloating} aria-label={t("canvas.showFloatingWarning")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
-        title={showFloating ? "Schwebewarnung aktiv" : "Schwebewarnung inaktiv"}
-        onClick={() => { setShowFloating(!showFloating); setToggleToast(`Schwebewarnung ${showFloating ? "inaktiv" : "aktiv"}`); }}>
+        title={t(showFloating ? "canvas.floatingOn" : "canvas.floatingOff")}
+        onClick={() => { setShowFloating(!showFloating); setToggleToast(t(showFloating ? "canvas.floatingOff" : "canvas.floatingOn")); }}>
         <Cloud size={20} aria-hidden="true" />
       </button>
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
@@ -1643,13 +1652,13 @@ export function BuilderCanvas({
         className={`min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectOnTap
           ? darkMode ? "border-orange-400 bg-stone-800 text-orange-300" : "border-orange-600 bg-white/95 text-orange-700"
           : darkMode ? "border-stone-600 bg-stone-800 text-stone-100" : "border-stone-200 bg-white/95 text-stone-800"}`}
-        aria-label={autoSelectOnTap ? "Tippen wählt Teil aus" : "Tippen zum Auswählen deaktiviert"}
+        aria-label={t(autoSelectOnTap ? "canvas.autoSelectOn" : "canvas.autoSelectOff")}
         aria-pressed={autoSelectOnTap}
-        title={autoSelectOnTap ? "Kurzes Tippen wählt ein Teil aus" : "Kurzes Tippen wählt kein Teil aus"}
+        title={t(autoSelectOnTap ? "canvas.autoSelectOnTitle" : "canvas.autoSelectOffTitle")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         onClick={() => {
           setAutoSelectOnTap(!autoSelectOnTap);
-          setToggleToast(`Tippen-Auswahl ${autoSelectOnTap ? "inaktiv" : "aktiv"}`);
+          setToggleToast(t(autoSelectOnTap ? "canvas.tapToggleOff" : "canvas.tapToggleOn"));
         }}>
         <MousePointer2 size={20} aria-hidden="true" />
       </button>
@@ -1666,11 +1675,11 @@ export function BuilderCanvas({
         onClick={() => {
           buildControllerRef.current?.abort();
           setSceneStatus(null);
-          setRenderWarning("3D-Aufbau abgebrochen. Das Projekt bleibt unverändert gespeichert.");
-        }}>Vorbereitung abbrechen</button> : <button type="button" className="mt-2 underline"
+          setRenderWarning(t("canvas.cancelled"));
+        }}>{t("canvas.cancelBuild")}</button> : <button type="button" className="mt-2 underline"
           style={{ pointerEvents: "auto" }}
           onPointerDown={event => event.stopPropagation()}
-          onClick={() => setBuildAttempt(value => value + 1)}>Darstellung neu aufbauen</button>}
+          onClick={() => setBuildAttempt(value => value + 1)}>{t("canvas.retryRender")}</button>}
     </div>}
   </div>;
 }

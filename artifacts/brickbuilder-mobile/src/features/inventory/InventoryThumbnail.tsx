@@ -6,6 +6,7 @@ import PartThumbnail from "../parts/PartThumbnail";
 import type { LibraryPart } from "../parts/types";
 import { cachedThumbnailSource } from "../parts/thumbnails/snapshot-source";
 import { observeThumbnail } from "../parts/thumbnails/visibility";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type LocalPart = { ldrawId: string; part?: LibraryPart; revision?: string; error?: string };
 
@@ -13,6 +14,7 @@ type LocalPart = { ldrawId: string; part?: LibraryPart; revision?: string; error
 export default function InventoryThumbnail({ ldrawId, color, colorCode, acquireMissing = false }: {
   ldrawId: string; color: string; colorCode: string; acquireMissing?: boolean;
 }) {
+  const { t } = useI18n();
   const [local, setLocal] = useState<LocalPart>();
   const host = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
@@ -29,10 +31,10 @@ export default function InventoryThumbnail({ ldrawId, color, colorCode, acquireM
       }
       const cached = await cachedThumbnailSource(ldrawId);
       if (cached) return { ldrawId, ...cached };
-      return { ldrawId, error: "Keine lokal installierte Vorschaugeometrie verfügbar." };
+      return { ldrawId, error: t("thumbnail.noLocalGeometry") };
     }).subscribe({
       next: setLocal,
-      error: () => setLocal({ ldrawId, error: "Lokale Vorschaugeometrie konnte nicht gelesen werden." }),
+      error: () => setLocal({ ldrawId, error: t("thumbnail.readError") }),
     });
     return () => subscription.unsubscribe();
   }, [ldrawId, acquireMissing, visible]);
@@ -46,7 +48,7 @@ export default function InventoryThumbnail({ ldrawId, color, colorCode, acquireM
       return module.acquireThumbnailGeometry(ldrawId, controller.signal);
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) setDownload({
-        id: ldrawId, error: error instanceof Error ? error.message : "Vorschaugeometrie konnte nicht geladen werden.",
+        id: ldrawId, error: error instanceof Error ? error.message : t("thumbnail.loadError"),
       });
     });
     return () => controller.abort();
@@ -58,14 +60,14 @@ export default function InventoryThumbnail({ ldrawId, color, colorCode, acquireM
       <PartThumbnail part={current.part} revision={current.revision} color={color} colorCode={colorCode} />
     </span>;
   }
-  const label = acquiring ? "Vorschaugeometrie wird geladen" : current?.error ? "Vorschau nicht verfügbar" : "Vorschau wird geladen";
+  const label = acquiring ? t("thumbnail.geometryLoading") : current?.error ? t("thumbnail.unavailable") : t("thumbnail.loading");
   return <span ref={host} className="plib-thumbnail-host">
     <span className="plib-thumbnail" role="img" aria-label={downloadError ?? label} title={downloadError ?? current?.error ?? label}>
     {current?.error && !acquiring ? <ImageOff size={18} aria-hidden="true" />
       : <LoaderCircle size={18} className="spin" aria-hidden="true" />}
     </span>
     {acquireMissing && downloadError && <button type="button" className="plib-preview-retry"
-      aria-label={`Vorschau für LDraw ${ldrawId} erneut laden`} title={downloadError}
+      aria-label={t("thumbnail.reloadPart", { id: ldrawId })} title={downloadError}
       onClick={() => setRetry(value => value + 1)}><RefreshCw size={16} /></button>}
     {acquireMissing && downloadError && <small className="plib-preview-error" role="alert">{downloadError}</small>}
   </span>;
