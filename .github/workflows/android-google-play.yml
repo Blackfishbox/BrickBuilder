@@ -22,7 +22,7 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     outputs:
       version_code: ${{ steps.release.outputs.version_code }}
       version_name: ${{ env.BRICKBUILDER_VERSION_NAME }}
@@ -171,9 +171,7 @@ jobs:
             echo "::error::Missing GitHub Actions secret NVD_API_KEY. Add a free key from https://nvd.nist.gov/developers/request-an-api-key in the repository Actions secrets."
             exit 1
           fi
-          bash gradlew --no-daemon --max-workers=2 \
-            "-PdependencyCheck.nvd.apiKey=$NVD_API_KEY" \
-            dependencyCheckAggregate
+          bash gradlew --no-daemon --max-workers=2 dependencyCheckAggregate
       - name: Upload Android dependency security reports
         if: always()
         uses: actions/upload-artifact@v4
