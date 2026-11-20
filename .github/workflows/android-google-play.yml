@@ -137,11 +137,30 @@ jobs:
         working-directory: artifacts/brickbuilder-mobile/android
         run: |
           mkdir -p "$GITHUB_WORKSPACE/generated-artifacts/android-security"
-          bash gradlew --no-daemon --max-workers=2 \
-            :app:dependencies \
-            :capacitor-cordova-android-plugins:dependencies \
-            :buildEnvironment \
-            > "$GITHUB_WORKSPACE/generated-artifacts/android-security/dependency-paths.txt" 2>&1
+          report="$GITHUB_WORKSPACE/generated-artifacts/android-security/dependency-paths.txt"
+          for attempt in 1 2 3 4; do
+            echo "Dependency capture attempt ${attempt}/4"
+            gradle_args=(--no-daemon --max-workers=2)
+            if [ "$attempt" -gt 1 ]; then
+              gradle_args+=(--refresh-dependencies)
+            fi
+            if bash gradlew "${gradle_args[@]}" \
+              :app:dependencies \
+              :capacitor-cordova-android-plugins:dependencies \
+              :buildEnvironment \
+              > "$report" 2>&1; then
+              exit 0
+            fi
+            echo "Dependency capture failed; recent Gradle output:"
+            tail -n 60 "$report"
+            if [ "$attempt" -lt 4 ]; then
+              delay=$((attempt * 45))
+              echo "Retrying with refreshed dependencies after ${delay}s."
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Could not capture resolved Android dependencies after four attempts."
+          exit 1
       - name: Check resolved Android dependencies for advisories
         working-directory: artifacts/brickbuilder-mobile/android
         run: bash gradlew --no-daemon --max-workers=2 dependencyCheckAggregate
