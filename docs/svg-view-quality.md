@@ -75,23 +75,31 @@ pnpm --filter @workspace/brickbuilder-mobile run typecheck
 
 ## Enforced budgets
 
-- 5,000,000 input triangles.
-- 600,000 retained vector triangles **including all generated fragments** and
+- 10,000,000 input triangles.
+- 900,000 retained vector triangles **including all generated fragments** and
   original triangles, even when an original was subsequently replaced.
-- 24,000,000 visibility work units and 128 partition levels.
-- 16 MiB encoded output, without an intermediate giant joined string.
-- At most 2,048 path reuse entries and approximately 24 KiB per compound batch.
-- Export-owned numeric face payload <78 MiB, visibility/sort lists and scratch
-  budgeted <24 MiB, encoded chunks plus finished output <=32 MiB, bounded
-  reuse/scratch <2 MiB (approximately 136 MiB total payload envelope, excluding
+- 96,000,000 visibility work units and 256 partition levels.
+- 32 MiB encoded output, without an intermediate giant joined string.
+- At most 4,096 path reuse entries and approximately 24 KiB per compound batch.
+- Export-owned numeric face payload <117 MiB, visibility/sort lists and scratch
+  budgeted <36 MiB, encoded chunks plus finished output <=64 MiB, bounded
+  reuse/scratch <4 MiB (approximately 221 MiB total payload envelope, excluding
   the already loaded model, JS engine overhead and platform sharing).
+
+These raised ceilings permit more complex exports but do not guarantee that a
+device can complete them. The SVG renderer can now temporarily require over
+200 MiB in its own export buffers, in addition to the loaded model, WebView and
+native sharing overhead. Lower-memory Android devices may still fail or be
+terminated by the operating system before reaching a configured guard. The
+native Android large-file and background/foreground acceptance test remains
+separate and has not been performed.
 
 All additional fragments count against the same face store, not an unaccounted
 second geometry cache. Traversal, projection, sorting, visibility partitioning,
 emission and byte copying cooperate with the cancellation/task-yield mechanism.
 Every budget exhaustion throws the localized complexity error; an incomplete
 or degraded file is never returned as a successful SVG. An over-budget detailed
-model may need hidden parts or PNG even when its input count is below 600,000.
+model may need hidden parts or PNG even when its input count is below 900,000.
 
 ## Honest limitations
 

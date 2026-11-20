@@ -19,6 +19,17 @@ function fixture(count = 1) {
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 describe("bounded progressive SVG export", () => {
+  it("keeps the raised SVG workload and memory ceilings explicit", () => {
+    expect(SVG_LIMITS).toMatchObject({
+      faces: 900_000,
+      inputTriangles: 10_000_000,
+      outputBytes: 32 * 1024 * 1024,
+      reuseEntries: 4096,
+      visibilityOperations: 96_000_000,
+      visibilityDepth: 256,
+    });
+  });
+
   it("exports 160,001 real triangles while other tasks run, reusing identical vectors", async () => {
     const { model, camera } = fixture(160_001);
     const progress: ViewExportProgress[] = [];

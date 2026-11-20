@@ -12,6 +12,30 @@ vi.mock("@/platform/export-file", () => ({ exportFile: save }));
 afterEach(() => { save.mockClear(); vi.unstubAllGlobals(); });
 
 describe("image export from the file export dialog", () => {
+  it("shows native cache failures and permits another SVG export", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    save.mockRejectedValueOnce(new Error("Cache full"));
+    await act(async () => root.render(<FormatDialog document={createEmptyDocument()}
+      initialMode="export" viewExporterRef={{ current: async () => new Uint8Array([1]) }}
+      onClose={() => {}} onImport={async () => {}} />));
+    const click = async () => {
+      await act(async () => {
+        (host.querySelector('[data-testid="button-export-svg"]') as HTMLButtonElement).click();
+        await new Promise(resolve => setTimeout(resolve, 80));
+      });
+    };
+    try {
+      await click();
+      expect(host.querySelector('[data-testid="status-export-error"]')?.textContent?.trim()).toBeTruthy();
+      expect((host.querySelector('[data-testid="button-export-svg"]') as HTMLButtonElement).disabled).toBe(false);
+      await click();
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(host.querySelector('[data-testid="status-export-error"]')).toBeNull();
+    } finally { await act(async () => root.unmount()); }
+  });
+
   it("exports the current view and shares a named PNG or SVG", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.createElement("div");
@@ -48,7 +72,7 @@ describe("image export from the file export dialog", () => {
         (host.querySelector('[data-testid="button-export-svg"]') as HTMLButtonElement).click();
         await new Promise(resolve => setTimeout(resolve, 80));
       });
-      expect(host.querySelector('[role="alert"]')?.textContent).toContain("600.000");
+      expect(host.querySelector('[role="alert"]')?.textContent).toContain("900.000");
       expect(save).not.toHaveBeenCalled();
     } finally { await act(async () => root.unmount()); }
   });

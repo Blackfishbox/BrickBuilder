@@ -2,18 +2,18 @@ import { ViewExportError } from "./view-export-job";
 
 /**
  * Export-owned payload ceiling (excluding the already-loaded model / platform share):
- * 600k faces * 17 doubles < 78 MiB; visibility lists/sort scratch < 24 MiB;
- * encoded chunks + final file <= 32 MiB; bounded reuse cache / scratch < 2 MiB.
+ * 900k faces * 17 doubles < 117 MiB; visibility lists/sort scratch < 36 MiB;
+ * encoded chunks + final file <= 64 MiB; bounded reuse cache / scratch < 4 MiB.
  * Visibility fragments use this SAME face budget, not a second unbounded store.
  * No DOM tree, expanded Mesh hierarchy, unbounded strings or Array.sort allocations.
  */
 export const SVG_LIMITS = {
-  faces: 600_000,
-  inputTriangles: 5_000_000,
-  outputBytes: 16 * 1024 * 1024,
-  reuseEntries: 2048,
-  visibilityOperations: 24_000_000,
-  visibilityDepth: 128,
+  faces: 900_000,
+  inputTriangles: 10_000_000,
+  outputBytes: 32 * 1024 * 1024,
+  reuseEntries: 4096,
+  visibilityOperations: 96_000_000,
+  visibilityDepth: 256,
 } as const;
 
 const PAGE = 4096;
