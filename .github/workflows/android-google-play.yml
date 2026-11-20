@@ -133,7 +133,7 @@ jobs:
         run: pnpm --filter @workspace/brickbuilder-mobile android:prepare
       - name: Install Android build tools
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-      - name: Capture resolved Android dependency paths
+      - name: Capture resolved Android release dependencies
         working-directory: artifacts/brickbuilder-mobile/android
         run: |
           mkdir -p "$GITHUB_WORKSPACE/generated-artifacts/android-security"
@@ -146,9 +146,7 @@ jobs:
             fi
             if timeout --signal=TERM --kill-after=30s 180s \
               bash gradlew "${gradle_args[@]}" \
-              :app:dependencies \
-              :capacitor-cordova-android-plugins:dependencies \
-              :buildEnvironment \
+              :app:dependencies --configuration releaseRuntimeClasspath \
               > "$report" 2>&1; then
               exit 0
             fi
