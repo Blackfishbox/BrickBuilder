@@ -144,7 +144,8 @@ jobs:
             if [ "$attempt" -gt 1 ]; then
               gradle_args+=(--refresh-dependencies)
             fi
-            if bash gradlew "${gradle_args[@]}" \
+            if timeout --signal=TERM --kill-after=30s 180s \
+              bash gradlew "${gradle_args[@]}" \
               :app:dependencies \
               :capacitor-cordova-android-plugins:dependencies \
               :buildEnvironment \
