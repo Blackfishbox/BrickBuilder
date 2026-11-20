@@ -133,33 +133,6 @@ jobs:
         run: pnpm --filter @workspace/brickbuilder-mobile android:prepare
       - name: Install Android build tools
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-      - name: Capture resolved Android release dependencies
-        working-directory: artifacts/brickbuilder-mobile/android
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/generated-artifacts/android-security"
-          report="$GITHUB_WORKSPACE/generated-artifacts/android-security/dependency-paths.txt"
-          for attempt in 1 2 3 4; do
-            echo "Dependency capture attempt ${attempt}/4"
-            gradle_args=(--no-daemon --max-workers=2)
-            if [ "$attempt" -gt 1 ]; then
-              gradle_args+=(--refresh-dependencies)
-            fi
-            if timeout --signal=TERM --kill-after=30s 180s \
-              bash gradlew "${gradle_args[@]}" \
-              :app:dependencies --configuration releaseRuntimeClasspath \
-              > "$report" 2>&1; then
-              exit 0
-            fi
-            echo "Dependency capture failed; recent Gradle output:"
-            tail -n 60 "$report"
-            if [ "$attempt" -lt 4 ]; then
-              delay=$((attempt * 45))
-              echo "Retrying with refreshed dependencies after ${delay}s."
-              sleep "$delay"
-            fi
-          done
-          echo "::error::Could not capture resolved Android dependencies after four attempts."
-          exit 1
       - name: Check resolved Android dependencies for advisories
         working-directory: artifacts/brickbuilder-mobile/android
         env:
@@ -191,7 +164,6 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
           path: |
-            generated-artifacts/android-security/dependency-paths.txt
             artifacts/brickbuilder-mobile/android/**/build/reports/dependency-check/**
       - name: Restore the upload keystore
         env:
