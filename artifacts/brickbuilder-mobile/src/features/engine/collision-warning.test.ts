@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { Euler, Matrix4 } from "three";
-import type { Brick } from "../editor/model";
+import { Box3, Euler, Matrix4, Vector3 } from "three";
+import { BRICK_HEIGHT, type Brick } from "../editor/model";
 import type { Affine } from "../formats/types";
 import { engineFixture } from "./engine-fixtures";
 import { collisionWarnings, collisionWarningsInWorker } from "./collision-warning";
@@ -8,6 +8,7 @@ import { connectionFixture, partLine } from "../connections/fixtures";
 import { activeConnections, snapConnection } from "../connections/engine";
 import { importedWarningQuery } from "./imported-collision";
 import { worldMatrix } from "./ldraw-geometry";
+import { stackingBounds } from "./stacking";
 
 const brick: Brick = { id: "a", type: "brick-1x2", color: "#fff", x: 0, y: 0, z: 0, rotation: 0 };
 function rotateAssemblyMatrix(matrix: Affine, rotation: Matrix4): Affine {
@@ -17,6 +18,38 @@ function rotateAssemblyMatrix(matrix: Affine, rotation: Matrix4): Affine {
     -e[1] * 20, -e[5] * 20, -e[9] * 20, -e[13] * 20,
     e[2] * 20, e[6] * 20, e[10] * 20, e[14] * 20,
   ] as Affine;
+}
+
+function boxModel(halfSize: [number, number, number], center = new Vector3(), rotation = new Matrix4()): ReturnType<typeof engineFixture> {
+  const model = engineFixture(1, 1);
+  const vertices = [
+    [-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1],
+    [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1],
+  ].map(([x, y, z]) => new Vector3(x * halfSize[0] * 20, y * halfSize[1] * 20, z * halfSize[2] * 20));
+  const triangles = [
+    [0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6],
+    [0, 1, 4], [1, 5, 4], [2, 6, 3], [3, 6, 7],
+    [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5],
+  ];
+  model.resources["parts/test.dat"].content = triangles.map(([a, b, c]) =>
+    `3 16 ${vertices[a].x} ${vertices[a].y} ${vertices[a].z} ${vertices[b].x} ${vertices[b].y} ${vertices[b].z} ${vertices[c].x} ${vertices[c].y} ${vertices[c].z}`,
+  ).join("\n");
+  const instance = model.instances[0];
+  instance.matrix = rotateAssemblyMatrix(instance.matrix, rotation);
+  instance.matrix[3] = center.x * 20;
+  instance.matrix[7] = -center.y * 20;
+  instance.matrix[11] = center.z * 20;
+  return model;
+}
+
+function tiltedBrickAt(center: Vector3, tiltZ: number, importedOffset: number): Brick & { tiltZ: number } {
+  return {
+    ...brick,
+    x: center.x,
+    y: center.y - BRICK_HEIGHT / 2 + importedOffset,
+    z: center.z,
+    tiltZ,
+  };
 }
 describe("optional collision diagnostics", () => {
   it("marks both intersecting bricks, but not touching or separated bricks", async () => {
@@ -149,6 +182,50 @@ describe("optional collision diagnostics", () => {
 
     const unshifted = await collisionWarnings([brick], model, new AbortController().signal, 2);
     expect(unshifted.boxes.size).toBe(0);
+  });
+  it("warns when a tilted local brick penetrates imported geometry with a display offset", async () => {
+    const model = boxModel([1, 2, 4], new Vector3(0, 0.6, 0));
+    const importedId = model.instances[0].id;
+    const local = tiltedBrickAt(new Vector3(0, 0.6, 0), 30, 2);
+    const warnings = await collisionWarnings([local], model, new AbortController().signal, 2);
+    expect([...warnings.boxes.keys()].sort()).toEqual([local.id, importedId].sort());
+    expect(warnings.uncertain).toBe(false);
+  });
+  it("does not warn when tilted imported and local faces only touch", async () => {
+    const tiltZ = 30, angle = tiltZ * Math.PI / 180;
+    const model = boxModel(
+      [1, BRICK_HEIGHT / 2, 2],
+      new Vector3(0, BRICK_HEIGHT / 2, 0),
+      new Matrix4().makeRotationFromEuler(new Euler(0, 0, angle)),
+    );
+    const localCenter = new Vector3(2 * Math.cos(angle), BRICK_HEIGHT / 2 + 2 * Math.sin(angle), 0);
+    const local = tiltedBrickAt(localCenter, tiltZ, 2);
+    const localBounds = new Box3(
+      new Vector3(localCenter.x - Math.cos(angle) - Math.sin(angle) * BRICK_HEIGHT / 2,
+        localCenter.y - Math.sin(angle) - Math.cos(angle) * BRICK_HEIGHT / 2, -2),
+      new Vector3(localCenter.x + Math.cos(angle) + Math.sin(angle) * BRICK_HEIGHT / 2,
+        localCenter.y + Math.sin(angle) + Math.cos(angle) * BRICK_HEIGHT / 2, 2),
+    );
+    expect(stackingBounds(model).get(model.instances[0].id)?.intersectsBox(localBounds)).toBe(true);
+    const warnings = await collisionWarnings([local], model, new AbortController().signal, 2);
+    expect(warnings.boxes.size).toBe(0);
+    expect(warnings.uncertain).toBe(false);
+  });
+  it("does not warn when tilted local bounds overlap but the solids are separate", async () => {
+    const importedCenter = new Vector3(-1.05, -0.3, 0);
+    const model = boxModel([0.05, 0.05, 0.1], importedCenter);
+    const local = tiltedBrickAt(new Vector3(0, BRICK_HEIGHT / 2, 0), 30, 2);
+    const angle = Math.PI / 6;
+    const localBounds = new Box3(
+      new Vector3(-Math.cos(angle) - Math.sin(angle) * BRICK_HEIGHT / 2,
+        BRICK_HEIGHT / 2 - Math.sin(angle) - Math.cos(angle) * BRICK_HEIGHT / 2, -2),
+      new Vector3(Math.cos(angle) + Math.sin(angle) * BRICK_HEIGHT / 2,
+        BRICK_HEIGHT / 2 + Math.sin(angle) + Math.cos(angle) * BRICK_HEIGHT / 2, 2),
+    );
+    expect(stackingBounds(model).get(model.instances[0].id)?.intersectsBox(localBounds)).toBe(true);
+    const warnings = await collisionWarnings([local], model, new AbortController().signal, 2);
+    expect(warnings.boxes.size).toBe(0);
+    expect(warnings.uncertain).toBe(false);
   });
   it("does not warn from overlapping bounds when imported geometry is uncertain", async () => {
     const model = engineFixture(1, 1);
