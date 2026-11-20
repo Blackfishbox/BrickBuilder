@@ -15,6 +15,9 @@ const issueMessages: Record<string, MessageId> = {
   "geometry-cancelled": "import.issue.geometryCancelled",
   textures: "import.issue.textures",
   "io-scope": "import.issue.ioScope",
+  "io-geometry-file-limit": "import.issue.ioGeometryFileLimit",
+  "io-geometry-total-limit": "import.issue.ioGeometryTotalLimit",
+  "io-instructions-limit": "import.issue.ioInstructionsLimit",
 };
 
 export function localizedImportIssue(

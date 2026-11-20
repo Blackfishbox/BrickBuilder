@@ -5,6 +5,7 @@ import { mappingResultSchema } from "@/features/parts/mapping-schema";
 import { inventorySchema, allocationSchema } from "@/features/inventory/types";
 import { validateInventory } from "@/features/inventory/accounting";
 import { instructionPlanSchema } from "@/features/instructions/types";
+import { IO_GEOMETRY_LIMITS } from "../io/assemblies";
 
 const finite = z.number().finite().min(-1e9).max(1e9);
 const legalDocument = z.object({
@@ -37,7 +38,7 @@ const schema = z.object({
     version: z.literal(1), format: z.enum(["io", "ldr", "mpd"]), sourceName: z.string(),
     edited: z.boolean().optional(),
     originalBytes: z.array(z.number().int().min(0).max(255)).max(32 * 1024 * 1024),
-    sourceText: z.string().max(16 * 1024 * 1024), root: z.string(),
+      sourceText: z.string().max(16 * 1024 * 1024), root: z.string(),
     sections: z.record(z.string(), z.array(z.string())),
     instances: z.array(z.object({
       id: z.string(), reference: z.string().max(240).regex(/^[a-z0-9_ /.-]+\.dat$/i), colorCode: z.string().regex(/^(?:\d+|0x2[0-9a-f]{6})$/i),
@@ -56,7 +57,7 @@ const schema = z.object({
     issues: z.array(z.object({ code: z.string(), message: z.string(), reference: z.string().optional(), count: z.number().optional() })),
     resources: z.record(z.string().regex(/^(parts|p)\/[a-z0-9_/-]+\.dat$/), z.object({
       path: z.string(), sourceUrl: z.string(), author: z.string(), license: z.enum(["CC-BY-4.0", "CC0-1.0", "Project-source"]),
-      sourceArchivePath: z.string().optional(), content: z.string().max(4 * 1024 * 1024),
+      sourceArchivePath: z.string().optional(), content: z.string().max(IO_GEOMETRY_LIMITS.perFileBytes),
       sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(), byteLength: z.number().int().nonnegative().optional(),
       retrievedAt: z.string().optional(), retrievalSource: z.string().optional(),
     })),
@@ -81,7 +82,7 @@ export function importInternal(bytes: Uint8Array): BuilderDocument {
   const remappedIds = new Map<string, string>();
   if (parsed.imported) {
     if (Object.keys(parsed.imported.resources).length > 4096) throw new Error("Zu viele Geometriedateien.");
-    if (Object.values(parsed.imported.resources).reduce((n, f) => n + f.content.length, 0) > 24 * 1024 * 1024) throw new Error("Geometriedaten zu groß.");
+    if (Object.values(parsed.imported.resources).reduce((n, f) => n + f.content.length, 0) > IO_GEOMETRY_LIMITS.totalBytes) throw new Error("Geometriedaten zu groß.");
     for (const [path, file] of Object.entries(parsed.imported.resources)) {
       if (file.path !== path) throw new Error("Geometriepfad und Quelldatei widersprechen sich.");
       if (file.license === "Project-source" && (!file.sourceArchivePath ||

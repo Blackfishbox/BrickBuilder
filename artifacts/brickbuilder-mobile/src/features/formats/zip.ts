@@ -11,6 +11,9 @@ interface ZipReadOptions {
   select?: (name: string) => boolean;
   /** Opt-in for the public, fixed-key Studio ZIP format, never arbitrary passwords. */
   studioEncryption?: boolean;
+  /** Skip a selected entry before decompression, returning a reason for diagnostics. */
+  skipEntry?: (name: string, uncompressedBytes: number, decodedBytes: number) => string | undefined;
+  onSkippedEntry?: (name: string, uncompressedBytes: number, reason: string) => void;
 }
 
 /** ZIP32 only. Validate all entry bounds before allocating any decompressed data. */
@@ -56,13 +59,17 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): Record
     if ((flags & 1) && packed < 12) throw new Error("Verschlüsselter ZIP-Kopf fehlt.");
     ranges.push({ start: local, end: data + packed });
     if ((!requested && !options.select) || requested?.has(key) || options.select?.(name)) {
-      if (size > ZIP_LIMITS.entryBytes) throw new Error("ZIP-Eintrag zu groß (maximal 32 MiB je gelesenem Eintrag).");
-      if ((decodedTotal += size) > ZIP_LIMITS.decodedBytes) throw new Error("Gelesene ZIP-Daten überschreiten das Speicherbudget von 64 MiB.");
-      const crc = view.getUint32(offset + 16, true);
-      entries.set(name, {
-        size, crc, data, packed, method, encrypted: Boolean(flags & 1),
-        checkByte: flags & 8 ? view.getUint16(offset + 12, true) >>> 8 : crc >>> 24,
-      });
+      const skipReason = options.skipEntry?.(name, size, decodedTotal);
+      if (skipReason) options.onSkippedEntry?.(name, size, skipReason);
+      else {
+        if (size > ZIP_LIMITS.entryBytes) throw new Error("ZIP-Eintrag zu groß (maximal 32 MiB je gelesenem Eintrag).");
+        if ((decodedTotal += size) > ZIP_LIMITS.decodedBytes) throw new Error("Gelesene ZIP-Daten überschreiten das Speicherbudget von 64 MiB.");
+        const crc = view.getUint32(offset + 16, true);
+        entries.set(name, {
+          size, crc, data, packed, method, encrypted: Boolean(flags & 1),
+          checkByte: flags & 8 ? view.getUint16(offset + 12, true) >>> 8 : crc >>> 24,
+        });
+      }
     }
     offset = next;
   }

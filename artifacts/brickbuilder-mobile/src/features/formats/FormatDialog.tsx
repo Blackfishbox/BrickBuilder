@@ -83,7 +83,7 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
           <ul>{information.map((issue, index) => (
             <li key={index}><span>{localizedImportIssue(issue, t, issue.message)}</span>
               {issue.code === 'missing-bl-part' && <small>{t('format.ldrawUnmapped', { ids: [...new Set(model.instances.filter(instance => !instance.part.brickLinkId).map(instance => instance.part.ldrawId))].join(', ') })}</small>}
-              {issue.reference && <small>LDraw {issue.reference}</small>}
+              {issue.reference && <small>{issue.code.startsWith('io-geometry-') ? issue.reference : `LDraw ${issue.reference}`}</small>}
             </li>
           ))}</ul>
         </details>

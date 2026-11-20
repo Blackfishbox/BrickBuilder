@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { builderDatabase } from "@/storage/database";
 import { importIO } from "./import";
 import { exportIO } from "./export";
-import { includeIOAssemblies, readIOAssemblies, readIOGeometry } from "./assemblies";
+import { createIOEntrySkipPolicy, includeIOAssemblies, IO_GEOMETRY_LIMITS, readIOAssemblies, readIOGeometry } from "./assemblies";
 import { parseLDraw } from "../ldraw/parser";
 import { readZip, writeZip, ZIP_LIMITS } from "../zip";
 import { exportMPD } from "../mpd/export";
@@ -73,6 +73,46 @@ describe("large Studio archives with project-owned reference assemblies", () => 
     }
     expect(() => readZip(bytes, { names: [] })).toThrow(/groß/);
   });
+
+  it("raises embedded-geometry limits while deciding archive skips before decompression", () => {
+    const shouldSkip = createIOEntrySkipPolicy();
+    expect(IO_GEOMETRY_LIMITS.perFileBytes).toBe(8 * 1024 * 1024);
+    expect(IO_GEOMETRY_LIMITS.totalBytes).toBe(32 * 1024 * 1024);
+    expect(shouldSkip("CustomParts/one.dat", IO_GEOMETRY_LIMITS.perFileBytes)).toBeUndefined();
+    expect(shouldSkip("CustomParts/too-large.dat", IO_GEOMETRY_LIMITS.perFileBytes + 1)).toBe("io-geometry-file-limit");
+    for (let index = 1; index < 4; index++) {
+      expect(shouldSkip(`CustomParts/${index}.dat`, IO_GEOMETRY_LIMITS.perFileBytes)).toBeUndefined();
+    }
+    expect(shouldSkip("CustomParts/over-total.dat", 1)).toBe("io-geometry-total-limit");
+    expect(shouldSkip("model.ins", IO_GEOMETRY_LIMITS.instructionsBytes + 1)).toBe("io-instructions-limit");
+  });
+
+  it("skips an oversized custom part without aborting the model or changing the original archive", async () => {
+    const bytes = writeZip({
+      "model.ldr": encode(ref("too-large.dat")),
+      "CustomParts/too-large.dat": new Uint8Array(IO_GEOMETRY_LIMITS.perFileBytes + 1),
+    });
+    const doc = await importIO(bytes, "oversized-custom.io", { online: false });
+    expect(doc.imported!.instances).toHaveLength(1);
+    expect(doc.imported!.instances[0].part.status).toBe("missing");
+    expect(doc.imported!.issues).toContainEqual(expect.objectContaining({
+      code: "io-geometry-file-limit", reference: "too-large.dat",
+    }));
+    expect(doc.imported!.originalBytes).toEqual(Array.from(bytes));
+    expect(exportIO(doc)).toEqual(bytes);
+  }, 30_000);
+
+  it("accepts geometries above the old 4 MiB limit and keeps them in JSON backups", async () => {
+    const content = `0 Private geometry\n3 16 0 0 0 20 0 0 0 20 0\n0 ${"x".repeat(5 * 1024 * 1024)}\n`;
+    const doc = await importIO(writeZip({
+      "model.ldr": encode(ref("large-but-supported.dat")),
+      "CustomParts/large-but-supported.dat": encode(content),
+    }), "large-custom.io", { online: false });
+    expect(doc.imported!.instances[0].part.status).toBe("resolved");
+    expect(doc.imported!.resources["parts/large-but-supported.dat"].content).toHaveLength(content.length);
+    const restored = importInternal(exportInternal(doc));
+    expect(restored.imported!.resources["parts/large-but-supported.dat"].content).toHaveLength(content.length);
+  }, 30_000);
 
   it("uses declared subpart identity only for Studio's duplicated s/s transport folder", () => {
     const content = "0 FILE s/petal.dat\n0 Author: Synthetic fixture\n3 16 0 0 0 20 0 0 0 20 0";

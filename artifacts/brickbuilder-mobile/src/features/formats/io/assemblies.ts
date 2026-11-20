@@ -2,6 +2,32 @@ import { referenceLine } from "../ldraw/parser";
 import { normalizePath, normalizeReference } from "@workspace/ldraw-source";
 import type { ProjectGeometryFile } from "../types";
 
+export const IO_GEOMETRY_LIMITS = {
+  perFileBytes: 8 * 1024 * 1024,
+  totalBytes: 32 * 1024 * 1024,
+  instructionsBytes: 8 * 1024 * 1024,
+} as const;
+
+export type IOSkipReason =
+  | "io-geometry-file-limit"
+  | "io-geometry-total-limit"
+  | "io-instructions-limit";
+
+/** Decide what to retain before ZIP entries are decompressed into memory. */
+export function createIOEntrySkipPolicy(): (name: string, size: number) => IOSkipReason | undefined {
+  let geometryBytes = 0;
+  return (name, size) => {
+    if (/^CustomParts\/.+\.dat$/i.test(name)) {
+      if (size > IO_GEOMETRY_LIMITS.perFileBytes) return "io-geometry-file-limit";
+      if (geometryBytes + size > IO_GEOMETRY_LIMITS.totalBytes) return "io-geometry-total-limit";
+      geometryBytes += size;
+    } else if (/^model\.ins$/i.test(name) && size > IO_GEOMETRY_LIMITS.instructionsBytes) {
+      return "io-instructions-limit";
+    }
+    return undefined;
+  };
+}
+
 /**
  * Studio can encode a whole MOC as CustomBrick assemblies in CustomParts/.
  * Expand only explicit assemblies made entirely from type-1 references:
@@ -51,8 +77,13 @@ export function includeIOAssemblies(bytes: Uint8Array, sections: Record<string, 
 }
 
 /** Preserve supplied meshes without asserting a redistribution license. */
-export function readIOGeometry(entries: Record<string, Uint8Array>, assemblies: Record<string, string[]>): Record<string, ProjectGeometryFile> {
+export function readIOGeometry(
+  entries: Record<string, Uint8Array>,
+  assemblies: Record<string, string[]>,
+  onSkipped?: (archivePath: string, reason: IOSkipReason) => void,
+): Record<string, ProjectGeometryFile> {
   const files: Record<string, ProjectGeometryFile> = Object.create(null);
+  let totalBytes = 0;
   for (const [archivePath, bytes] of Object.entries(entries)) {
     if (!/^CustomParts\/.+\.dat$/i.test(archivePath)) continue;
     const suppliedName = archivePath.slice("CustomParts/".length).toLowerCase();
@@ -65,16 +96,22 @@ export function readIOGeometry(entries: Record<string, Uint8Array>, assemblies: 
     const declared = content.replace(/^\uFEFF/, "").match(/^0\s+FILE\s+(.+)$/mi)?.[1].trim().replaceAll("\\", "/").toLowerCase();
     const canonical = declared?.startsWith("s/") && relative === `s/${declared}` ? normalizeReference(declared) : relative;
     const path = normalizePath(canonical.startsWith("p/") || canonical.startsWith("parts/") ? canonical : `parts/${canonical}`);
-    if (content.length > 4 * 1024 * 1024 || content.includes("\0")) throw new Error(`Eingebettete Geometrie zu groß oder ungültig: ${archivePath}`);
+    if (content.includes("\0")) throw new Error(`Eingebettete Geometrie ungültig: ${archivePath}`);
+    if (content.length > IO_GEOMETRY_LIMITS.perFileBytes) {
+      onSkipped?.(archivePath, "io-geometry-file-limit");
+      continue;
+    }
+    if (totalBytes + content.length > IO_GEOMETRY_LIMITS.totalBytes) {
+      onSkipped?.(archivePath, "io-geometry-total-limit");
+      continue;
+    }
     if (files[path]) throw new Error(`Doppelte eingebettete Geometrie: ${path}`);
+    totalBytes += content.length;
     files[path] = {
       path, content, license: "Project-source", sourceArchivePath: archivePath,
       sourceUrl: `urn:brickbuilder:io:${encodeURIComponent(archivePath)}`,
       author: content.match(/^\s*0\s+Author:\s*(.+)$/mi)?.[1].trim() || "Autor in der Projektdatei nicht angegeben",
     };
-  }
-  if (Object.values(files).reduce((sum, file) => sum + file.content.length, 0) > 24 * 1024 * 1024) {
-    throw new Error("Eingebettete Projektgeometrien überschreiten das Speicherbudget von 24 MiB.");
   }
   return files;
 }
