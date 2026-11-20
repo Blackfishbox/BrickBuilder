@@ -38,10 +38,12 @@ allprojects {
         skipTestGroups = false
         analyzers {
             nodeAudit {
-                // The workspace pnpm audit runs separately; Dependency-Check's
-                // Yarn Audit also scans embedded Gradle-plugin lockfiles and
-                // fails on the temporary Kotlin plugin lockfile.
+                // The workspace pnpm audit runs separately. Disable these
+                // API-backed checks here: Yarn Audit also scans temporary
+                // lockfiles embedded in Gradle plugins.
                 enabled = false
+                yarnEnabled = false
+                pnpmEnabled = false
             }
         }
     }
