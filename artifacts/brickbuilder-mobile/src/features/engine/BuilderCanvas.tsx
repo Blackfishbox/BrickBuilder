@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link2, TriangleAlert, Cloud } from "lucide-react";
+import { Link2, TriangleAlert, Cloud, MousePointer2 } from "lucide-react";
 import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
   BoxGeometry,
@@ -85,6 +85,7 @@ interface BuilderCanvasProps {
   toolMode: ToolMode;
   onPlace: (position: Position3) => void;
   onSelect: (id: string | null) => void;
+  onViewPartTap?: (id: string) => void;
   onMove: (id: string, position: Position3, transform?: Affine) => void;
   onMoveGroup?: (ids: readonly string[], delta: Position3) => void;
 }
@@ -302,6 +303,7 @@ export class FallbackRenderer {
 }
 
 const geometryCache = new Map<BrickType, BufferGeometry>();
+const VIEW_TAP_MAX_DURATION_MS = 400;
 
 function polygonPath(context: CanvasRenderingContext2D, points: ProjectedPoint[]): void {
   if (!points.length) return;
@@ -389,6 +391,7 @@ export function BuilderCanvas({
   toolMode,
   onPlace,
   onSelect,
+  onViewPartTap,
   onMove,
   onMoveGroup,
 }: BuilderCanvasProps) {
@@ -427,6 +430,9 @@ export function BuilderCanvas({
     count: number; uncertain: boolean; pending: boolean; failed: boolean; progress: CollisionProgress | null;
   }>({ count: 0, uncertain: false, pending: false, failed: false, progress: null });
   const [toggleToast, setToggleToast] = useState("");
+  const [autoSelectOnTap, setAutoSelectOnTap] = useState(true);
+  const autoSelectOnTapRef = useRef(true);
+  autoSelectOnTapRef.current = autoSelectOnTap;
   useEffect(() => {
     if (!toggleToast) return;
     const timer = setTimeout(() => setToggleToast(""), 2200);
@@ -509,6 +515,7 @@ export function BuilderCanvas({
     toolMode,
     onPlace,
     onSelect,
+    onViewPartTap,
     onMove,
     onMoveGroup,
   });
@@ -519,7 +526,7 @@ export function BuilderCanvas({
   const cameraOnlyRef = useRef(false);
   const cameraInteractionStartRef = useRef<{ theta: number; phi: number } | null>(null);
   const dragRef = useRef<DragCandidate | null>(null);
-  const clickRef = useRef<{ id: number; start: PointerPoint; moved: boolean } | null>(
+  const clickRef = useRef<{ id: number; start: PointerPoint; moved: boolean; startedAt: number } | null>(
     null,
   );
   const cameraStateRef = useRef({
@@ -555,6 +562,7 @@ export function BuilderCanvas({
     toolMode,
     onPlace,
     onSelect,
+    onViewPartTap,
     onMove,
     onMoveGroup,
   };
@@ -1345,7 +1353,7 @@ export function BuilderCanvas({
 
       const cameraState = cameraStateRef.current;
       cameraInteractionStartRef.current = { theta: cameraState.theta, phi: cameraState.phi };
-      clickRef.current = { id: event.pointerId, start: point, moved: false };
+      clickRef.current = { id: event.pointerId, start: point, moved: false, startedAt: performance.now() };
       const current = propsRef.current;
       const hit = current.toolMode === "view" ? null : findBrick(point);
       if (current.toolMode === "select") {
@@ -1522,6 +1530,15 @@ export function BuilderCanvas({
         } else if (current.toolMode === "select" && !drag && click && !click.moved) {
           const hit = findBrick(point);
           current.onSelect(hit?.id ?? null);
+        } else if (
+          current.toolMode === "view" &&
+          autoSelectOnTapRef.current &&
+          click &&
+          !click.moved &&
+          performance.now() - click.startedAt < VIEW_TAP_MAX_DURATION_MS
+        ) {
+          const hit = findBrick(point);
+          if (hit) current.onViewPartTap?.(hit.id);
         }
       }
 
@@ -1620,6 +1637,22 @@ export function BuilderCanvas({
         <Cloud size={20} aria-hidden="true" />
       </button>
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
+    </div>}
+    {toolMode === "view" && <div className="absolute bottom-2 left-2 z-10">
+      <button type="button" data-testid="button-view-tap-select-toggle"
+        className={`min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectOnTap
+          ? darkMode ? "border-orange-400 bg-stone-800 text-orange-300" : "border-orange-600 bg-white/95 text-orange-700"
+          : darkMode ? "border-stone-600 bg-stone-800 text-stone-100" : "border-stone-200 bg-white/95 text-stone-800"}`}
+        aria-label={autoSelectOnTap ? "Tippen wählt Teil aus" : "Tippen zum Auswählen deaktiviert"}
+        aria-pressed={autoSelectOnTap}
+        title={autoSelectOnTap ? "Kurzes Tippen wählt ein Teil aus" : "Kurzes Tippen wählt kein Teil aus"}
+        onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+        onClick={() => {
+          setAutoSelectOnTap(!autoSelectOnTap);
+          setToggleToast(`Tippen-Auswahl ${autoSelectOnTap ? "inaktiv" : "aktiv"}`);
+        }}>
+        <MousePointer2 size={20} aria-hidden="true" />
+      </button>
     </div>}
     {(sceneStatus || renderWarning || compatibilityHint) && <div
       role="status"

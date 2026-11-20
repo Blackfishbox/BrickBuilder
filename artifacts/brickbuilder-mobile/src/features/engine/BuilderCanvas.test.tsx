@@ -1162,9 +1162,9 @@ describe("frame-coalesced drag transactions", () => {
     expect(onMoveGroup.mock.calls[0][1].z).toBeGreaterThan(0);
   });
   async function mount(toolMode: ToolMode = "select") {
-    const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn();
+    const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn(), onViewPartTap = vi.fn();
     const props = { projectId: "one", bricks: [], imported: model, selectedId: model.instances[0].id,
-      selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode, onMove, onSelect, onPlace: vi.fn() };
+      selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode, onMove, onSelect, onViewPartTap, onPlace: vi.fn() };
     act(() => { root.render(<BuilderCanvas {...props} />); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     host = element.querySelector("[data-testid='canvas-3d']")!;
@@ -1172,6 +1172,42 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene).toBeDefined();
     return { model, onMove, props, point: pickPoint() };
   }
+  it("selects a part after a short, stationary tap in view mode", async () => {
+    const { props, point, model } = await mount("view");
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+
+    expect(props.onViewPartTap).toHaveBeenCalledWith(model.instances[0].id);
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(props.onMove).not.toHaveBeenCalled();
+  });
+  it("keeps long presses in view mode while allowing camera orbit", async () => {
+    const { props, point } = await mount("view");
+    const cameraBefore = observed.camera!.position.clone();
+    pointer("pointerdown", point.x, point.y);
+    await new Promise(resolve => setTimeout(resolve, 420));
+    pointer("pointermove", point.x + 30, point.y + 15);
+    pointer("pointerup", point.x + 30, point.y + 15);
+
+    expect(props.onViewPartTap).not.toHaveBeenCalled();
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(observed.camera!.position.equals(cameraBefore)).toBe(false);
+  });
+  it("allows disabling view-mode tap selection with its icon toggle", async () => {
+    const { props, point } = await mount("view");
+    const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-view-tap-select-toggle']")!;
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.querySelector("svg")).not.toBeNull();
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onViewPartTap).not.toHaveBeenCalled();
+
+    act(() => root.render(<BuilderCanvas {...props} toolMode="select" />));
+    expect(element.querySelector("[data-testid='button-view-tap-select-toggle']")).toBeNull();
+  });
   it("preserves the user's zoom when the selection controls resize the canvas", async () => {
     await mount("view");
     const gesture = vi.spyOn(cameraGestures, "cameraGesture");

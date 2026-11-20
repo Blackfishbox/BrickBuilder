@@ -10,9 +10,10 @@ import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
 
 const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
 
-const { editor, getStorageOverview } = vi.hoisted(() => ({
+const { editor, getStorageOverview, canvasProps } = vi.hoisted(() => ({
   editor: {} as Record<string, any>,
   getStorageOverview: vi.fn(),
+  canvasProps: { current: {} as Record<string, any> },
 }));
 
 vi.mock("@/features/editor/useBuilder", () => ({ useBuilder: () => editor }));
@@ -28,8 +29,10 @@ vi.mock("@/features/catalog/client", () => ({
   previewInventory: vi.fn(),
 }));
 vi.mock("@/features/engine/BuilderCanvas", () => ({
-  default: ({ showConstructionControls }: { showConstructionControls?: boolean }) =>
-    <div data-testid="mock-canvas" data-construction-controls={String(showConstructionControls)} />,
+  default: (props: { showConstructionControls?: boolean; [key: string]: any }) => {
+    canvasProps.current = props;
+    return <div data-testid="mock-canvas" data-construction-controls={String(props.showConstructionControls)} />;
+  },
 }));
 vi.mock("@/features/parts/PartsLibrary", () => ({ default: () => <div>Teilekatalog</div> }));
 vi.mock("@/features/catalog/EvidencedColorPicker", () => ({ default: () => <div>Farbauswahl</div> }));
@@ -57,6 +60,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.clearAllMocks();
+  canvasProps.current = {};
   Object.defineProperty(window, "innerWidth", { configurable: true, value: oldWidth });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: oldHeight });
 });
@@ -138,6 +142,17 @@ async function mount(theme: "light" | "dark", withSelection = false) {
 }
 
 const documentRef = globalThis.document;
+
+it("switches to selection mode and selects a tapped part from the view canvas", async () => {
+  await mount("light");
+  const onViewPartTap = canvasProps.current.onViewPartTap as (id: string) => void;
+  expect(onViewPartTap).toBeTypeOf("function");
+
+  act(() => onViewPartTap("imported-part-17"));
+
+  expect(editor.setToolMode).toHaveBeenCalledWith("select");
+  expect(editor.select).toHaveBeenCalledWith("imported-part-17");
+});
 
 it("hides the canvas status controls for every open mobile selection menu", async () => {
   const container = await mount("light", true);

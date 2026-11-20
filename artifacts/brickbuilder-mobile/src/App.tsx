@@ -351,7 +351,7 @@ function App() {
               {!instructionsOpen && <BuilderCanvas
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
-                 darkMode={theme === 'dark'}
+                darkMode={theme === 'dark'}
                 bricks={editor.bricks}
                 imported={editor.imported}
                 selectedId={editor.selectedId}
@@ -361,6 +361,10 @@ function App() {
                 toolMode={editor.toolMode}
                 onPlace={editor.place}
                 onSelect={editor.select}
+                onViewPartTap={(id) => {
+                  editor.setToolMode('select');
+                  editor.select(id);
+                }}
                 onMove={editor.move}
                 onMoveGroup={editor.moveGroup}
               />}
