@@ -190,6 +190,7 @@ describe("rendered vector surface regressions", () => {
     const makeTriangle = (points: number[], color: string) => {
       const geometry = new BufferGeometry();
       geometry.setAttribute("position", new Float32BufferAttribute(points, 3));
+      geometry.setAttribute("normal", new Float32BufferAttribute([0, 0, 1, 0, 1, 1, 1, 0, 1], 3));
       return new Mesh(geometry, new MeshLambertMaterial({ color, side: DoubleSide }));
     };
     const objects = [
@@ -215,6 +216,9 @@ describe("rendered vector surface regressions", () => {
       expect(segmentedSvg).toContain('<svg x="');
       expect(segmentedSvg.match(/<svg x="/g)).toHaveLength(4);
       expect(segmentedSvg).not.toContain("<image");
+      const ids = [...segmentedSvg.matchAll(/id="([^"]+)"/g)].map(match => match[1]);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.every(id => /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(id))).toBe(true);
       expect(segmented).toEqual(reference);
 
       Object.defineProperty(SVG_LIMITS, "faces", { value: originalLimit, configurable: true });

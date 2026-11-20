@@ -255,7 +255,8 @@ async function renderSvgTile(
   // Reuse only identical projected vectors, never an affine approximation of a
   // perspective instance. References preserve painter order and alpha layering.
   const reused = new Map<string, string>();
-  const idPrefix = tile.key ? `${tile.key}-` : "";
+  // XML IDs must start with a letter; tile paths themselves are numeric.
+  const idPrefix = tile.key ? `segment-${tile.key}-` : "";
   let batch = "", batchKey = "", batchStyle = "";
   const flush = () => {
     if (batch) bytes.append(`<path d="${batch}"${batchStyle}/>`);

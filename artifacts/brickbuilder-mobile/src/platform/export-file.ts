@@ -70,5 +70,6 @@ export async function exportFile(bytes: ByteSource, filename: string, mime: stri
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url; anchor.download = filename; anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  // Large mobile downloads may take longer to start reading the Blob URL.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

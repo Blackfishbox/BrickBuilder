@@ -5,6 +5,8 @@ import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { exportFile } from "./export-file";
 import { renderSvgView } from "../features/engine/svg-view-export";
+import { SVG_LIMITS } from "../features/engine/svg-export-buffer";
+import { svgCompatibilityFixture } from "../../test-fixtures/svg-compatibility";
 import { largeSvgModel } from "../../test-fixtures/large-svg-model";
 import { collectByteSource } from "../types/byte-source";
 
@@ -116,5 +118,30 @@ describe("local Android exports", () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     expect(await blob.text()).toBe('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L1 0L0 1Z"/></svg>');
     expect(click).toHaveBeenCalledOnce();
+  });
+
+  it("downloads the renderer's segmented SVG as one parseable browser file", async () => {
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
+    const fixture = svgCompatibilityFixture();
+    const originalLimit = SVG_LIMITS.faces;
+    Object.defineProperty(SVG_LIMITS, "faces", { value: 3, configurable: true });
+    const createObjectURL = vi.fn().mockReturnValue("blob:segmented-svg");
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      await exportFile(
+        renderSvgView(fixture.roots, fixture.camera, fixture.width, fixture.height),
+        "view.svg",
+        "image/svg+xml",
+      );
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      const xml = new DOMParser().parseFromString(await blob.text(), "image/svg+xml");
+      expect(xml.querySelector("parsererror")).toBeNull();
+      expect(xml.querySelectorAll("svg > svg").length).toBeGreaterThan(0);
+      expect(xml.documentElement.localName).toBe("svg");
+    } finally {
+      Object.defineProperty(SVG_LIMITS, "faces", { value: originalLimit, configurable: true });
+      fixture.dispose();
+    }
   });
 });
