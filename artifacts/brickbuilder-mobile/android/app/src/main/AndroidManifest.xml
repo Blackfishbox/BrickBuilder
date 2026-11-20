@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="false"
@@ -38,7 +39,5 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
-    <!-- Assets are local. No network, storage or account permissions required. -->
+    <!-- Network access is used only for opt-in LDraw geometry downloads. -->
 </manifest>

@@ -52,8 +52,13 @@ export function inspectFile(path: string, bytes: Uint8Array, origin: typeof OFFI
     if (!/^(?:\d+|0x2[0-9a-f]{6})$/i.test(tokens[1])) throw new Error("Ungültige Geometriefarbe.");
     const count = type === 1 ? 12 : type === 2 ? 6 : type === 3 ? 9 : 12;
     const values = tokens.slice(2, 2 + count);
+    const trailing = tokens.slice(2 + count).map(Number);
+    // BrickLink Studio custom triangle meshes append three UV pairs after XYZ.
+    // They are nonstandard LDraw attributes, so validate and ignore them safely.
+    const studioTriangleUv = type === 3 && trailing.length === 6 &&
+      trailing.every(value => Number.isFinite(value) && Math.abs(value) <= 1e7);
     if (values.length !== count || values.some(v => !Number.isFinite(Number(v)) || Math.abs(Number(v)) > 1e7) ||
-        (type !== 1 && tokens.length !== count + 2)) throw new Error("Ungültige Geometriezeile.");
+        (type !== 1 && tokens.length !== count + 2 && !studioTriangleUv)) throw new Error("Ungültige Geometriezeile.");
     if (type === 1) normalizeReference(tokens.slice(14).join(" "));
   }
   return { path, content, sourceUrl: `${origin}${path}`, author, license };

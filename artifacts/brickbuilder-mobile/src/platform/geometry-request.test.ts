@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { requestGeometry } from "./geometry-request";
+import { GEOMETRY_API } from "../features/privacy/geometry-consent";
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("requests the API from the current app origin", async () => {
   const response = new Response("geometry");
@@ -16,6 +17,19 @@ it("requests the API from the current app origin", async () => {
     credentials: "omit",
     referrerPolicy: "no-referrer",
   }));
+});
+
+it("uses the approved first-party API from Android with CORS", async () => {
+  vi.stubEnv("VITE_NATIVE_ANDROID", "true");
+  const response = new Response("geometry");
+  const fetchMock = vi.fn().mockResolvedValue(response);
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(requestGeometry("parts/18591.dat")).resolves.toBe(response);
+  expect(fetchMock).toHaveBeenCalledWith(
+    `${GEOMETRY_API}/ldraw/file?path=parts%2F18591.dat`,
+    expect.objectContaining({ mode: "cors", credentials: "omit", referrerPolicy: "no-referrer" }),
+  );
 });
 
 it("retries through XHR and preserves API integrity headers when fetch is blocked", async () => {

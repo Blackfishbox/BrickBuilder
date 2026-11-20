@@ -124,6 +124,7 @@ describe("approved recursive acquisition", () => {
   it("requires original accepted licenses and credits, finite geometry, and safe dependencies", () => {
     for (const text of [licensed().replace("CC BY 4.0", "CC BY 2.0"), "<html>error</html>",
       licensed().replace("Test Author", ""), licensed("3 16 NaN 0 0 1 0 0 0 1 0"),
+      licensed("3 16 0 0 0 20 0 0 0 20 0 0.1 0.2 0.3"),
       licensed(ref("../bad.dat")), licensed("9 nonsense")]) {
       expect(() => inspectFile("parts/test.dat", encode(text))).toThrow();
     }
@@ -158,6 +159,17 @@ describe("approved recursive acquisition", () => {
     expect(roundtrip.resources["parts/network-root.dat"].sha256).toBe(model.resources["parts/network-root.dat"].sha256);
     expect(roundtrip.retrievalSnapshots![0].graph).toEqual(model.retrievalSnapshots![0].graph);
     expect(roundtrip.originalBytes).toEqual(model.originalBytes);
+  });
+  it("renders Studio custom triangles that append UV coordinates", async () => {
+    const triangle = "3 16 0 0 0 20 0 0 0 20 0 -0.1 0.2 0.3 0.4 0.5 0.6";
+    expect(inspectFile("parts/studio-uv-triangle.dat", encode(licensed(triangle))).content).toContain(triangle);
+    vi.stubGlobal("fetch", serve({ "parts/studio-uv-triangle.dat": licensed(triangle) }));
+    const doc = await importLDraw(encode(ref("studio-uv-triangle.dat")), "studio-uv.ldr");
+    const model = doc.imported!;
+    expect(model.instances[0].part.status).toBe("resolved");
+    const surfaces = compilePart(model, "studio-uv-triangle.dat", "4");
+    expect(surfaces[0].positions).toHaveLength(9);
+    expect(surfaces[0].normals).toHaveLength(9);
   });
   it("never overwrites installed or project geometry and needs no service for complete local roots", async () => {
     const doc = createEmptyDocument();

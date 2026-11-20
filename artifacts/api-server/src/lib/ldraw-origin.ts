@@ -38,6 +38,9 @@ export function allowedLDrawOrigin(
       .map(parseOrigin)
       .filter((value): value is string => Boolean(value)),
   );
+  // Capacitor Android uses this exact WebView origin (androidScheme: https).
+  // The endpoint only serves public, verified LDraw files and does not accept writes.
+  allowed.add("https://localhost");
   for (const domain of [
     environment.REPLIT_DEV_DOMAIN,
     ...(environment.REPLIT_DOMAINS ?? "").split(","),

@@ -86,8 +86,17 @@ export function compilePart(model: ImportedModel, reference: string, color: stri
         visit(child, multiply(matrix, ref.matrix), ref.color === "16" ? currentColor : ref.color, [...stack, path]);
       } else if (["2", "3", "4"].includes(type)) {
         const expected = type === "2" ? 6 : type === "3" ? 9 : 12;
-        const values = tokens.slice(2).map(Number);
-        if (values.length !== expected || values.some(v => !Number.isFinite(v) || Math.abs(v) > 1e7)) throw new Error(`Ungültige Geometriezeile: ${path}`);
+        const values = tokens.slice(2, expected + 2).map(Number);
+        const trailing = tokens.slice(expected + 2).map(Number);
+        // Studio custom meshes append three UV pairs to type-3 triangle records.
+        // UVs are not part of LDraw's geometry; retain the source and render the
+        // standard triangle coordinates while validating the extension strictly.
+        const hasStudioTriangleUv = type === "3" && trailing.length === 6 &&
+          trailing.every(v => Number.isFinite(v) && Math.abs(v) <= 1e7);
+        if (values.length !== expected || (tokens.length !== expected + 2 && !hasStudioTriangleUv) ||
+            values.some(v => !Number.isFinite(v) || Math.abs(v) > 1e7)) {
+          throw new Error(`Ungültige Geometriezeile: ${path}`);
+        }
         const code = tokens[1] === "16" || tokens[1] === "24" ? currentColor : tokens[1];
         let surface = surfaces.get(code);
         if (!surface) { surface = { colorCode: code, positions: [], edges: [] }; surfaces.set(code, surface); }

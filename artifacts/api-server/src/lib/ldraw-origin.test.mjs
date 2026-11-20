@@ -21,6 +21,10 @@ describe("LDraw browser origin allowlist", () => {
     );
   });
 
+  it("allows the exact HTTPS Capacitor Android WebView origin", () => {
+    assert.equal(allowedLDrawOrigin("https://localhost"), "https://localhost");
+  });
+
   it("rejects unlisted origins and origin lookalikes", () => {
     const environment = { REPLIT_DEV_DOMAIN: "preview.example.replit.dev" };
     for (const origin of [
