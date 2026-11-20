@@ -34,8 +34,11 @@ allprojects {
     dependencyCheck {
         failBuildOnCVSS = 0.0
         formats = ['HTML', 'JSON']
-        // Gate release dependencies, not Gradle/plugin tooling or test-only
-        // libraries that are not packaged in the Android application.
+        // Scan the exact dependency graph packaged in the Android release.
+        // The Android Gradle plugin also creates internal UTP configurations
+        // that are not named "test" and are not covered by skipTestGroups.
+        scanProjects = [':app']
+        scanConfigurations = ['releaseRuntimeClasspath']
         scanBuildEnv = false
         skipTestGroups = true
         analyzers {
