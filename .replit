@@ -21,7 +21,7 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
-packages = ["jdk21"]
+packages = ["jdk21", "inkscape", "librsvg"]
 
 [[ports]]
 localPort = 8080

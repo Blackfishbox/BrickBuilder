@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import {
   BackSide, BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Group, InstancedMesh,
   Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Vector3,
 } from "three";
 import { renderView, type ViewExportProgress } from "./view-export";
 import { SVG_LIMITS, SvgBytes, SvgFaces } from "./svg-export-buffer";
+import { Resvg } from "@resvg/resvg-js";
+import { renderSvgView } from "./svg-view-export";
+import { svgCompatibilityFixture, svgCompatibilitySamples } from "../../../test-fixtures/svg-compatibility";
 
 function fixture(count = 1) {
   const geometry = new BufferGeometry();
@@ -19,6 +23,34 @@ function fixture(count = 1) {
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 describe("bounded progressive SVG export", () => {
+  it("renders the external compatibility fixture with reused colors, alpha, depth order and clipped paths", async () => {
+    const scene = svgCompatibilityFixture();
+    try {
+      const bytes = await renderSvgView(scene.roots, scene.camera, scene.width, scene.height);
+      const svg = decode(bytes);
+      expect(svg).toBe((await readFile(new URL("../../../test-fixtures/svg-compatibility.svg", import.meta.url), "utf8")).trimEnd());
+      expect(await renderSvgView(scene.roots, scene.camera, scene.width, scene.height)).toEqual(bytes);
+      const definitions = [...svg.matchAll(/<path id="([^"]+)" d="([^"]+)"/g)];
+      const uses = [...svg.matchAll(/<use href="#([^"]+)"[^>]*\/>/g)];
+      expect(uses.length).toBeGreaterThanOrEqual(4);
+      expect(new Set(definitions.map(match => match[1])).size).toBe(definitions.length);
+      for (const use of uses) expect(definitions.some(def => def[1] === use[1])).toBe(true);
+      // Two coincident layers really reference the same vectors, not copied paths.
+      expect(uses.some((use, i) => uses.slice(i + 1).some(other => other[1] === use[1] && other[0] !== use[0]))).toBe(true);
+      expect(svg).not.toMatch(/<image|<rect|<foreignObject|data:image/);
+      const { pixels } = new Resvg(svg).render();
+      for (const sample of svgCompatibilitySamples) {
+        const offset = (sample.y * scene.width + sample.x) * 4;
+        sample.rgba.forEach((expected, channel) => {
+          if (sample.rgba[3] === 0 && channel < 3) return;
+          // resvg exposes premultiplied RGBA, unlike decoded PNG samples.
+          const actual = channel < 3 ? pixels[offset + channel] * 255 / pixels[offset + 3] : pixels[offset + channel];
+          expect(Math.abs(actual - expected), sample.name).toBeLessThanOrEqual(2);
+        });
+      }
+    } finally { scene.dispose(); }
+  });
+
   it("keeps the raised SVG workload and memory ceilings explicit", () => {
     expect(SVG_LIMITS).toMatchObject({
       faces: 900_000,

@@ -73,6 +73,84 @@ pnpm --filter @workspace/brickbuilder-mobile test
 pnpm --filter @workspace/brickbuilder-mobile run typecheck
 ```
 
+## External SVG compatibility check
+
+The small, public fixture
+[`svg-compatibility.svg`](../artifacts/brickbuilder-mobile/test-fixtures/svg-compatibility.svg)
+is actual `renderSvgView` output, not hand-authored substitute markup. The
+ordinary `svg-view-export.test.ts` suite regenerates it from
+`test-fixtures/svg-compatibility.ts`, checks byte-for-byte determinism (ignoring
+the text file's final newline), resolves every `<use href>` against a unique
+path definition, and rasterizes it with resvg against independent pixel
+expectations. Reused definitions carry no fill: the individual uses supply red,
+green or translucent blue.
+
+### Repeat the external check
+
+From the repository root, with `inkscape`, `chromium`, `rsvg-convert`,
+ImageMagick's `identify` and `convert`, and the normal pnpm dependencies on PATH:
+
+```sh
+pnpm --filter @workspace/brickbuilder-mobile run check:svg-compatibility
+```
+
+Inkscape and librsvg are included in the workspace's Nix packages. Chromium and
+ImageMagick are supplied by this development environment; elsewhere install
+them separately. No external tool is required by the normal unit tests.
+The external check fails explicitly on a missing program, timeout, nonzero
+exit, unexpected image size or incorrect pixel. It does not skip a missing
+renderer. It opens the same generated file independently in:
+
+- Inkscape's own headless SVG importer/PNG exporter, using the page bounds and
+  zero background opacity;
+- Chromium's headless standalone SVG viewer, at 320 × 240 and device scale 1,
+  with a transparent browser background;
+- `rsvg-convert`, the GNOME/librsvg rendering engine, as an additional check.
+
+ImageMagick **only decodes the resulting PNGs**; it never renders the SVG.
+The executable commands and flags are in
+`artifacts/brickbuilder-mobile/scripts/check-svg-compatibility.ts`. Output is
+written to ignored `generated-artifacts/svg-compatibility/`: `reference.svg`,
+three PNGs, and `report.json` with actual tool versions, SHA-256, and every
+expected/observed RGBA sample. All outputs are local; nothing is uploaded.
+
+For a manual repeat, open `reference.svg` directly in Inkscape and Chromium.
+Use Inkscape's page checkerboard, or place a temporary background below the
+artwork (do not save that background into the fixture). At the top, the left
+triangle is purple (blue at 50% over opaque red); the right one is translucent
+blue-green (blue at 50% over green at 50%). The yellow lower-left polygon is
+clipped at the left and bottom page edges. The cyan lower-right polygon has a
+flat lower edge where the near camera plane cut away its tip. Empty areas must
+remain transparent; inspect against both light and dark backgrounds.
+
+### Recorded result
+
+The check passed with Inkscape **1.4.2** (ebf0e940d0, 2025-05-08), Chromium
+**155.0.8059.79**, and librsvg **2.60.0**. The 777-byte generated SVG has SHA-256
+`01b03de548c3fd0761290786f9440b5b6d6cb6b66f821f56b9be672c9d51848f`
+(without the committed text fixture's trailing newline).
+
+| Pixel (x, y) | Checks | Expected straight RGBA | Observed in all three |
+| --- | --- | --- | --- |
+| 160, 120 | Transparent background | alpha 0 | alpha 0 |
+| 40, 40 | Reused red/blue path, correct depth order | 128, 0, 128, 255 | 127, 0, 128, 255 |
+| 200, 40 | Reused green/blue path, two transparent layers | 0, 85, 170, 191 | 0, 85, 170, 192 |
+| 2, 165 | Viewport-clipped yellow polygon | 255, 255, 0, 255 | exact |
+| 240, 165 | Retained near-plane-clipped cyan polygon | 0, 255, 255, 255 | exact |
+| 240, 210 | Removed cyan tip | alpha 0 | alpha 0 |
+
+Two levels of 8-bit rounding tolerance are allowed. RGB under alpha zero is
+undefined and intentionally not compared (Inkscape writes white there).
+resvg exposes premultiplied pixels, so the ordinary unit test unpremultiplies
+before comparing these straight-RGBA expectations. The scene submits near blue
+before far red/green, so simply preserving traversal order fails the check.
+
+These versions accept SVG 2 `href` directly; no duplicate `xlink:href` or
+exporter change was needed. This is a small-fixture import/render check using
+the actual programs in headless mode, **not** an interactive editor
+round-trip, a large-model performance test, a gradient qualification, or a
+promise about every SVG editor/version.
+
 ## Enforced budgets
 
 - 10,000,000 input triangles.
@@ -106,7 +184,8 @@ model may need hidden parts or PNG even when its input count is below 900,000.
 The uploaded vehicle screenshot was inspected as visual evidence only. Its model
 and original SVG were not provided, so this is not a reproduction of that exact
 vehicle or a claim about the cause of every mark in that screenshot. No physical
-Android testing or external vector-editor qualification was performed.
+Android testing was performed. External SVG compatibility is limited to the
+small fixture and exact program versions described above.
 
 SVG's vector diffuse/Gouraud approximation is not identical to WebGL's fragment
 lighting, transparency sorting or antialiasing. Perspective variation of lighting
