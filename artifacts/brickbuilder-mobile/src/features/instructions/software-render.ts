@@ -10,6 +10,7 @@ import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlig
 import { applyPdfStepCamera } from "./camera";
 
 const MAX_TRIANGLES = 120_000;
+export const INSTRUCTION_RENDER_SIZE = { width: 2000, height: 1520 } as const;
 interface Face { id: string; points: Float32Array; color: string; alpha: number }
 
 /**
@@ -17,7 +18,7 @@ interface Face { id: string; points: Float32Array; color: string; alpha: number 
  * Refuse the export above a bounded CPU budget instead of omitting surfaces.
  */
 export async function createSoftwareInstructionRenderer(document: BuilderDocument, signal?: AbortSignal,
-  size: { width: number; height: number; minRadius?: number } = { width: 1000, height: 760, minRadius: 1 }): Promise<InstructionImageRenderer> {
+  size: { width: number; height: number; minRadius?: number } = { ...INSTRUCTION_RENDER_SIZE, minRadius: 1 }): Promise<InstructionImageRenderer> {
   const canvas = globalThis.document.createElement("canvas");
   canvas.width = size.width; canvas.height = size.height;
   const width = canvas.width, height = canvas.height, aspect = width / height;
@@ -117,7 +118,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           const groups = groupInstructionHighlights(highlightOccurrences, new Set(outlines.keys()));
           drawInstructionOutlines(context, camera, instructionGroupBounds(groups, outlines), width, height);
         }
-        return canvas.toDataURL("image/jpeg", 0.84);
+        return canvas.toDataURL("image/jpeg", 0.9);
       },
       dispose,
     };

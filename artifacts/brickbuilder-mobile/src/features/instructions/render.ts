@@ -8,7 +8,7 @@ import { brickTransformMatrix } from "../editor/brick-transform";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
 import type { InstructionStep } from "./types";
-import { createSoftwareInstructionRenderer } from "./software-render";
+import { createSoftwareInstructionRenderer, INSTRUCTION_RENDER_SIZE } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
 import { applyPdfStepCamera } from "./camera";
@@ -73,7 +73,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     return createSoftwareInstructionRenderer(document, signal);
   }
   renderer.setPixelRatio(1);
-  renderer.setSize(1000, 760);
+  renderer.setSize(INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
   renderer.setClearColor("#ffffff");
   const scene = new Scene(), pivot = new Group(), assembly = new Group();
   scene.add(pivot); pivot.add(assembly);
@@ -85,7 +85,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   const brickColors = new Map<string, Color>();
   const brickMaterials = new Map<string, MeshLambertMaterial>();
   const output = globalThis.document.createElement("canvas");
-  output.width = 1000; output.height = 760;
+  output.width = INSTRUCTION_RENDER_SIZE.width; output.height = INSTRUCTION_RENDER_SIZE.height;
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
@@ -108,7 +108,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
     const radius = bounds.isEmpty() ? 2 : Math.max(1, bounds.getSize(new Vector3()).length() / 2);
     assembly.position.sub(center);
-    const aspect = 1000 / 760;
+    const aspect = INSTRUCTION_RENDER_SIZE.width / INSTRUCTION_RENDER_SIZE.height;
     camera.left = -radius * 1.12 * aspect; camera.right = -camera.left;
     camera.top = radius * 1.12; camera.bottom = -camera.top;
     camera.far = Math.max(100, radius * 12);
@@ -182,10 +182,11 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
             });
           });
           const groups = groupInstructionHighlights(highlightOccurrences, new Set([...highlightIds].filter(id => visible.has(id))));
-          drawInstructionOutlines(context, camera, instructionGroupBounds(groups, boxes), 1000, 760);
-          return output.toDataURL("image/jpeg", 0.84);
+          drawInstructionOutlines(context, camera, instructionGroupBounds(groups, boxes),
+            INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
+          return output.toDataURL("image/jpeg", 0.9);
         }
-        return renderer.domElement.toDataURL("image/jpeg", 0.84);
+        return renderer.domElement.toDataURL("image/jpeg", 0.9);
       },
       dispose() {
         if (imported) disposeImportedScene(imported);

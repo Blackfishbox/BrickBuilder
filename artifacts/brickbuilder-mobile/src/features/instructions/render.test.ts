@@ -8,14 +8,14 @@ import { parseLDraw } from "../formats/ldraw/parser";
 import { createInstructionRenderer } from "./render";
 import { exportInstructionPDF } from "./pdf";
 
-const { frames, rendererDispose, forceContextLoss } = vi.hoisted(() => ({
-  frames: vi.fn(), rendererDispose: vi.fn(), forceContextLoss: vi.fn(),
+const { frames, rendererDispose, forceContextLoss, rendererSetSize } = vi.hoisted(() => ({
+  frames: vi.fn(), rendererDispose: vi.fn(), forceContextLoss: vi.fn(), rendererSetSize: vi.fn(),
 }));
 vi.mock("three", async importOriginal => {
   const three = await importOriginal<typeof import("three")>();
   return { ...three, WebGLRenderer: class {
     domElement = { toDataURL: () => "data:image/jpeg;base64,webgl" };
-    setPixelRatio() {} setSize() {} setClearColor() {}
+    setPixelRatio() {} setSize(width: number, height: number) { rendererSetSize(width, height); } setClearColor() {}
     dispose() { rendererDispose(); }
     forceContextLoss() { forceContextLoss(); }
     render(scene: Scene, camera: Camera) {
@@ -45,6 +45,7 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
   const webgl = await createInstructionRenderer(document);
   const software = await createSoftwareInstructionRenderer(document);
   try {
+    expect(rendererSetSize).toHaveBeenLastCalledWith(2000, 1520);
     for (const rotation of [[0, 0, 0], [20, 65, -15]] as [number, number, number][]) {
       const ids = new Set(document.bricks.map(brick => brick.id));
       const step = { id: "s", title: "", notes: "", partIds: [...ids], rotation };
@@ -64,7 +65,7 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
         for (let index = 0; index < positions.count; index += 3) {
           webglFaces.push([0, 1, 2].flatMap(offset => {
             const point = new Vector3().fromBufferAttribute(positions, index + offset).applyMatrix4(object.matrixWorld).project(camera);
-            return [(point.x + 1) * 500, (1 - point.y) * 380];
+            return [(point.x + 1) * 1000, (1 - point.y) * 760];
           }));
         }
         flat.dispose();
@@ -89,6 +90,18 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
   } finally { webgl.dispose(); software.dispose(); }
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+
+it("uses print-resolution dimensions for the software PDF renderer", async () => {
+  const canvas = { width: 0, height: 0, getContext: () => ({
+    fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
+  }), toDataURL: () => "data:image/jpeg;base64,software" };
+  vi.stubGlobal("document", { createElement: () => canvas });
+  const renderer = await createSoftwareInstructionRenderer(createEmptyDocument());
+  try {
+    expect(canvas.width).toBe(2000);
+    expect(canvas.height).toBe(1520);
+  } finally { renderer.dispose(); }
+});
 
 it("unions imported material batches before outlining groups in the WebGL PDF path", async () => {
   const document = createEmptyDocument();
