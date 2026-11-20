@@ -169,7 +169,20 @@ jobs:
             echo "::error::Missing GitHub Actions secret NVD_API_KEY. Add a free key from https://nvd.nist.gov/developers/request-an-api-key in the repository Actions secrets."
             exit 1
           fi
-          bash gradlew --no-daemon --max-workers=2 dependencyCheckAggregate
+          for attempt in 1 2 3; do
+            echo "OWASP dependency scan attempt ${attempt}/3"
+            if timeout --signal=TERM --kill-after=30s 720s \
+              bash gradlew --no-daemon --max-workers=2 dependencyCheckAggregate; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              delay=$((attempt * 90))
+              echo "The advisory scan did not complete; retrying after ${delay}s without bypassing the CVE gate."
+              sleep "$delay"
+            fi
+          done
+          echo "::error::OWASP dependency scan failed after three attempts. The release remains blocked."
+          exit 1
       - name: Upload Android dependency security reports
         if: always()
         uses: actions/upload-artifact@v4
