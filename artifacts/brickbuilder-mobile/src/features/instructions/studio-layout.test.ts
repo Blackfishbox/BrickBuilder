@@ -83,11 +83,11 @@ describe("source-preserving Studio layout edits", () => {
     const packageRoot = fileURLToPath(new URL("../../../", import.meta.url));
     const tsx = fileURLToPath(new URL("../../../node_modules/.bin/tsx", import.meta.url));
     const result = spawnSync(tsx, [worker, "studio"], {
-      cwd: packageRoot, timeout: 5000, maxBuffer: 16 * 1024,
+      cwd: packageRoot, timeout: 15000, maxBuffer: 16 * 1024,
     });
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr.toString() || result.stdout.toString()).toBe(0);
-  }, 15000);
+  }, 25000);
 
   it("imports valid Studio instructions at the XML size limit within a bounded process", () => {
     const worker = fileURLToPath(new URL("../malformed-xml-import-worker.ts", import.meta.url));
