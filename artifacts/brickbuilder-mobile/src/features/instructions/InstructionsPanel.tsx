@@ -13,6 +13,7 @@ import StudioLayoutEditor from "./StudioLayoutEditor";
 import StepPartsBox from "./StepPartsBox";
 import { instructionHighlightIds } from "./callouts";
 import "./instructions.css";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface Props {
   document: BuilderDocument;
@@ -29,6 +30,7 @@ const STEP_WINDOW = 30;
 const noop = () => undefined;
 
 export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF }: Props) {
+  const { t } = useI18n();
   const plan = useMemo(() => effectiveInstructions(document), [document]);
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -52,10 +54,13 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   // Lookup tables are built once per document, not per render of each row.
   const parts = useMemo(() => {
     const map = new Map<string, PartInfo>();
-    for (const b of document.bricks) map.set(b.id, { id: b.id, label: BRICK_DEFINITIONS[b.type]?.label ?? b.type, color: b.color });
+    for (const b of document.bricks) {
+      const builtin = b.type === "brick-2x4" ? "brick.classic" : b.type === "brick-2x2" ? "brick.square" : b.type === "brick-1x2" ? "brick.narrow" : undefined;
+      map.set(b.id, { id: b.id, label: builtin ? t(builtin) : BRICK_DEFINITIONS[b.type]?.label ?? b.type, color: b.color });
+    }
     for (const p of document.imported?.instances ?? []) map.set(p.id, { id: p.id, label: p.part.name ?? p.reference, color: p.color?.hex ?? "#c8c3b4" });
     return map;
-  }, [document]);
+  }, [document, t]);
   const stepOf = useMemo(() => {
     const map = new Map<string, number>();
     plan.steps.forEach((s, i) => s.partIds.forEach(id => map.set(id, i)));
@@ -136,7 +141,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
 
   const addStep = () => {
     const steps = [...saveAngleDraft(plan.steps)];
-    steps.splice(current + 1, 0, { id: crypto.randomUUID(), title: `Schritt ${current + 2}`, notes: "", partIds: [] });
+    steps.splice(current + 1, 0, { id: crypto.randomUUID(), title: t("instruction.stepNumber", { number: current + 2 }), notes: "", partIds: [] });
     commit(steps);
     setIndex(current + 1);
     setConfirmDelete(false);
@@ -201,7 +206,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       controller.signal.throwIfAborted();
       await onExportPDF(exportPlan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
     } catch (error) {
-      if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : "PDF-Export fehlgeschlagen.");
+      if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : t("format.exportError"));
     } finally {
       abortRef.current = null;
       setExporting(null);
@@ -213,44 +218,44 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const stepWindow = plan.steps.slice(from, from + STEP_WINDOW);
 
   return (
-    <div className="ins-shell" role="dialog" aria-modal="true" aria-label="Bauanleitung bearbeiten" data-testid="panel-instructions">
+    <div className="ins-shell" role="dialog" aria-modal="true" aria-label={t("instruction.dialog")} data-testid="panel-instructions">
       <header className="ins-head">
         <div className="ins-head-title">
-          <small>Bauanleitung</small>
-          <strong data-testid="text-instructions-summary">{plan.steps.length} Schritte · {total} Teile</strong>
+          <small>{t("instruction.title")}</small>
+          <strong data-testid="text-instructions-summary">{t("instruction.summary", { steps: plan.steps.length, parts: total })}</strong>
         </div>
-        <button className="ins-primary" onClick={exportPdf} disabled={!!exporting || total === 0} aria-label="Anleitung als PDF exportieren" data-testid="button-instructions-export-pdf">
+        <button className="ins-primary" onClick={exportPdf} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
           <FileDown size={16} /> PDF
         </button>
-        <button className="ins-icon" onClick={onClose} aria-label="Anleitung schließen" data-testid="button-instructions-close"><X size={18} /></button>
+        <button className="ins-icon" onClick={onClose} aria-label={t("instruction.close")} data-testid="button-instructions-close"><X size={18} /></button>
       </header>
 
       {exporting && (
         <div className="ins-banner" role="status" data-testid="status-instructions-export">
           <LoaderCircle size={15} className="spin" />
-          <span>PDF wird erstellt: {exporting.done} / {exporting.total}</span>
+          <span>{t("instruction.exporting", { done: exporting.done, total: exporting.total })}</span>
           <div className="ins-bar"><i style={{ transform: `scaleX(${exporting.total ? exporting.done / exporting.total : 0})` }} /></div>
-          <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">Abbrechen</button>
+          <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">{t("inventory.cancel")}</button>
         </div>
       )}
       {exportError && (
         <div className="ins-banner is-error" role="alert" data-testid="status-instructions-export-error">
           <span>{exportError}</span>
-          <button className="ins-ghost" onClick={exportPdf} data-testid="button-instructions-export-retry">Erneut versuchen</button>
-          <button className="ins-ghost" onClick={() => setExportError(null)} aria-label="Fehlermeldung schließen" data-testid="button-instructions-export-dismiss"><X size={14} /></button>
+          <button className="ins-ghost" onClick={exportPdf} data-testid="button-instructions-export-retry">{t("inventory.retry")}</button>
+          <button className="ins-ghost" onClick={() => setExportError(null)} aria-label={t("common.close")} data-testid="button-instructions-export-dismiss"><X size={14} /></button>
         </div>
       )}
 
       <div className="ins-body">
-        <section className="ins-preview" aria-label={`Vorschau bis ${step.title || `Schritt ${current + 1}`}`}>
+        <section className="ins-preview" aria-label={`${t("format.preview")} ${t("instruction.stepNumber", { number: current + 1 })}: ${step.title}`}>
           <StepPartsBox document={document} partIds={step.partIds} callouts={step.callouts} paused={Boolean(exporting)} />
           <div className="ins-model">
           {exporting ? (
-            <div className="ins-empty" role="status">PDF wird erzeugt. Die 3D-Vorschau wird dafür kurz pausiert.</div>
+            <div className="ins-empty" role="status">{t("instruction.previewPaused")}</div>
           ) : total === 0 ? (
             <div className="ins-empty" data-testid="text-instructions-empty">
-              <strong>Noch keine Teile</strong>
-              <span>Baue oder importiere ein Modell. Neue Teile landen automatisch im letzten Schritt.</span>
+              <strong>{t("instruction.emptyModel")}</strong>
+              <span>{t("instruction.emptyHint")}</span>
             </div>
           ) : (
             <BuilderCanvas
@@ -277,26 +282,26 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             />
           )}
           <div className="ins-stepper">
-            <button className="ins-icon" onClick={() => go(current - 1)} disabled={current === 0} aria-label="Vorheriger Schritt" data-testid="button-instructions-prev"><ChevronLeft size={20} /></button>
+            <button className="ins-icon" onClick={() => go(current - 1)} disabled={current === 0} aria-label={t("instruction.previous")} data-testid="button-instructions-prev"><ChevronLeft size={20} /></button>
             <label className="ins-jump">
-              <span className="sr-only">Schrittnummer</span>
+              <span className="sr-only">{t("instruction.stepNumberField")}</span>
               <input type="number" inputMode="numeric" min={1} max={plan.steps.length} value={current + 1}
                 onChange={e => { const n = Number(e.target.value); if (Number.isFinite(n) && n >= 1) go(n - 1); }}
                 data-testid="input-instructions-step-number" />
               <span>/ {plan.steps.length}</span>
             </label>
-            <button className="ins-icon" onClick={() => go(current + 1)} disabled={current === plan.steps.length - 1} aria-label="Nächster Schritt" data-testid="button-instructions-next"><ChevronRight size={20} /></button>
+            <button className="ins-icon" onClick={() => go(current + 1)} disabled={current === plan.steps.length - 1} aria-label={t("instruction.next")} data-testid="button-instructions-next"><ChevronRight size={20} /></button>
           </div>
           </div>
         </section>
 
         <section className="ins-side">
-          <nav className="ins-strip" aria-label="Schritte">
+          <nav className="ins-strip" aria-label={t("instruction.steps")}>
             {stepWindow.map((s, k) => {
               const i = from + k;
               return (
                 <button key={s.id} className={i === current ? "is-active" : ""} onClick={() => go(i)} aria-current={i === current ? "step" : undefined}
-                  aria-label={`${s.title || `Schritt ${i + 1}`}, ${s.partIds.length} Teile`} data-testid={`button-instructions-step-${s.id}`}>
+                  aria-label={t("instruction.stepLabel", { title: s.title || t("instruction.stepNumber", { number: i + 1 }), count: s.partIds.length })} data-testid={`button-instructions-step-${s.id}`}>
                   <b>{i + 1}</b><small>{s.partIds.length}</small>
                 </button>
               );
@@ -306,66 +311,66 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           <div className="ins-card">
             <button className="ins-ghost ins-highlight" aria-pressed={highlight}
               onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
-              Neue Teile hervorheben: {highlight ? "Ein" : "Aus"}
+              {t("instruction.highlight", { state: highlight ? t("instruction.on") : t("instruction.off") })}
             </button>
             <div className="ins-row">
               <label className="ins-field ins-grow">
-                <span>Titel</span>
+                <span>{t("instruction.stepTitle")}</span>
                 <input value={step.title} maxLength={160} onChange={e => patchStep({ title: e.target.value })} data-testid="input-instructions-step-title" />
               </label>
             </div>
             <label className="ins-field">
-              <span>Hinweise</span>
-              <textarea rows={2} value={step.notes} maxLength={2000} onChange={e => patchStep({ notes: e.target.value })} placeholder="Zum Beispiel: Achse zuerst einstecken" data-testid="input-instructions-step-notes" />
+              <span>{t("instruction.notes")}</span>
+              <textarea rows={2} value={step.notes} maxLength={2000} onChange={e => patchStep({ notes: e.target.value })} placeholder={t("instruction.notesExample")} data-testid="input-instructions-step-notes" />
             </label>
             <fieldset className="ins-rot">
-              <legend>Ansicht drehen (Grad)</legend>
+              <legend>{t("instruction.rotateView")}</legend>
               {(["X", "Y", "Z"] as const).map((axis, a) => (
                 <label key={axis} className="ins-field">
                   <span>{axis}</span>
                   <input type="text" inputMode="decimal" value={angleDrafts[angleDraftKey(step.id, a)] ?? String(rotation[a])}
                     onChange={e => setRotationDraft(step.id, a, e.target.value)} onBlur={e => commitAngleField(step.id, a, e.currentTarget.value)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    aria-label={`Drehung ${axis} in Grad`} data-testid={`input-instructions-rotation-${axis.toLowerCase()}`} />
+                    aria-label={t("instruction.rotationAxis", { axis })} data-testid={`input-instructions-rotation-${axis.toLowerCase()}`} />
                 </label>
               ))}
               {(step.rotation || rotation.some(angle => Math.abs(angle) > 0.0001)) && (
-                <button className="ins-ghost" onClick={resetRotation} data-testid="button-instructions-rotation-reset">Zurücksetzen</button>
+                <button className="ins-ghost" onClick={resetRotation} data-testid="button-instructions-rotation-reset">{t("instruction.resetRotation")}</button>
               )}
             </fieldset>
-            <p className="ins-hint">Die X-/Y-/Z-Werte zeigen die aktuelle Schrittansicht. Touch-Drehungen werden übernommen; Zoom und Verschiebung bleiben getrennt pro Schritt gespeichert. Vorschau, PDF und BrickBuilder-Schrittdaten verwenden dieselbe Ansicht. Geänderte Schritte erhalten beim MPD-/IO-Export vorkommensspezifische Untermodelle und eingebettete Flächen. IO-Seiten werden einfach neu erzeugt; originale Studio-Daten bleiben als Sicherung erhalten. Eine verlustfreie Studio-Seitengestaltung ist nicht zugesichert.</p>
+            <p className="ins-hint">{t("instruction.cameraInfo")}</p>
             <div className="ins-actions">
-              <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> Schritt danach</button>
-              <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label="Schritt nach vorne verschieben" data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
-              <button className="ins-ghost" onClick={() => moveStep(1)} disabled={current === plan.steps.length - 1} aria-label="Schritt nach hinten verschieben" data-testid="button-instructions-move-down"><ArrowDown size={15} /></button>
+              <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> {t("instruction.addStep")}</button>
+              <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label={t("instruction.moveEarlier")} data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
+              <button className="ins-ghost" onClick={() => moveStep(1)} disabled={current === plan.steps.length - 1} aria-label={t("instruction.moveLater")} data-testid="button-instructions-move-down"><ArrowDown size={15} /></button>
               {confirmDelete ? (
                 <span className="ins-confirm">
-                  <button className="ins-danger" onClick={deleteStep} data-testid="button-instructions-delete-confirm">Löschen</button>
-                  <button className="ins-ghost" onClick={() => setConfirmDelete(false)} data-testid="button-instructions-delete-cancel">Nein</button>
+                  <button className="ins-danger" onClick={deleteStep} data-testid="button-instructions-delete-confirm">{t("instruction.delete")}</button>
+                  <button className="ins-ghost" onClick={() => setConfirmDelete(false)} data-testid="button-instructions-delete-cancel">{t("instruction.no")}</button>
                 </span>
               ) : (
                 <button className="ins-ghost is-danger" onClick={() => setConfirmDelete(true)} disabled={plan.steps.length < 2}
-                  aria-label="Schritt löschen, Teile gehen an den Nachbarschritt" data-testid="button-instructions-delete-step"><Trash2 size={15} /></button>
+                  aria-label={t("instruction.deleteStep")} data-testid="button-instructions-delete-step"><Trash2 size={15} /></button>
               )}
             </div>
-            {confirmDelete && <p className="ins-hint">{step.partIds.length} Teile werden in {current > 0 ? `Schritt ${current}` : "den folgenden Schritt"} verschoben.</p>}
+            {confirmDelete && <p className="ins-hint">{t("instruction.deleteParts", { count: step.partIds.length, target: current > 0 ? t("instruction.stepNumber", { number: current }) : t("instruction.followingStep") })}</p>}
           </div>
 
           <div className="ins-card ins-parts">
             <div className="ins-tabs" role="tablist">
-              <button role="tab" aria-selected={scope === "step"} onClick={() => { setScope("step"); setLimit(PAGE); }} data-testid="tab-instructions-step-parts">In diesem Schritt ({step.partIds.length})</button>
-              <button role="tab" aria-selected={scope === "all"} onClick={() => { setScope("all"); setLimit(PAGE); }} data-testid="tab-instructions-all-parts">Alle Teile ({total})</button>
+              <button role="tab" aria-selected={scope === "step"} onClick={() => { setScope("step"); setLimit(PAGE); }} data-testid="tab-instructions-step-parts">{t("instruction.inThisStep", { count: step.partIds.length })}</button>
+              <button role="tab" aria-selected={scope === "all"} onClick={() => { setScope("all"); setLimit(PAGE); }} data-testid="tab-instructions-all-parts">{t("instruction.allParts", { count: total })}</button>
             </div>
-            <input className="ins-search" type="search" value={query} onChange={e => { setQuery(e.target.value); setLimit(PAGE); }} placeholder="Teil suchen" aria-label="Teile filtern" data-testid="input-instructions-part-search" />
+            <input className="ins-search" type="search" value={query} onChange={e => { setQuery(e.target.value); setLimit(PAGE); }} placeholder={t("instruction.searchPart")} aria-label={t("instruction.filterParts")} data-testid="input-instructions-part-search" />
             {selected.size > 0 && (
               <div className="ins-selbar" data-testid="status-instructions-selection">
-                <span>{selected.size} ausgewählt</span>
-                <button className="ins-primary" onClick={() => assign([...selected], current)} data-testid="button-instructions-assign-selected">Zu Schritt {current + 1}</button>
-                <button className="ins-ghost" onClick={() => setSelected(new Set())} data-testid="button-instructions-clear-selection">Aufheben</button>
+                <span>{t("instruction.selected", { count: selected.size })}</span>
+                <button className="ins-primary" onClick={() => assign([...selected], current)} data-testid="button-instructions-assign-selected">{t("instruction.assignTo", { number: current + 1 })}</button>
+                <button className="ins-ghost" onClick={() => setSelected(new Set())} data-testid="button-instructions-clear-selection">{t("instruction.clearSelection")}</button>
               </div>
             )}
             {listed.length === 0 ? (
-              <p className="ins-hint" data-testid="text-instructions-no-parts">{query ? "Keine Treffer." : scope === "step" ? "Dieser Schritt hat noch keine Teile. Wechsle zu \u201eAlle Teile\u201c, um welche zuzuordnen." : "Keine Teile vorhanden."}</p>
+              <p className="ins-hint" data-testid="text-instructions-no-parts">{query ? t("instruction.noResults") : scope === "step" ? t("instruction.emptyStep") : t("instruction.noPartsAvailable")}</p>
             ) : (
               <ul className="ins-list">
                 {listed.slice(0, limit).map(id => {
@@ -373,12 +378,12 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
                   return (
                     <li key={id} className={selected.has(id) ? "is-selected" : ""}>
                       <label>
-                        <input type="checkbox" checked={selected.has(id)} onChange={() => toggle(id)} aria-label={`${p?.label ?? id} auswählen`} data-testid={`checkbox-instructions-part-${id}`} />
+                         <input type="checkbox" checked={selected.has(id)} onChange={() => toggle(id)} aria-label={t("instruction.chooseName", { name: p?.label ?? id })} data-testid={`checkbox-instructions-part-${id}`} />
                         <i style={{ background: p?.color }} />
-                        <span><b>{p?.label ?? id}</b><small>Schritt {owner + 1}</small></span>
+                         <span><b>{p?.label ?? id}</b><small>{t("instruction.ownedBy", { number: owner + 1 })}</small></span>
                       </label>
                       {owner !== current && (
-                        <button className="ins-ghost" onClick={() => assign([id], current)} aria-label={`${p?.label ?? id} zu Schritt ${current + 1} verschieben`} data-testid={`button-instructions-assign-${id}`}>Hierher</button>
+                         <button className="ins-ghost" onClick={() => assign([id], current)} aria-label={t("instruction.movePartTo", { name: p?.label ?? id, number: current + 1 })} data-testid={`button-instructions-assign-${id}`}>{t("instruction.moveHere")}</button>
                       )}
                     </li>
                   );
@@ -386,10 +391,10 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
               </ul>
             )}
             {listed.length > limit && (
-              <button className="ins-ghost ins-more" onClick={() => setLimit(l => l + PAGE)} data-testid="button-instructions-more-parts">Weitere {Math.min(PAGE, listed.length - limit)} von {listed.length - limit} anzeigen</button>
+              <button className="ins-ghost ins-more" onClick={() => setLimit(l => l + PAGE)} data-testid="button-instructions-more-parts">{t("instruction.showMore", { shown: Math.min(PAGE, listed.length - limit), total: listed.length - limit })}</button>
             )}
             {listed.length > 0 && (
-              <button className="ins-ghost ins-more" onClick={() => setSelected(new Set(listed.slice(0, limit)))} data-testid="button-instructions-select-visible">Angezeigte auswählen</button>
+              <button className="ins-ghost ins-more" onClick={() => setSelected(new Set(listed.slice(0, limit)))} data-testid="button-instructions-select-visible">{t("instruction.selectVisible")}</button>
             )}
           </div>
 
@@ -399,8 +404,8 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           )}
           {(plan.source === "studio" || document.imported?.format === "io") && (
             <p className="ins-note" data-testid="text-instructions-studio-note"><Info size={14} /> {plan.studioLayout
-              ? "Studio-Seitenlayouts lassen sich oben über einzelne Attribute anpassen (Sperre, Schrittversatz, Bilder, globale Callout-Stile). Der IO-Export lehnt es ab, Layoutänderungen mit geänderten Schritten oder Modelländerungen zu kombinieren. Speichere als JSON, um beides zu behalten."
-              : "Für dieses Modell liegen keine lesbaren Studio-Seitenlayouts vor. Bearbeitet werden nur Schrittfolge, Teilezuordnung, Texte und Drehung."}</p>
+              ? t("instruction.studioNoteEdited")
+              : t("instruction.studioNoteMissing")}</p>
           )}
           {plan.warnings.length > 0 && (
             <ul className="ins-note" data-testid="list-instructions-warnings">{plan.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>

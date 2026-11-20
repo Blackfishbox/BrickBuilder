@@ -7,6 +7,7 @@ import InventoryThumbnail from './InventoryThumbnail';
 import { MAX_LIST_BYTES, MAX_ROWS, type Inventory, type InventoryChoice, type InventoryPreview, type InventoryRow } from './types';
 import './inventory.css';
 import { importFileAccept } from '@/platform/import-file';
+import { useI18n } from '@/i18n/I18nProvider';
 
 const PAGE = 30;
 export const CSV_TEMPLATE = `part_id,color_id,quantity
@@ -24,16 +25,17 @@ interface Props {
 
 type Pick = { ldrawId?: string; colorCode?: string };
 
-function rowIssue(row: InventoryRow, res: InventoryPreview['resolutions'][string] | undefined): string | null {
-  if (row.itemType !== 'P') return `Typ ${row.itemType} ist kein Einzelteil und nicht platzierbar.`;
-  if (!res) return `BrickLink ${row.partId}: Zuordnung wird noch geprüft.`;
-  if (!res.parts.length && !res.colors.length) return `BrickLink ${row.partId} und Farbe ${row.colorId} sind im Katalog unbekannt.`;
-  if (!res.parts.length) return `BrickLink ${row.partId}: kein LDraw-Teil bekannt.`;
-  if (!res.colors.length) return `BrickLink-Farbe ${row.colorId}: keine LDraw-Farbe bekannt.`;
+function rowIssue(row: InventoryRow, res: InventoryPreview['resolutions'][string] | undefined, t: ReturnType<typeof useI18n>['t']): string | null {
+  if (row.itemType !== 'P') return t('inventory.invalidType', { type: row.itemType });
+  if (!res) return t('inventory.mappingPending', { id: row.partId });
+  if (!res.parts.length && !res.colors.length) return t('inventory.unknownPartColor', { part: row.partId, color: row.colorId });
+  if (!res.parts.length) return t('inventory.unknownPart', { id: row.partId });
+  if (!res.colors.length) return t('inventory.unknownColor', { id: row.colorId });
   return null;
 }
 
 export default function InventoryPanel({ document, selected, onSelect, onSpread, onReplace, onSelected }: Props) {
+  const { t } = useI18n();
   const inventory = document.inventory;
   const projectId = document.id;
   const counts = useMemo(() => allocatedCounts(document), [document]);
@@ -83,9 +85,9 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     if (!file) return;
     retryFile.current = file;
     const my = ++token.current; const pid = projectId;
-    setImportError(''); setImportStatus('Datei wird gelesen …'); setPreview(null);
-    if (!/\.(xml|csv)$/i.test(file.name)) { setImportError('Nur .xml (BrickLink) oder .csv werden unterstützt.'); return; }
-    if (file.size > MAX_LIST_BYTES) { setImportError('Teileliste ist größer als 2 MiB.'); return; }
+    setImportError(''); setImportStatus(t('inventory.reading')); setPreview(null);
+    if (!/\.(xml|csv)$/i.test(file.name)) { setImportError(t('inventory.onlyFormats')); return; }
+    if (file.size > MAX_LIST_BYTES) { setImportError(t('inventory.tooLarge')); return; }
     setImporting(true);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -94,7 +96,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
           if (mounted.current && my === token.current) setImportStatus(message);
         }),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Der Import hat nach 90 Sekunden nicht geantwortet. Prüfe den Teilekatalog und versuche es erneut. Die bisherige Teileliste bleibt unverändert.')), 90_000);
+          timer = setTimeout(() => reject(new Error(t('inventory.timeout'))), 90_000);
         }),
       ]);
       if (!mounted.current || my !== token.current || pid !== projectRef.current) return;
@@ -103,20 +105,20 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     } catch (e) {
       if (!mounted.current || my !== token.current || pid !== projectRef.current) return;
       const message = e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e || 'Unbekannter Fehler');
-      setImportError(`„${file.name}“ konnte nicht importiert werden: ${message}`);
+      setImportError(t('inventory.failedFile', { file: file.name, reason: message }));
     } finally {
       if (timer) clearTimeout(timer);
       if (mounted.current && my === token.current) setImporting(false);
     }
   };
 
-  const cancelImport = () => { token.current++; setImporting(false); setPreview(null); setImportError(''); setImportStatus('Import abgebrochen. Die bisherige Teileliste bleibt unverändert.'); if (fileRef.current) fileRef.current.value = ''; };
+  const cancelImport = () => { token.current++; setImporting(false); setPreview(null); setImportError(''); setImportStatus(t('inventory.importCancelled')); if (fileRef.current) fileRef.current.value = ''; };
 
   const confirmImport = () => {
     if (!preview) return;
     try {
       onReplace(preview.inventory, previewProjectRef.current);
-      setImportStatus(`${preview.inventory.rows.length} Positionen mit ${preview.inventory.rows.reduce((sum, row) => sum + row.quantity, 0)} Teilen übernommen. Die Liste wird automatisch auf diesem Gerät gespeichert.`);
+      setImportStatus(t('inventory.importSuccess', { rows: preview.inventory.rows.length, parts: preview.inventory.rows.reduce((sum, row) => sum + row.quantity, 0) }));
       setPreview(null); setPicks({}); setPage(0); setQuery('');
       if (fileRef.current) fileRef.current.value = '';
     } catch (e) { setImportError(e instanceof Error ? e.message : String(e)); }
@@ -126,7 +128,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     try {
       const { exportFile } = await import('@/platform/export-file');
       await exportFile(new TextEncoder().encode(CSV_TEMPLATE), 'teileliste-vorlage.csv', 'text/csv');
-    } catch (e) { setImportError(e instanceof Error ? e.message : 'Vorlage konnte nicht gespeichert werden.'); }
+    } catch (e) { setImportError(e instanceof Error ? e.message : t('inventory.templateFailed')); }
   };
 
   const rows = inventory?.rows ?? [];
@@ -162,9 +164,9 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     try {
       const result = await onSpread(spreadRequests, setSpreadProgress, controller.signal);
       const message = [
-        `${result.placed} Teile auf der Baufläche verteilt.`,
-        result.skipped ? `${result.skipped} wegen nicht geladener Geometrie übersprungen; diese Teile bleiben verfügbar.` : '',
-        result.deferred ? `${result.deferred} weitere bleiben für den nächsten Durchgang verfügbar.` : '',
+        t('inventory.spreadPlaced', { count: result.placed }),
+        result.skipped ? t('inventory.spreadSkipped', { count: result.skipped }) : '',
+        result.deferred ? t('inventory.spreadDeferred', { count: result.deferred }) : '',
       ].filter(Boolean);
       const detailLimit = 3;
       const details = result.failures.slice(0, detailLimit).map(failure => {
@@ -172,13 +174,13 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
         const shortReason = reason.length > 160 ? `${reason.slice(0, 157)}…` : reason;
         return `${failure.ldrawId} (${failure.quantity}): ${shortReason}`;
       });
-      if (result.failures.length > detailLimit) details.push(`und ${result.failures.length - detailLimit} weitere Geometrien`);
-      if (details.length) message.push(`Fehlerdetails: ${details.join('; ')}.`);
+      if (result.failures.length > detailLimit) details.push(t('inventory.spreadOtherGeometry', { count: result.failures.length - detailLimit }));
+      if (details.length) message.push(t('inventory.spreadFailureDetails', { details: details.join('; ') }));
       setSpreadMessage(message.join(' '));
     } catch (error) {
       setSpreadMessage(controller.signal.aborted
-        ? 'Verteilen abgebrochen. Das Modell blieb unverändert.'
-        : error instanceof Error ? `Nichts wurde platziert: ${error.message}` : 'Nichts wurde platziert. Bitte erneut versuchen.');
+        ? t('inventory.spreadCancelled')
+        : error instanceof Error ? t('inventory.spreadNothing', { reason: error.message }) : t('inventory.spreadRetry'));
     } finally {
       if (spreadController.current === controller) spreadController.current = null;
       setSpreading(false); setSpreadProgress(null);
@@ -191,7 +193,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
     try {
       const ok = await onSelect({ listId: inventory.id, rowId: row.id, ldrawId, colorCode });
       if (!mounted.current || pid !== projectRef.current) return;
-      if (ok) onSelected(); else setRowError('Teil konnte nicht geladen werden. Bitte erneut versuchen.');
+      if (ok) onSelected(); else setRowError(t('inventory.partLoadFailed'));
     } catch (e) {
       if (mounted.current) setRowError(e instanceof Error ? e.message : String(e));
     } finally { if (mounted.current) setBusyRow(''); }
@@ -202,72 +204,75 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
       <section className="inv-import">
         <div className="inv-import-head">
           <div>
-            <strong>{inventory ? inventory.name || 'Teileliste' : 'Noch keine Teileliste'}</strong>
-            <small>{inventory ? `${rows.length} Zeilen · ${rows.reduce((s, r) => s + r.quantity, 0)} Teile` : 'BrickLink-XML oder CSV, max. 2 MiB und 5000 Zeilen'}</small>
+            <strong>{inventory ? inventory.name || t('inventory.list') : t('inventory.none')}</strong>
+            <small>{inventory ? t('inventory.rows', { rows: rows.length, count: rows.reduce((s, r) => s + r.quantity, 0) }) : t('inventory.limits')}</small>
           </div>
           <label className={`inv-file ${hasAllocations ? 'disabled' : ''}`}>
-            <FileUp size={15} /> {inventory ? 'Ersetzen' : 'Importieren'}
+            <FileUp size={15} /> {inventory ? t('inventory.replace') : t('inventory.import')}
             <input ref={fileRef} type="file" accept={importFileAccept('inventory')} disabled={hasAllocations || importing}
               onClick={e => { e.currentTarget.value = ''; }}
               onChange={e => void pickFile(e.target.files?.[0])} data-testid="input-inventory-file" />
           </label>
         </div>
-        {hasAllocations && <p className="inv-note" data-testid="text-inventory-locked">Die Liste kann nicht ersetzt werden, solange Teile daraus verbaut sind. Entferne diese Teile oder beginne ein neues Projekt.</p>}
+        {hasAllocations && <p className="inv-note" data-testid="text-inventory-locked">{t('inventory.locked')}</p>}
         <div className="inv-template">
           <code>part_id,color_id,quantity<br />3001,5,2</code>
-          <button type="button" onClick={downloadTemplate} data-testid="button-inventory-template"><Download size={14} /> CSV-Vorlage</button>
+          <button type="button" onClick={downloadTemplate} data-testid="button-inventory-template"><Download size={14} /> {t('inventory.csvTemplate')}</button>
         </div>
-        {importing && <div className="inv-status" role="status"><LoaderCircle className="spin" size={15} /> {importStatus} <button type="button" onClick={cancelImport} data-testid="button-inventory-cancel-loading">Abbrechen</button></div>}
+        {importing && <div className="inv-status" role="status"><LoaderCircle className="spin" size={15} /> {importStatus} <button type="button" onClick={cancelImport} data-testid="button-inventory-cancel-loading">{t('inventory.cancel')}</button></div>}
         {!importing && !preview && !importError && importStatus && <p role="status">{importStatus}</p>}
-        {importError && <div className="inv-error" role="alert" data-testid="status-inventory-import-error">{importError}<button type="button" onClick={() => void pickFile(retryFile.current)} data-testid="button-inventory-import-retry"><RotateCw size={13} /> Erneut prüfen</button><button type="button" onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}>Andere Datei</button></div>}
+        {importError && <div className="inv-error" role="alert" data-testid="status-inventory-import-error">{importError}<button type="button" onClick={() => void pickFile(retryFile.current)} data-testid="button-inventory-import-retry"><RotateCw size={13} /> {t('inventory.retry')}</button><button type="button" onClick={() => { if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); } }}>{t('inventory.otherFile')}</button></div>}
         {preview && <ImportPreview preview={preview} onCancel={cancelImport} onConfirm={confirmImport} replacing={!!inventory} />}
       </section>
 
       {inventory && <>
-        <p className="inv-note">Die Listenfarbe ist der Ausgangswert. Du kannst Teile vor und nach dem Platzieren umfärben; der Listenbestand bleibt dabei unverändert.</p>
-        <p className="inv-note">Vollständig verbaute Positionen werden ausgeblendet. Löschen gibt sie wieder frei. Zusätzliche Steine kannst du jederzeit ohne Listenbegrenzung im Tab „LDraw-Katalog“ auswählen.</p>
-        <section className="inv-spread" aria-label="Teileliste verteilen">
+        <p className="inv-note">{t('inventory.listColor')}</p>
+        <p className="inv-note">{t('inventory.hiddenUsed')}</p>
+        <section className="inv-spread" aria-label={t('inventory.spreadAria')}>
           <div>
-            <strong>Verfügbare Teile auf der Baufläche verteilen</strong>
-            <small>Jede Einheit bleibt einzeln auswählbar. Maximal {MAX_INVENTORY_SPREAD_UNITS} Teile pro Durchgang.</small>
+            <strong>{t('inventory.spreadTitle')}</strong>
+            <small>{t('inventory.spreadInfo', { max: MAX_INVENTORY_SPREAD_UNITS })}</small>
           </div>
           <button type="button" className="inv-spread-button" disabled={!resolutions || spreading || spreadUnits === 0}
             onClick={() => void spreadRemaining()} data-testid="button-inventory-spread">
             {spreading ? <LoaderCircle className="spin" size={15} /> : null}
-            {spreading ? 'Wird verteilt …' : `Verteilen${spreadUnits ? ` (${spreadUnits})` : ''}`}
+            {spreading ? t('inventory.spreading') : `${t('inventory.spread')}${spreadUnits ? ` (${spreadUnits})` : ''}`}
           </button>
           {blockedCandidates.length > 0 && resolutions && <div className="inv-spread-issues" role="status" data-testid="status-inventory-spread-issues">
-            {blockedCandidates.length} Position{blockedCandidates.length === 1 ? '' : 'en'} nicht automatisch platzierbar:
+            {t(blockedCandidates.length === 1 ? 'inventory.unplaceable' : 'inventory.unplaceableMany', { count: blockedCandidates.length })}
             <ul>{blockedCandidates.slice(0, 8).map(candidate => <li key={candidate.rowId}>{candidate.issue}</li>)}</ul>
-            {blockedCandidates.length > 8 && <small>Weitere {blockedCandidates.length - 8} Positionen benötigen ebenfalls eine Prüfung oder Auswahl.</small>}
+            {blockedCandidates.length > 8 && <small>{t('inventory.moreNeedReview', { count: blockedCandidates.length - 8 })}</small>}
           </div>}
           {spreading && spreadProgress && <p className="inv-status" role="status" data-testid="status-inventory-spread-progress">
             <LoaderCircle className="spin" size={15} />
             {spreadProgress.stage === 'mapping'
-              ? `Zuordnungen werden geprüft … ${spreadProgress.completed} von ${spreadProgress.total}`
+              ? t('inventory.mapping', { done: spreadProgress.completed, total: spreadProgress.total })
               : spreadProgress.stage === 'geometry'
-                ? `Geometrie wird geladen … ${spreadProgress.completed} von ${spreadProgress.total}`
-                : `Teile werden verteilt … ${spreadProgress.completed} von ${spreadProgress.total}`}
-            <button type="button" onClick={() => spreadController.current?.abort()} data-testid="button-inventory-spread-cancel">Abbrechen</button>
+                ? t('inventory.geometry', { done: spreadProgress.completed, total: spreadProgress.total })
+                : t('inventory.placing', { done: spreadProgress.completed, total: spreadProgress.total })}
+            <button type="button" onClick={() => spreadController.current?.abort()} data-testid="button-inventory-spread-cancel">{t('inventory.cancel')}</button>
           </p>}
-          {spreadMessage && <p className={spreadMessage.startsWith('Nichts') ? 'inv-error' : 'inv-note'} role={spreadMessage.startsWith('Nichts') ? 'alert' : 'status'} data-testid="status-inventory-spread-result">{spreadMessage}</p>}
+          {spreadMessage && (() => {
+            const failed = spreadMessage.startsWith(t('inventory.spreadNothing', { reason: '' }));
+            return <p className={failed ? 'inv-error' : 'inv-note'} role={failed ? 'alert' : 'status'} data-testid="status-inventory-spread-result">{spreadMessage}</p>;
+          })()}
         </section>
         <div className="inv-search">
           <Search size={15} />
-          <input value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} placeholder="Name, BrickLink-Nr. oder Farbe" aria-label="Teileliste durchsuchen" data-testid="input-inventory-search" />
-          {query && <button type="button" onClick={() => setQuery('')} aria-label="Suche leeren"><X size={14} /></button>}
+          <input value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} placeholder={t('inventory.searchPlaceholder')} aria-label={t('inventory.searchLabel')} data-testid="input-inventory-search" />
+          {query && <button type="button" onClick={() => setQuery('')} aria-label={t('inventory.clearSearch')}><X size={14} /></button>}
         </div>
-        {resolveError && <div className="inv-error" role="alert">{resolveError}<button type="button" onClick={() => setResolveTick(t => t + 1)} data-testid="button-inventory-retry"><RotateCw size={13} /> Erneut</button></div>}
-        {!resolutions && !resolveError && <div className="inv-skeleton" aria-label="Zuordnungen werden geladen">{[0, 1, 2].map(i => <span key={i} />)}</div>}
+        {resolveError && <div className="inv-error" role="alert">{resolveError}<button type="button" onClick={() => setResolveTick(tick => tick + 1)} data-testid="button-inventory-retry"><RotateCw size={13} /> {t('inventory.retryAgain')}</button></div>}
+        {!resolutions && !resolveError && <div className="inv-skeleton" aria-label={t('inventory.loadingMappings')}>{[0, 1, 2].map(i => <span key={i} />)}</div>}
         {rowError && <p className="inv-error" role="alert">{rowError}</p>}
         {resolutions && (filtered.length === 0
           ? <p className="inv-empty" role="status">{availableRows.length === 0
-            ? 'Alle Teile dieser Liste sind verbaut. Wenn du ein zugehöriges Teil löschst, erscheint es hier wieder. Im LDraw-Katalog kannst du weitere Steine ergänzen.'
-            : `Keine verfügbare Zeile passt zu „${query}“.`}</p>
-          : <ul className="inv-rows" aria-label="Meine Teileliste">
+            ? t('inventory.allUsed')
+            : t('inventory.noMatch', { query })}</p>
+          : <ul className="inv-rows" aria-label={t('inventory.myList')}>
             {visible.map(row => {
               const res = resolutions[row.id];
-              const issue = rowIssue(row, res);
+              const issue = rowIssue(row, res, t);
               const used = counts.get(row.id) ?? 0;
               const left = Math.max(0, row.quantity - used);
               const pick = picks[row.id] ?? {};
@@ -286,33 +291,33 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
                     <span className="inv-chip" style={{ background: color?.hex ?? 'transparent' }} aria-hidden="true" />
                     <div className="inv-row-copy">
                       <strong>{name}</strong>
-                      <small>BL {row.partId} · Farbe {row.colorId}{color ? ` (${color.name})` : ''}</small>
+                    <small>BL {row.partId} · {t('inventory.colorLabel')} {row.colorId}{color ? ` (${color.name})` : ''}</small>
                     </div>
-                    <div className="inv-qty" aria-label={`${left} von ${row.quantity} übrig`}>
+                    <div className="inv-qty" aria-label={t('inventory.remaining', { left, total: row.quantity })}>
                       <b>{left}</b><small>/ {row.quantity}</small>
                     </div>
                   </div>
                   <div className="inv-meter"><span style={{ transform: `scaleX(${row.quantity ? used / row.quantity : 0})` }} /></div>
-                  <small className="inv-counts">Gesamt {row.quantity} · Verbaut {used} · Übrig {left}{row.sourceRows.length > 1 ? ` · ${row.sourceRows.length} Quellzeilen zusammengefasst` : ''}</small>
+                  <small className="inv-counts">{t('inventory.totalUsedLeft', { total: row.quantity, used, left })}{row.sourceRows.length > 1 ? ` · ${t('inventory.sourceRows', { count: row.sourceRows.length })}` : ''}</small>
                   {issue && <p className="inv-issue"><AlertTriangle size={13} /> {issue}</p>}
                   {!issue && res && res.parts.length > 1 && (
-                    <label className="inv-pick">LDraw-Teil wählen
+                    <label className="inv-pick">{t('inventory.chooseLdrawPart')}
                       <select value={pick.ldrawId ?? ''} onChange={e => setPicks(p => ({ ...p, [row.id]: { ...p[row.id], ldrawId: e.target.value || undefined } }))} data-testid={`select-inventory-part-${row.id}`}>
-                        <option value="">Bitte auswählen …</option>
+                        <option value="">{t('inventory.chooseOption')}</option>
                         {res.parts.map(p => <option key={p.ldrawId} value={p.ldrawId}>{p.ldrawId} – {p.name}</option>)}
                       </select>
                     </label>)}
                   {!issue && res && res.colors.length > 1 && (
-                    <label className="inv-pick">LDraw-Farbe wählen
+                    <label className="inv-pick">{t('inventory.chooseLdrawColor')}
                       <select value={pick.colorCode ?? ''} onChange={e => setPicks(p => ({ ...p, [row.id]: { ...p[row.id], colorCode: e.target.value || undefined } }))} data-testid={`select-inventory-color-${row.id}`}>
-                        <option value="">Bitte auswählen …</option>
+                        <option value="">{t('inventory.chooseOption')}</option>
                         {res.colors.map(c => <option key={c.ldrawCode} value={c.ldrawCode}>{c.ldrawCode} – {c.name}</option>)}
                       </select>
                     </label>)}
                   {!issue && (
                     <button type="button" className="inv-use" disabled={!ready || !!busyRow} onClick={() => ldrawId && colorCode && void choose(row, ldrawId, colorCode)} data-testid={`button-inventory-use-${row.id}`}>
                       {busyRow === row.id ? <LoaderCircle className="spin" size={14} /> : active ? <Check size={14} /> : null}
-                      {left === 0 ? 'Aufgebraucht' : !ldrawId || !colorCode ? 'Erst Auswahl treffen' : active ? 'Aktiv' : 'Damit bauen'}
+                      {left === 0 ? t('inventory.depleted') : !ldrawId || !colorCode ? t('inventory.chooseFirst') : active ? t('inventory.active') : t('inventory.buildWith')}
                     </button>)}
                 </li>
               );
@@ -320,17 +325,18 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
           </ul>)}
         {resolutions && pages > 1 && (
           <div className="inv-pager">
-            <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} data-testid="button-inventory-prev">Zurück</button>
-            <span>Seite {current + 1} / {pages} · {filtered.length} Zeilen</span>
-            <button type="button" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} data-testid="button-inventory-next">Weiter</button>
+            <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} data-testid="button-inventory-prev">{t('inventory.previous')}</button>
+            <span>{t('inventory.page', { current: current + 1, total: pages, rows: filtered.length })}</span>
+            <button type="button" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} data-testid="button-inventory-next">{t('inventory.next')}</button>
           </div>)}
       </>}
-      {!inventory && !preview && !importing && <div className="inv-empty-state"><strong>Baue mit deinen echten Teilen.</strong><span>Importiere deine BrickLink-Liste. Jede Platzierung zieht ein Teil vom Bestand ab, Löschen gibt es zurück.</span></div>}
+      {!inventory && !preview && !importing && <div className="inv-empty-state"><strong>{t('inventory.headline')}</strong><span>{t('inventory.explainer')}</span></div>}
     </div>
   );
 }
 
 function ImportPreview({ preview, onCancel, onConfirm, replacing }: { preview: InventoryPreview; onCancel(): void; onConfirm(): void; replacing: boolean }) {
+  const { t } = useI18n();
   const rows = preview.inventory.rows;
   const unsupported = rows.filter(r => r.itemType !== 'P');
   const unknown = rows.filter(r => r.itemType === 'P' && (!preview.resolutions[r.id]?.parts.length || !preview.resolutions[r.id]?.colors.length));
@@ -340,40 +346,40 @@ function ImportPreview({ preview, onCancel, onConfirm, replacing }: { preview: I
   const pages = Math.ceil(rows.length / PAGE);
   const current = Math.min(page, pages - 1);
   return (
-    <div className="inv-preview" role="region" aria-label="Importvorschau" data-testid="inventory-preview">
-      <p className="popover-eyebrow">VORSCHAU – NOCH NICHT ÜBERNOMMEN</p>
+    <div className="inv-preview" role="region" aria-label={t('inventory.preview')} data-testid="inventory-preview">
+      <p className="popover-eyebrow">{t('inventory.previewPending')}</p>
       <div className="inv-stats">
-        <span><b>{rows.length}</b> Zeilen</span>
-        <span><b>{rows.reduce((s, r) => s + r.quantity, 0)}</b> Teile</span>
-        <span><b>{merged.length}</b> zusammengefasst</span>
-        <span><b>{unsupported.length + unknown.length}</b> nicht platzierbar</span>
-        <span><b>{ambiguous.length}</b> mehrdeutig</span>
+        <span><b>{rows.length}</b> {t('inventory.rowsOnly')}</span>
+        <span><b>{rows.reduce((s, r) => s + r.quantity, 0)}</b> {t('format.parts')}</span>
+        <span><b>{merged.length}</b> {t('inventory.merged')}</span>
+        <span><b>{unsupported.length + unknown.length}</b> {t('inventory.unplaceableShort')}</span>
+        <span><b>{ambiguous.length}</b> {t('inventory.ambiguous')}</span>
       </div>
-      {rows.length >= MAX_ROWS && <p className="inv-note">Maximal {MAX_ROWS} Zeilen.</p>}
-      <p className="inv-note">Die Datei ist geprüft. Tippe auf „{replacing ? 'Liste ersetzen' : 'Liste übernehmen'}“, um sie im Projekt zu verwenden. Die Zeilen darunter dienen zur Kontrolle.</p>
+      {rows.length >= MAX_ROWS && <p className="inv-note">{t('inventory.maxRows', { count: MAX_ROWS })}</p>}
+      <p className="inv-note">{t('inventory.previewConfirm', { action: replacing ? t('inventory.replaceList') : t('inventory.acceptList') })}</p>
       <div className="inv-actions">
-        <button type="button" className="cancel-button" onClick={onCancel} data-testid="button-inventory-preview-cancel">Abbrechen</button>
-        <button type="button" className="confirm-button" onClick={onConfirm} data-testid="button-inventory-preview-confirm">{replacing ? 'Liste ersetzen' : 'Liste übernehmen'}</button>
+        <button type="button" className="cancel-button" onClick={onCancel} data-testid="button-inventory-preview-cancel">{t('inventory.cancel')}</button>
+        <button type="button" className="confirm-button" onClick={onConfirm} data-testid="button-inventory-preview-confirm">{replacing ? t('inventory.replaceList') : t('inventory.acceptList')}</button>
       </div>
-      <ul className="inv-preview-rows" aria-label="Geprüfte Importzeilen">
+      <ul className="inv-preview-rows" aria-label={t('inventory.checkedRows')}>
         {rows.slice(current * PAGE, current * PAGE + PAGE).map(row => {
           const res = preview.resolutions[row.id];
-          const issue = rowIssue(row, res);
+          const issue = rowIssue(row, res, t);
           return <li key={row.id}>
-            <strong>BL {row.partId} · Farbe {row.colorId} · Menge {row.quantity}</strong>
-            <span>{res?.parts.map(p => `${p.name} (LDraw ${p.ldrawId})`).join(' / ') || 'Keine belegte Geometriezuordnung'}</span>
-            <span>{res?.colors.map(c => `${c.name} (LDraw ${c.ldrawCode})`).join(' / ') || 'Keine belegte Farbzuordnung'}</span>
-            <small>Quellzeilen: {row.sourceRows.join(', ')}{row.sourceRows.length > 1 ? ' · Duplikate zusammengefasst' : ''}</small>
-            {issue && <span className="inv-issue">{issue} Prüfe die Quellnummern oder verwende ein passendes Einzelteil.</span>}
+            <strong>BL {row.partId} · {t('inventory.colorLabel')} {row.colorId} · {t('inventory.quantity')} {row.quantity}</strong>
+            <span>{res?.parts.map(p => `${p.name} (LDraw ${p.ldrawId})`).join(' / ') || t('inventory.noPartGeometryMapping')}</span>
+            <span>{res?.colors.map(c => `${c.name} (LDraw ${c.ldrawCode})`).join(' / ') || t('inventory.noColorMapping')}</span>
+            <small>{t('inventory.sourceRowsLabel')}: {row.sourceRows.join(', ')}{row.sourceRows.length > 1 ? ` · ${t('inventory.duplicatesMerged')}` : ''}</small>
+            {issue && <span className="inv-issue">{issue} {t('inventory.reviewSourceNumbers')}</span>}
           </li>;
         })}
       </ul>
       {pages > 1 && <div className="inv-pager">
-        <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>Zurück</button>
-        <span>Vorschau {current + 1} / {pages}</span>
-        <button type="button" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>Weiter</button>
+        <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>{t('inventory.previous')}</button>
+        <span>{t('inventory.previewPage', { current: current + 1, total: pages })}</span>
+        <button type="button" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>{t('inventory.next')}</button>
       </div>}
-      {ambiguous.length > 0 && <p className="inv-note">Mehrdeutige Zeilen brauchen vor dem Bauen eine ausdrückliche Teil- oder Farbauswahl.</p>}
+      {ambiguous.length > 0 && <p className="inv-note">{t('inventory.resolveAmbiguous')}</p>}
     </div>
   );
 }

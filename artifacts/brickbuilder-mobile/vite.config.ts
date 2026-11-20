@@ -43,8 +43,8 @@ export default defineConfig({
       manifest: {
         name: 'BrickBuilder Mobile',
         short_name: 'BrickBuilder',
-        description: 'Offlinefähiger 3D-Bausteineditor für Android-Smartphones.',
-        lang: 'de-DE',
+        description: 'Offline-capable 3D brick building app for Android.',
+        lang: 'en',
         start_url: basePath,
         scope: basePath,
         display: 'standalone',

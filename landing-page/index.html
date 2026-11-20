@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102b23">
-  <meta name="description" content="BrickBuilder Mobile: Klemmbausteinmodelle direkt auf Android in 3D bauen, bearbeiten und lokal speichern.">
-  <title>BrickBuilder Mobile – Deine mobile 3D-Bauwerkstatt</title>
+  <meta name="description" content="BrickBuilder Mobile: build, edit, and save brick models in 3D on Android.">
+  <title>BrickBuilder Mobile — Mobile 3D building</title>
   <style>
     :root{color-scheme:light;--forest:#102b23;--forest2:#1b4034;--cream:#f4f2e8;--paper:#fbfaf5;--ink:#24382f;--muted:#61736a;--terra:#d85d41;--line:#e3e0d5;--gold:#e3ba61}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--cream);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55}a{color:inherit}.wrap{width:min(1120px,calc(100% - 40px));margin:auto}
@@ -19,12 +19,16 @@
     @media(max-width:620px){.wrap{width:min(100% - 28px,500px)}.nav{height:66px}.nav-link{display:none}.nav-right{gap:0}.nav .button{min-height:42px;padding:0 13px;font-size:12px}.hero-grid{grid-template-columns:1fr;gap:8px;padding:54px 0 42px;text-align:center}.hero h1{margin:auto}.hero-copy{margin:18px auto 23px;font-size:16px}.hero-actions{justify-content:center}.hero-note{margin-top:15px}.hero-visual{min-height:430px}.phone{width:220px}.floating-bricks{right:4%;top:0}.section{padding:65px 0}.section-heading{margin-bottom:25px}.features{gap:10px}.feature{min-height:0;padding:17px}.feature h3{font-size:15px}.feature p{font-size:13px}.showcase{padding:58px 0}.showcase-grid,.promo-row{grid-template-columns:1fr;gap:27px}.showcase-copy{text-align:center}.ticks{max-width:380px;margin:23px auto 0;text-align:left}.promo{padding:58px 0}.promo-copy{text-align:center}.promo-art{order:2}.install{padding:58px 0}.install-card{padding:35px 20px}.footer-row{flex-direction:column;text-align:center}}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important}}
   </style>
+  <style>
+    .language-toggle{min-height:38px;padding:0 10px;border:1px solid #aebfb0;border-radius:9px;background:transparent;color:#f7f3e7;font-weight:700;cursor:pointer}
+    @media(max-width:620px){.language-toggle{margin-right:8px}}
+  </style>
 </head>
 <body>
   <header class="top">
     <div class="wrap nav">
-      <a class="brand" href="#start" aria-label="BrickBuilder Mobile Startseite"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>BrickBuilder <span style="color:#e6bd62">Mobile</span></span></a>
-      <nav class="nav-right" aria-label="Hauptnavigation"><a class="nav-link" href="#funktionen">Funktionen</a><a class="nav-link" href="#offline">Offline & lokal</a><a class="button" href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer">Bei Google Play ansehen <span aria-hidden="true">↗</span></a></nav>
+      <a class="brand" href="#start" aria-label="BrickBuilder Mobile"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>BrickBuilder <span style="color:#e6bd62">Mobile</span></span></a>
+      <nav class="nav-right" aria-label="Main navigation"><button class="language-toggle" id="language-toggle" type="button" aria-label="Switch language">Deutsch</button><a class="nav-link" href="#funktionen" data-copy="nav.features">Features</a><a class="nav-link" href="#offline" data-copy="nav.offline">Offline & local</a><a class="button" href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer" data-copy="nav.play">View on Google Play ↗</a></nav>
     </div>
   </header>
   <main id="start">
@@ -72,6 +76,137 @@
       <div class="wrap"><div class="install-card"><p class="eyebrow">Jetzt ausprobieren</p><h2>Baue deine Idee in 3D</h2><p>Installiere BrickBuilder Mobile über Google Play und beginne mit deinem nächsten Klemmbausteinmodell.</p><a class="button" href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer">BrickBuilder Mobile bei Google Play <span aria-hidden="true">↗</span></a><p class="fineprint">IO- und andere Modelldateien können je nach enthaltenen Teilen oder Zusatzdaten unterschiedlich importiert werden. Nicht unterstützte Inhalte werden nicht als vollständig kompatibel zugesichert.</p></div></div>
     </section>
   </main>
-  <footer class="footer"><div class="wrap footer-row"><span>© BrickBuilder Mobile</span><span>Eine unabhängige Bau-App für Klemmbausteinmodelle.</span><a href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer">Google Play ↗</a></div></footer>
+  <footer class="footer"><div class="wrap footer-row"><span>© BrickBuilder Mobile</span><span>Independent building app for brick models.</span><a href="privacy.html" data-copy="footer.privacy">Privacy</a><a href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer">Google Play ↗</a></div></footer>
+  <script>
+    (() => {
+      const storageKey = "brickbuilder-language";
+      const copy = {
+        en: {
+          "meta.title": "BrickBuilder Mobile — Mobile 3D building",
+          "meta.description": "BrickBuilder Mobile: build, edit, and save brick models in 3D on Android.",
+          "nav.features": "Features", "nav.offline": "Offline & local", "nav.play": "View on Google Play ↗",
+          "hero.eyebrow": "Build. Import. Create.", "hero.title": "Your ideas.<br>Built in 3D.",
+          "hero.copy": "BrickBuilder Mobile is a mobile 3D building app for brick models, with touch controls, a parts catalog, and projects stored locally.",
+          "hero.install": "Install on Google Play ↗", "hero.features": "Explore features",
+          "hero.note": "For Android · Save projects locally · No account required",
+          "section.eyebrow": "Your model, your control", "section.title": "From the first part to a finished model",
+          "section.description": "Essential building tools are designed for small touchscreens and work in portrait and landscape.",
+          "feature.1.title": "Build interactively in 3D",
+          "feature.1.copy": "Place, select, move, rotate, tilt, recolor, or delete parts. You can undo changes.",
+          "feature.2.title": "Find LDraw parts",
+          "feature.2.copy": "Search the catalog by name or part number, view previews, and choose an available color.",
+          "feature.3.title": "Import models and lists",
+          "feature.3.copy": "Import LDR, MPD, and IO models, plus BrickLink parts lists. Build from a list within its available quantities.",
+          "feature.4.title": "Create instructions",
+          "feature.4.copy": "View and edit imported building steps, see rotations in 3D, and export instructions as a PDF.",
+          "showcase.eyebrow": "Made for building on the go", "showcase.title": "A building view made for your hand",
+          "showcase.copy": "The workspace gives the model room on screen. Large controls and touch gestures make building on a phone easier.",
+          "tick.1": "Rotate the camera with one finger; zoom and pan with two fingers.",
+          "tick.2": "Save projects locally; autosave and recovery help protect your progress.",
+          "tick.3": "Use installed part packages and the app offline after the initial load.",
+          "tick.4": "View mode helps prevent accidental changes.",
+          "image.hero": "Android screenshot: a 3D model in BrickBuilder Mobile with selection and building tools",
+          "image.showcase": "BrickBuilder Mobile on Android: a 3D model with a touch-friendly toolbar",
+          "image.showcaseCaption": "Android screenshot of the mobile building workspace.",
+          "promo.eyebrow": "BrickBuilder Mobile", "promo.title": "Mobile 3D building",
+          "promo.copy": "Start your next model right on your Android phone.", "promo.play": "Open in Google Play ↗",
+          "image.promo": "BrickBuilder Mobile — Build. Import. Create.",
+          "install.eyebrow": "Try it now", "install.title": "Build your idea in 3D",
+          "install.copy": "Install BrickBuilder Mobile from Google Play and start your next brick model.",
+          "install.play": "BrickBuilder Mobile on Google Play ↗",
+          "install.note": "IO and other model files may import differently depending on their parts and additional data. Full compatibility is not guaranteed for unsupported content.",
+          "footer.description": "Independent building app for brick models.", "footer.privacy": "Privacy"
+        },
+        de: {
+          "meta.title": "BrickBuilder Mobile – Deine mobile 3D-Bauwerkstatt",
+          "meta.description": "BrickBuilder Mobile: Klemmbausteinmodelle direkt auf Android in 3D bauen, bearbeiten und lokal speichern.",
+          "nav.features": "Funktionen", "nav.offline": "Offline & lokal", "nav.play": "Bei Google Play ansehen ↗",
+          "hero.eyebrow": "Bauen. Importieren. Gestalten.", "hero.title": "Deine Ideen.<br>Direkt in 3D.",
+          "hero.copy": "BrickBuilder Mobile ist eine mobile 3D-Bauwerkstatt für Klemmbausteinmodelle – mit Touchsteuerung, Teilekatalog und lokal gespeicherten Projekten.",
+          "hero.install": "App bei Google Play installieren ↗", "hero.features": "Funktionen ansehen",
+          "hero.note": "Für Android · Projekte lokal speichern · kein Benutzerkonto erforderlich",
+          "section.eyebrow": "Dein Modell, deine Kontrolle", "section.title": "Vom ersten Stein bis zum fertigen Modell",
+          "section.description": "Die wichtigsten Bauwerkzeuge sind für kleine Touchscreens ausgelegt und funktionieren im Hoch- wie im Querformat.",
+          "feature.1.title": "Interaktiv in 3D bauen",
+          "feature.1.copy": "Teile platzieren, auswählen, verschieben, drehen, neigen, umfärben oder löschen. Änderungen lassen sich rückgängig machen.",
+          "feature.2.title": "LDraw-Teile suchen",
+          "feature.2.copy": "Teile im Katalog nach Name oder Teilenummer finden, Vorschauen ansehen und eine verfügbare Farbe auswählen.",
+          "feature.3.title": "Modelle und Listen importieren",
+          "feature.3.copy": "LDR-, MPD- und IO-Modelle sowie BrickLink-Teilelisten importieren. Teile aus einer Liste können mit ihrer verfügbaren Menge verbaut werden.",
+          "feature.4.title": "Anleitungen erstellen",
+          "feature.4.copy": "Importierte Bauschritte anzeigen und bearbeiten, Drehungen in 3D nachvollziehen und die Anleitung als PDF exportieren.",
+          "showcase.eyebrow": "Für unterwegs gemacht", "showcase.title": "Eine Bauansicht für die Hand",
+          "showcase.copy": "Die Arbeitsfläche nutzt den Bildschirm für das Modell. Große Bedienelemente und Touch-Gesten helfen beim Bauen auf dem Smartphone.",
+          "tick.1": "Mit einem Finger die Kamera drehen; mit zwei Fingern zoomen und verschieben.",
+          "tick.2": "Projekte lokal speichern; Autosave und Wiederherstellung unterstützen den Baufortschritt.",
+          "tick.3": "Installierte Teilepakete und die App nach dem Laden auch offline verwenden.",
+          "tick.4": "Ansichtsmodus schützt vor unbeabsichtigten Änderungen.",
+          "image.hero": "Android-Screenshot: ein 3D-Modell in BrickBuilder Mobile mit Auswahl- und Bauwerkzeugen",
+          "image.showcase": "BrickBuilder Mobile auf Android: 3D-Modell mit touchbedienbarer Werkzeugleiste",
+          "image.showcaseCaption": "Android-Screenshot aus der mobilen Bauansicht.",
+          "promo.eyebrow": "BrickBuilder Mobile", "promo.title": "Deine mobile 3D-Bauwerkstatt",
+          "promo.copy": "Starte dein nächstes Modell direkt auf dem Android-Smartphone.", "promo.play": "Im Google Play Store öffnen ↗",
+          "image.promo": "BrickBuilder Mobile – Bauen. Importieren. Gestalten.",
+          "install.eyebrow": "Jetzt ausprobieren", "install.title": "Baue deine Idee in 3D",
+          "install.copy": "Installiere BrickBuilder Mobile über Google Play und beginne mit deinem nächsten Klemmbausteinmodell.",
+          "install.play": "BrickBuilder Mobile bei Google Play ↗",
+          "install.note": "IO- und andere Modelldateien können je nach enthaltenen Teilen oder Zusatzdaten unterschiedlich importiert werden. Nicht unterstützte Inhalte werden nicht als vollständig kompatibel zugesichert.",
+          "footer.description": "Eine unabhängige Bau-App für Klemmbausteinmodelle.", "footer.privacy": "Datenschutz"
+        }
+      };
+      const setLanguage = (language) => {
+        const values = copy[language];
+        document.documentElement.lang = language;
+        document.title = values["meta.title"];
+        document.querySelector('meta[name="description"]').content = values["meta.description"];
+        document.querySelectorAll("[data-copy]").forEach(element => {
+          const value = values[element.dataset.copy];
+          if (value) element.textContent = value;
+        });
+        const selectors = {
+          "hero.eyebrow": ".hero .eyebrow", "hero.title": ".hero h1", "hero.copy": ".hero-copy",
+          "hero.install": ".hero-actions .button:first-child", "hero.features": ".hero-actions .secondary", "hero.note": ".hero-note",
+          "section.eyebrow": ".section-heading .eyebrow", "section.title": ".section-heading h2", "section.description": ".section-heading > p:last-child",
+          "showcase.eyebrow": ".showcase-copy .eyebrow", "showcase.title": ".showcase-copy h2", "showcase.copy": ".showcase-copy > p:not(.eyebrow)",
+          "tick.1": ".ticks li:nth-child(1) span:last-child", "tick.2": ".ticks li:nth-child(2) span:last-child",
+          "tick.3": ".ticks li:nth-child(3) span:last-child", "tick.4": ".ticks li:nth-child(4) span:last-child",
+          "image.showcaseCaption": ".caption", "promo.eyebrow": ".promo-copy .eyebrow", "promo.title": ".promo-copy h2",
+          "promo.copy": ".promo-copy > p:not(.eyebrow)", "promo.play": ".promo-copy .button",
+          "install.eyebrow": ".install .eyebrow", "install.title": ".install h2", "install.copy": ".install-card > p:not(.eyebrow):not(.fineprint)",
+          "install.play": ".install-card .button", "install.note": ".fineprint", "footer.description": ".footer-row span:nth-child(2)"
+        };
+        Object.entries(selectors).forEach(([key, selector]) => {
+          const element = document.querySelector(selector);
+          if (element && values[key]) {
+            if (key === "hero.title") element.innerHTML = values[key];
+            else element.textContent = values[key];
+          }
+        });
+        const images = {
+          "image.hero": ".phone img", "image.showcase": ".screen-card img", "image.promo": ".promo-art img"
+        };
+        Object.entries(images).forEach(([key, selector]) => {
+          const element = document.querySelector(selector);
+          if (element) element.alt = values[key];
+        });
+        const button = document.getElementById("language-toggle");
+        button.textContent = language === "en" ? "Deutsch" : "English";
+        button.setAttribute("aria-label", language === "en" ? "Switch language to German" : "Sprache auf Englisch umstellen");
+        document.querySelector(".nav-right").setAttribute("aria-label", language === "en" ? "Main navigation" : "Hauptnavigation");
+        document.querySelector(".hero-visual").setAttribute("aria-label", language === "en" ? "BrickBuilder Mobile app screenshot" : "Screenshot der mobilen BrickBuilder-App");
+      };
+      let language = "en";
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored === "de" || stored === "en") language = stored;
+      } catch {}
+      setLanguage(language);
+      document.getElementById("language-toggle").addEventListener("click", () => {
+        language = language === "en" ? "de" : "en";
+        setLanguage(language);
+        try { localStorage.setItem(storageKey, language); } catch {}
+      });
+    })();
+  </script>
 </body>
 </html>

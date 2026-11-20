@@ -71,6 +71,8 @@
   padding: 17px; background: #fbf9f1; border: 1px solid #e3dfd2; border-radius: 15px; box-shadow: 0 15px 44px rgba(34,53,47,.18);
 }
 .project-popover { max-height: min(76dvh, 590px); overflow-y: auto; }
+.language-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; margin-top: 9px; border-top: 1px solid #e5e1d5; color: #34483f; font-size: 12px; font-weight: 700; }
+.language-row select { min-height: 36px; max-width: 140px; padding: 0 9px; border: 1px solid #d8d3c7; border-radius: 8px; background: #f3f0e6; color: #263e37; font: inherit; }
 .saved-projects { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; margin-top: 10px; border-top: 1px solid #e5e1d5; }
 .saved-projects > p { margin: 0 0 3px; color: #9a6656; font: 500 9px var(--app-font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .saved-project { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 37px; padding: 0 7px; border: 0; border-radius: 7px; background: transparent; color: #33483e; cursor: pointer; text-align: left; font-size: 11px; }

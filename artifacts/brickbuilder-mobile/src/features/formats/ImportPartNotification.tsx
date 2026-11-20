@@ -3,6 +3,8 @@ import { AlertTriangle, X } from 'lucide-react';
 import type { ImportedModel } from './types';
 import { getImportPartFailures } from './import-failures';
 import './import-part-notification.css';
+import { useI18n } from '@/i18n/I18nProvider';
+import { localizedImportIssue } from './issue-message';
 
 interface Props {
   model?: ImportedModel;
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export default function ImportPartNotification({ model, dismissible = true, floating = false }: Props) {
+  const { t } = useI18n();
   const titleId = useId();
   const failures = useMemo(() => getImportPartFailures(model), [model]);
   const signature = JSON.stringify(failures);
@@ -27,24 +30,24 @@ export default function ImportPartNotification({ model, dismissible = true, floa
     >
       <div className="import-part-notification-heading">
         <AlertTriangle size={20} aria-hidden="true" />
-        <strong id={titleId}>Import unvollständig</strong>
+        <strong id={titleId}>{t('import.incomplete')}</strong>
         {dismissible && (
-          <button type="button" onClick={() => setDismissed(signature)} aria-label="Importbenachrichtigung schließen">
+          <button type="button" onClick={() => setDismissed(signature)} aria-label={t('common.close')}>
             <X size={19} aria-hidden="true" />
           </button>
         )}
       </div>
-      <p>Nicht darstellbar: {count} {count === 1 ? 'Instanz' : 'Instanzen'} · {failures.length} {failures.length === 1 ? 'Teilenummer' : 'Teilenummern'}</p>
-      <ul aria-label="Nicht importierbare Teile" tabIndex={0}>
+      <p>{t('import.notRendered')}: {count} {t(count === 1 ? 'import.instance' : 'import.instances')} · {failures.length} {t(failures.length === 1 ? 'import.partNumber' : 'import.partNumbers')}</p>
+      <ul aria-label={t('import.nonImportable')} tabIndex={0}>
         {failures.map(part => (
           <li key={part.reference.toLowerCase()}>
             <strong>LDraw {part.ldrawId} · {part.count}×</strong>
             {part.brickLinkIds.length > 0 && <span>BrickLink {part.brickLinkIds.join(', ')}</span>}
-            {part.reasons.map(reason => <span key={reason}>{reason}</span>)}
+            {part.reasonCodes.map(code => <span key={code}>{localizedImportIssue({ code, reference: part.reference }, t)}</span>)}
           </li>
         ))}
       </ul>
-      <small>Quelldaten bleiben erhalten. Es werden keine Ersatzsteine eingesetzt.</small>
+      <small>{t('import.sourcePreserved')}</small>
     </aside>
   );
 }

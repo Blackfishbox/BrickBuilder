@@ -41,6 +41,7 @@ import {
   saveProject,
   createImportedProject,
 } from "@/storage/database";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface ModelAnalysis {
   count: number;
@@ -53,6 +54,7 @@ interface AnalysisResponse extends ModelAnalysis {
 }
 
 export function useBuilder() {
+  const { t } = useI18n();
   const catalog = useCatalog();
   const [history, setHistory] = useState<HistoryState>(() =>
     createHistory(createEmptyDocument()),
@@ -301,7 +303,9 @@ export function useBuilder() {
       controller.signal.throwIfAborted();
       const resolution = preview.resolutions[row.id];
       const candidate = resolution?.parts.find(part => part.ldrawId === choice.ldrawId);
-      if (!candidate || !resolution.colors.some(color => color.ldrawCode === choice.colorCode)) throw new Error(`BrickLink ${row.partId}, Farbe ${row.colorId}: Auswahl nicht belegt. Bitte erneut auswählen.`);
+      if (!candidate || !resolution.colors.some(color => color.ldrawCode === choice.colorCode)) {
+        throw new Error(t("inventory.selectionChanged", { part: row.partId, color: row.colorId }));
+      }
       const prepared = await prepareLibraryPart({
         id: `inventory:${choice.listId}:${choice.rowId}`, packageId: "catalog",
         ldrawId: candidate.ldrawId, brickLinkId: row.partId, name: candidate.name,
@@ -311,7 +315,7 @@ export function useBuilder() {
       if (documentRef.current.id !== projectId) return false;
       requireAvailable(documentRef.current, choice);
       const color = resolveColor(choice.colorCode);
-      if (!color) throw new Error(`BrickLink-Farbe ${row.colorId}: LDraw-Farbe nicht verfügbar.`);
+      if (!color) throw new Error(t("inventory.colorUnavailable", { color: row.colorId }));
       placementRef.current = { prepared, inventory: { ...choice } };
       setPreparedPart(prepared); setSelectedInventory({ ...choice });
       setSelectedColorValue(color.hex); setSelectedColorCode(choice.colorCode);
@@ -321,15 +325,15 @@ export function useBuilder() {
       if (!controller.signal.aborted) setPartError(error instanceof Error ? error.message : String(error));
       return false;
     } finally { if (!controller.signal.aborted) setPartLoading(false); }
-  }, []);
+  }, [t]);
   const replacePartsInventory = useCallback((inventory: Inventory, expectedProjectId: string) => {
     updateDocument(document => {
-      if (document.id !== expectedProjectId) throw new Error("Projekt wurde inzwischen gewechselt.");
+      if (document.id !== expectedProjectId) throw new Error(t("project.changed"));
       return replaceInventory(document, inventory);
     });
     partControllerRef.current?.abort();
     placementRef.current = null; setPreparedPart(null); setSelectedInventory(null); setPartLoading(false);
-  }, [updateDocument]);
+  }, [t, updateDocument]);
   const cancelPartPreparation = useCallback(() => {
     partControllerRef.current?.abort();
     setPartLoading(false);
@@ -341,20 +345,20 @@ export function useBuilder() {
     signal?: AbortSignal,
   ): Promise<InventorySpreadResult> => {
     if (requests.some(request => !Number.isSafeInteger(request.quantity) || request.quantity < 1)) {
-      throw new Error("Ungültige Stückzahl für die Sammelplatzierung.");
+      throw new Error(t("inventory.quantityInvalid"));
     }
     const initial = documentRef.current;
     const projectId = initial.id;
     const initialInventory = initial.inventory;
     const inventoryId = initialInventory?.id;
-    if (!initialInventory || !inventoryId) throw new Error("Keine Teileliste mehr vorhanden.");
+    if (!initialInventory || !inventoryId) throw new Error(t("inventory.listUnavailable"));
     const assertCurrentProjectAndInventory = () => {
       const current = documentRef.current;
       if (current.id !== projectId || current.inventory !== initialInventory || current.inventory?.id !== inventoryId) {
-        throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
+        throw new Error(t("inventory.listChanged"));
       }
     };
-    if (!requests.length) throw new Error("Es gibt keine eindeutig zugeordneten, verfügbaren Teile zum Verteilen.");
+    if (!requests.length) throw new Error(t("inventory.noMappedAvailable"));
     const controller = new AbortController();
     spreadControllerRef.current?.abort();
     spreadControllerRef.current = controller;
@@ -378,14 +382,14 @@ export function useBuilder() {
         remainingLimit -= quantity;
         if (!remainingLimit) break;
       }
-      if (!accepted.length) throw new Error("Es gibt keine verfügbaren Teile zum Verteilen.");
+      if (!accepted.length) throw new Error(t("inventory.noAvailableParts"));
       for (const { choice } of accepted) {
         const row = initial.inventory!.rows.find(value => value.id === choice.rowId);
         const resolution = preview.resolutions[choice.rowId];
         if (choice.listId !== inventoryId || !row || row.itemType !== "P" ||
           !resolution?.parts.some(part => part.ldrawId === choice.ldrawId) ||
           !resolution.colors.some(color => color.ldrawCode === choice.colorCode)) {
-          throw new Error(`BL ${row?.partId ?? choice.rowId}: Zuordnung ist nicht mehr belegt. Bitte erneut prüfen.`);
+          throw new Error(t("inventory.mappingNoLongerConfirmed", { part: row?.partId ?? choice.rowId }));
         }
       }
       onProgress({ stage: "mapping", completed: accepted.length, total: accepted.length });
@@ -433,7 +437,7 @@ export function useBuilder() {
         onProgress({ stage: "placing", completed: 0, total: placed });
         updateDocument(document => {
           if (document.id !== projectId || document.inventory !== initialInventory) {
-            throw new Error("Projekt oder Teileliste wurde inzwischen gewechselt.");
+            throw new Error(t("inventory.listChanged"));
           }
           return placeInventoryBatch(document, placeable, preparedByPart);
         });
@@ -444,13 +448,13 @@ export function useBuilder() {
       signal?.removeEventListener("abort", abort);
       if (spreadControllerRef.current === controller) spreadControllerRef.current = null;
     }
-  }, [updateDocument]);
+  }, [t, updateDocument]);
 
   const place = useCallback(
     (position: Position3) => {
       if (toolMode === "delete" || partLoading) return;
       const selection = placementRef.current;
-      if (!selection) { setPartError("Bitte zuerst ein Teil aus dem LDraw-Katalog oder der Teileliste auswählen."); return; }
+       if (!selection) { setPartError(t("inventory.chooseFirst")); return; }
       try {
         let id: string | null = null;
         updateDocument(document => {
@@ -468,7 +472,7 @@ export function useBuilder() {
         setSelectedId(id); setPartError(null);
       } catch (error) { setPartError(error instanceof Error ? error.message : String(error)); }
     },
-    [selectedColor, selectedColorCode, partLoading, toolMode, updateDocument],
+    [selectedColor, selectedColorCode, partLoading, toolMode, updateDocument, t],
   );
 
   const move = useCallback(

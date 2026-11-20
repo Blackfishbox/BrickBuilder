@@ -44,8 +44,8 @@ describe('failed-part notifications', () => {
       { code: 'missing-part', reference: '3001.DAT', message: 'Primitive stud.dat fehlt.' },
     ];
     expect(getImportPartFailures(doc)).toEqual([
-      { reference: '3001.dat', ldrawId: '3001', brickLinkIds: ['3001a'], count: 2, reasons: ['Primitive stud.dat fehlt.'] },
-      { reference: 'missing.dat', ldrawId: 'missing', brickLinkIds: [], count: 1, reasons: ['Keine nutzbare Teilegeometrie verfügbar.'] },
+      { reference: '3001.dat', ldrawId: '3001', brickLinkIds: ['3001a'], count: 2, reasons: ['Primitive stud.dat fehlt.'], reasonCodes: ['missing-part'] },
+      { reference: 'missing.dat', ldrawId: 'missing', brickLinkIds: [], count: 1, reasons: ['Keine nutzbare Teilegeometrie verfügbar.'], reasonCodes: ['missing-part'] },
     ]);
   });
 
@@ -68,7 +68,7 @@ describe('failed-part notifications', () => {
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
     expect(container.textContent).toContain('LDraw 3001 · 2×');
     expect(container.textContent).toContain('LDraw 99999 · 1×');
-    expect(container.textContent).toContain('Ungültige Geometrie.');
+    expect(container.textContent).toContain('LDraw-Datei 99999.dat konnte nicht verwendet werden');
     expect(container.textContent).toContain('3 Instanzen · 2 Teilenummern');
     expect(container.textContent).not.toContain('BrickLink');
     await act(async () => container.querySelector('button')!.click());

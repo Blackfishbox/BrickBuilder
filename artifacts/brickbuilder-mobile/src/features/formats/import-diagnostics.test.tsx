@@ -41,14 +41,14 @@ describe("catalog information versus real import warnings", () => {
       { code: "io-scope", message: "Supported IO scope" },
     ];
     const html = renderToStaticMarkup(<Report model={model} bricks={0} />);
-    expect(html).toContain("Katalog- und Formatinformationen");
+    expect(html).toContain("Catalog and format information");
     expect(html).not.toContain('class="fmt-warn"');
     expect(html).not.toContain("12×");
     model.issues.push({ code: "missing-part", reference: "unavailable.dat", message: "Geometrie fehlt" });
     const warned = renderToStaticMarkup(<Report model={model} bricks={0} />);
     expect(warned).toContain('class="fmt-warn"');
-    expect(warned).toContain("1 Importwarnungen");
-    expect(warned).toContain("Geometrie fehlt");
+    expect(warned).toContain("1 import warning");
+    expect(warned).toContain("LDraw geometry for unavailable.dat is unavailable");
   });
   it("repairs stale catalog color warnings without changing original source data", () => {
     const model = modelFor(["288", "297", "8", "1009007"].map(code => `1 ${code} 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat`).join("\n"));

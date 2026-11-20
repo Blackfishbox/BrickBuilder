@@ -3,12 +3,14 @@ import { Box, ImageOff, LoaderCircle } from "lucide-react";
 import type { LibraryPart } from "./types";
 import { observeThumbnail } from "./thumbnails/visibility";
 import "./parts-library.css";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type Props = {
   part: LibraryPart; revision: string; color: string; colorCode?: string; paletteRevision?: string;
 };
 
 export default function PartThumbnail({ part, revision, color, colorCode, paletteRevision }: Props) {
+  const { t } = useI18n();
   const host = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [result, setResult] = useState<{ key: string; image?: string; error?: string }>();
@@ -23,14 +25,14 @@ export default function PartThumbnail({ part, revision, color, colorCode, palett
     }).then(image => {
       if (!controller.signal.aborted) setResult({ key, image });
     }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setResult({ key, error: error instanceof Error ? error.message : "Vorschau nicht verfügbar." });
+      if (!controller.signal.aborted) setResult({ key, error: error instanceof Error ? error.message : t("thumbnail.unavailable") });
     });
     return () => controller.abort();
   }, [key, visible, part, revision, color, colorCode]);
   const current = visible && result?.key === key ? result : undefined;
   const unavailable = typeof IntersectionObserver === "undefined" || Boolean(current?.error);
-  const label = current?.image ? `Vorschau LDraw ${part.ldrawId} in der gewählten Farbe`
-    : unavailable ? "Vorschau nicht verfügbar" : visible ? "Vorschau wird geladen" : "Vorschau bei Sichtbarkeit";
+  const label = current?.image ? t("thumbnail.partPreview", { id: part.ldrawId })
+    : unavailable ? t("thumbnail.unavailable") : visible ? t("thumbnail.loading") : t("thumbnail.whenVisible");
   return <span ref={host} className={`plib-thumbnail${current?.image ? " is-ready" : ""}`}
     role="img" aria-label={label} title={current?.error ?? label} data-testid={`thumbnail-${part.ldrawId}`}>
     {current?.image ? <img src={current.image} width={80} height={60} alt="" draggable={false} />

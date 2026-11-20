@@ -30,7 +30,7 @@ it("persists Android opt-in and allows withdrawal after reopening", () => {
     act(() => root.render(<PrivacyDialog onClose={() => {}} />));
     let checkbox = document.querySelector<HTMLInputElement>("input[type=checkbox]")!;
     expect(checkbox.checked).toBe(false);
-    expect(document.querySelector("[role=dialog]")?.textContent).toContain("IP-Adresse");
+    expect(document.querySelector("[role=dialog]")?.textContent).toContain("IP address");
     act(() => checkbox.click());
     expect(checkbox.checked).toBe(true);
     act(() => root.unmount());

@@ -1,6 +1,7 @@
 import { useId, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { Rotate3d } from "lucide-react";
 import "./tilt-controls.css";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type SliderAxis = "y" | "x" | "z";
 type TouchGesture = {
@@ -31,6 +32,7 @@ export default function TiltControls({
   onTilt(axis: "x" | "z", angle: number): void;
   onOpenChange?(open: boolean): void;
 }) {
+  const { t } = useI18n();
   const controlId = useId().replace(/:/g, "");
   const gesture = useRef<TouchGesture | null>(null);
   const lastTap = useRef<SliderTap | null>(null);
@@ -108,27 +110,27 @@ export default function TiltControls({
       if (axis === "y") onRotateEnd?.();
     },
     onDoubleClick: (event: React.MouseEvent<HTMLInputElement>) => doubleClick(axis, event),
-    title: "Doppeltippen zum Zurücksetzen",
+    title: t("tilt.reset"),
   });
 
   return (
     <details className="tilt-controls" data-testid="tilt-controls-menu" onToggle={event => onOpenChange?.(event.currentTarget.open)}>
-      <summary aria-label="Drehung und Neigung einstellen" title="Drehung und Neigung" data-testid="button-tilt-controls">
+      <summary aria-label={t("tilt.open")} title={t("tilt.title")} data-testid="button-tilt-controls">
         <Rotate3d size={17} aria-hidden="true" />
       </summary>
-      <div className="tilt-panel" role="group" aria-label="Stein drehen und neigen">
-        <strong>Drehung und Neigung</strong>
-        <small>Y-Drehung: 0° bis 360° · X/Z-Neigung: −180° bis 179°</small>
+      <div className="tilt-panel" role="group" aria-label={t("tilt.axes")}>
+        <strong>{t("tilt.title")}</strong>
+        <small>{t("tilt.range")}</small>
         <div className="tilt-axis-control">
-          <label htmlFor={`${controlId}-slider-y`}>Drehung</label>
+          <label htmlFor={`${controlId}-slider-y`}>{t("tilt.rotation")}</label>
           <input
             id={`${controlId}-slider-y`}
             type="range"
             min="0"
             max="360"
             step="1"
-            aria-label="Drehung"
-            aria-valuetext={`${Math.round(rotationY)} Grad`}
+            aria-label={t("tilt.rotation")}
+            aria-valuetext={t("tilt.degrees", { degrees: Math.round(rotationY) })}
             data-testid="slider-rotation-y"
             value={Math.max(0, Math.min(360, Math.round(rotationY)))}
             onChange={event => adjustRotation(event.currentTarget.value)}
@@ -140,15 +142,15 @@ export default function TiltControls({
           const angle = axis === "x" ? tiltX : tiltZ;
           return (
             <div className="tilt-axis-control" key={axis}>
-              <label htmlFor={`${controlId}-slider-${axis}`}>Neigung {axis.toUpperCase()}</label>
+              <label htmlFor={`${controlId}-slider-${axis}`}>{t(axis === "x" ? "tilt.x" : "tilt.z")}</label>
               <input
                 id={`${controlId}-slider-${axis}`}
                 type="range"
                 min="-180"
                 max="179"
                 step="1"
-                aria-label={`Neigung ${axis.toUpperCase()}`}
-                aria-valuetext={`${Math.round(angle)} Grad`}
+                aria-label={t(axis === "x" ? "tilt.x" : "tilt.z")}
+                aria-valuetext={t("tilt.degrees", { degrees: Math.round(angle) })}
                 data-testid={`slider-tilt-${axis}`}
                 value={Math.max(-180, Math.min(179, Math.round(angle)))}
                 onChange={event => adjustTilt(axis, event.currentTarget.value)}

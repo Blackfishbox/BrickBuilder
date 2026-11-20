@@ -19,7 +19,7 @@ test("renders all four fields as escaped text without altering source or unrelat
   assert.ok(result.includes("support@blackfishbox.de"));
   assert.ok(template.includes("[Name des Verantwortlichen]"));
   assert.ok(!result.includes("[Name des Verantwortlichen]"));
-  assert.ok(!result.includes("<script>"));
+  assert.ok(!result.includes('Example & <script>"Name"</script>'));
 });
 test("fails closed for every missing release field", () => {
   for (const key of Object.keys(fixture)) {

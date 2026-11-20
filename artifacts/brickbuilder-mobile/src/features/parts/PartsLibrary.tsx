@@ -6,12 +6,23 @@ import './parts-library.css';
 import CatalogPanel from "../catalog/CatalogPanel";
 import PartThumbnail from "./PartThumbnail";
 import CatalogPartSearch from "./CatalogPartSearch";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type PkgState = { status: 'idle' | 'pending' | 'error'; error?: string };
-const CATEGORIES = ['', 'Steine', 'Platten', 'Fliesen', 'Schrägsteine', 'Technik', 'Fahrzeug & Details'];
+const CATEGORIES = [
+  { value: '', label: 'parts.all' as const },
+  { value: 'Steine', label: 'parts.cat.bricks' as const },
+  { value: 'Platten', label: 'parts.cat.plates' as const },
+  { value: 'Fliesen', label: 'parts.cat.tiles' as const },
+  { value: 'Schrägsteine', label: 'parts.cat.slopes' as const },
+  { value: 'Technik', label: 'parts.cat.technic' as const },
+  { value: 'Fahrzeug & Details', label: 'parts.cat.vehicle' as const },
+];
+const categoryLabel = (value: string, t: ReturnType<typeof useI18n>['t']) =>
+  t(CATEGORIES.find(category => category.value === value)?.label ?? 'parts.category');
 
-const formatBytes = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} KB`;
+const formatBytes = (bytes: number, locale: 'en' | 'de') =>
+  bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toLocaleString(locale === 'de' ? 'de-DE' : 'en-US', { maximumFractionDigits: 1 })} KB`;
 
 const errorText = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -28,6 +39,7 @@ interface Props {
 }
 
 export default function PartsLibrary({ online, selectedPartId, selectedColor = "#B40000", selectedColorCode = "4", paletteRevision, loading = false, selectionError, onSelect }: Props) {
+  const { locale, t } = useI18n();
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const [installed, setInstalled] = useState<InstalledPackage[] | null>(null);
@@ -63,10 +75,10 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
     } catch (error) {
       if (mountedRef.current) {
         setInstalled([]);
-        setInstalledError(errorText(error, 'Installierte Pakete konnten nicht gelesen werden.'));
+        setInstalledError(errorText(error, t('parts.installedReadError')));
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { void loadInstalled(); }, [loadInstalled]);
 
@@ -82,12 +94,12 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
         .catch((error: unknown) => {
           if (active && mountedRef.current) {
             setResults([]);
-            setSearchError(errorText(error, 'Lokale Suche fehlgeschlagen.'));
+            setSearchError(errorText(error, t('parts.localSearchError')));
           }
         });
     }, 160);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, category, searchNonce, installed]);
+  }, [query, category, searchNonce, installed, t]);
 
   const install = async (id: string) => {
     const signal = controllerRef.current?.signal;
@@ -100,7 +112,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
       await loadInstalled();
     } catch (error) {
       if (!mountedRef.current || signal.aborted) return;
-      setPkgState((s) => ({ ...s, [id]: { status: 'error', error: errorText(error, 'Installation fehlgeschlagen.') } }));
+          setPkgState((s) => ({ ...s, [id]: { status: 'error', error: errorText(error, t('parts.installError')) } }));
     }
   };
 
@@ -111,37 +123,36 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
     <>
       <div className="plib-head">
         <div>
-          <p className="popover-eyebrow">LDRAW-BIBLIOTHEK</p>
-          <h3 id="plib-title">Lokale Teilepakete</h3>
+          <p className="popover-eyebrow">{t('parts.library')}</p>
+          <h3 id="plib-title">{t('parts.localPackages')}</h3>
         </div>
         {!online && (
           <span className="plib-offline" role="status" data-testid="status-library-offline">
-            <CloudOff size={13} /> Offline · mitgelieferte und installierte Teile
+            <CloudOff size={13} /> {t('parts.offlineSummary')}
           </span>
         )}
       </div>
 
       <CatalogPanel />
       <details className="rounded-lg border p-3 text-xs">
-        <summary className="cursor-pointer py-2 font-semibold">Verbindungsdaten und Lizenzen</summary>
-        <p className="py-2">LDCad Shadow Library · Roland Melkert und Mitwirkende · CC BY-SA 4.0.
-          Der geprüfte Datenstand ist offline enthalten. Verfügbare Metadaten bedeuten nicht, dass jede Verbindung geprüft oder geometrisch möglich ist.</p>
+        <summary className="cursor-pointer py-2 font-semibold">{t('parts.connectionLicenses')}</summary>
+        <p className="py-2">{t('parts.connectionInfo')}</p>
         <div className="flex flex-wrap gap-3 underline">
-          <a href={`${import.meta.env.BASE_URL}licenses/connections/ATTRIBUTION.txt`} target="_blank" rel="noreferrer">Quellen und Bearbeitungen</a>
-          <a href={`${import.meta.env.BASE_URL}licenses/connections/LICENSE.md`} target="_blank" rel="noreferrer">CC BY-SA 4.0</a>
-          <a href={`${import.meta.env.BASE_URL}licenses/connections/manifest.json`} target="_blank" rel="noreferrer">Datenstand und Prüfsummen</a>
-          <a href={`${import.meta.env.BASE_URL}licenses/connections/coverage.json`} target="_blank" rel="noreferrer">Abdeckung und Ausschlüsse</a>
+          <a href={`${import.meta.env.BASE_URL}licenses/connections/ATTRIBUTION.txt`} target="_blank" rel="noreferrer">{t('parts.sourcesEdits')}</a>
+          <a href={`${import.meta.env.BASE_URL}licenses/connections/LICENSE.md`} target="_blank" rel="noreferrer">{t('parts.license')}</a>
+          <a href={`${import.meta.env.BASE_URL}licenses/connections/manifest.json`} target="_blank" rel="noreferrer">{t('parts.snapshot')}</a>
+          <a href={`${import.meta.env.BASE_URL}licenses/connections/coverage.json`} target="_blank" rel="noreferrer">{t('parts.coverage')}</a>
         </div>
       </details>
       {installedError && (
         <div className="plib-alert" role="alert">
           <AlertTriangle size={14} /><span>{installedError}</span>
-          <button type="button" onClick={() => void loadInstalled()} data-testid="button-retry-installed">Erneut</button>
+          <button type="button" onClick={() => void loadInstalled()} data-testid="button-retry-installed">{t('parts.retry')}</button>
         </div>
       )}
 
       <details>
-      <summary>Mitgelieferte Teilepakete und Lizenzen ({PART_PACKAGES.reduce((sum, pkg) => sum + pkg.partCount, 0)} Einträge)</summary>
+      <summary>{t('parts.packageInventory', { count: PART_PACKAGES.reduce((sum, pkg) => sum + pkg.partCount, 0) })}</summary>
       <ul className="plib-packages">
         {PART_PACKAGES.map((pkg) => {
           const state = pkgState[pkg.id]?.status ?? 'idle';
@@ -154,28 +165,28 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
                   <strong>{pkg.title}</strong>
                   <small>{pkg.description}</small>
                   <span className="plib-meta">
-                    v{pkg.version} · {formatBytes(pkg.bytes)} · {pkg.partCount} Teile · {pkg.fileCount} Dateien
+                    v{pkg.version} · {formatBytes(pkg.bytes, locale)} · {pkg.partCount} {t('format.parts')} · {pkg.fileCount} {t('parts.files')}
                   </span>
                 </div>
                 {installed === null ? (
-                  <span className="plib-skel" aria-label="Status wird geladen" />
+                  <span className="plib-skel" aria-label={t('parts.loadingStatus')} />
                 ) : state === 'pending' ? (
                   <span className="plib-btn is-pending" role="status" data-testid={`status-pending-${pkg.id}`}>
-                    <LoaderCircle size={14} className="spin" /> Lädt
+                    <LoaderCircle size={14} className="spin" /> {t('parts.loading')}
                   </span>
                 ) : inst && current ? (
-                  <span className="plib-installed" data-testid={`status-installed-${pkg.id}`}><Check size={14} /> Installiert</span>
+                  <span className="plib-installed" data-testid={`status-installed-${pkg.id}`}><Check size={14} /> {t('parts.installed')}</span>
                 ) : (
                   <button
                     type="button"
                     className="plib-btn"
                     onClick={() => void install(pkg.id)}
                     disabled={!online && !pkg.bundled}
-                    aria-label={`${pkg.title} ${state === 'error' ? 'erneut ' : ''}herunterladen`}
+                    aria-label={state === 'error' ? t('parts.downloadAgain', { name: pkg.title }) : t('parts.download', { name: pkg.title })}
                     data-testid={`button-install-${pkg.id}`}
                   >
                     {state === 'error' ? <RotateCw size={14} /> : <Download size={14} />}
-                    {state === 'error' ? 'Wiederholen' : inst ? 'Aktualisieren' : 'Laden'}
+                    {state === 'error' ? t('parts.retryInstall') : inst ? t('parts.update') : t('parts.get')}
                   </button>
                 )}
               </div>
@@ -186,33 +197,33 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
               )}
               {inst && (
                 <p className="plib-installed-at">
-                  Installiert am {new Date(inst.installedAt).toLocaleDateString('de-DE')}
-                  {!current && ` · Version ${inst.version}, neu verfügbar: ${pkg.version}`}
+                  {t('parts.installedAt', { date: new Date(inst.installedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-US') })}
+                  {!current && ` · ${t('parts.newVersion', { old: inst.version, version: pkg.version })}`}
                 </p>
               )}
               <details className="plib-details">
-                <summary>Herkunft und Lizenz</summary>
+                <summary>{t('parts.provenance')}</summary>
                 <dl>
-                  <dt>Urheber</dt><dd>{pkg.attribution}</dd>
-                  <dt>Lizenz</dt><dd>{pkg.licenses.join(', ')}</dd>
-                  <dt>Änderungen</dt><dd>{pkg.changes}</dd>
+                  <dt>{t('parts.author')}</dt><dd>{pkg.attribution}</dd>
+                  <dt>{t('parts.licenseText')}</dt><dd>{pkg.licenses.join(', ')}</dd>
+                  <dt>{t('parts.changes')}</dt><dd>{pkg.changes}</dd>
                 </dl>
                 <div className="plib-links">
-                  <a href={pkg.sourceUrl} target="_blank" rel="noreferrer noopener">Quelle: LDraw-Bibliothek <ExternalLink size={11} /></a>
-                  <a href={pkg.licenseUrl} target="_blank" rel="noreferrer noopener">Lizenztext <ExternalLink size={11} /></a>
+                  <a href={pkg.sourceUrl} target="_blank" rel="noreferrer noopener">{t('parts.librarySource')} <ExternalLink size={11} /></a>
+                  <a href={pkg.licenseUrl} target="_blank" rel="noreferrer noopener">{t('parts.licenseText')} <ExternalLink size={11} /></a>
                 </div>
                 {inst?.legalDocuments?.length ? (
-                  <div className="plib-legal" aria-label="Lokal gespeicherte Lizenzdokumente">
+                  <div className="plib-legal" aria-label={t('parts.localLicenses')}>
                     {inst.legalDocuments.map((doc) => (
                       <details key={`${doc.name}:${doc.sourceUrl}`} className="plib-doc" data-testid={`legal-${pkg.id}-${doc.name}`}>
-                        <summary>{doc.name} <span>offline lesbar</span></summary>
+                        <summary>{doc.name} <span>{t('parts.readOffline')}</span></summary>
                         <pre tabIndex={0} aria-label={doc.name}>{doc.content}</pre>
-                        <a href={doc.sourceUrl} target="_blank" rel="noreferrer noopener">Originalquelle <ExternalLink size={11} /></a>
+                        <a href={doc.sourceUrl} target="_blank" rel="noreferrer noopener">{t('parts.originalSource')} <ExternalLink size={11} /></a>
                       </details>
                     ))}
                   </div>
                 ) : inst ? null : (
-                  <p className="plib-installed-at">Lizenzdokumente werden mit dem Paket lokal gespeichert.</p>
+                  <p className="plib-installed-at">{t('parts.licenseSaved')}</p>
                 )}
               </details>
             </li>
@@ -230,42 +241,42 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
           <Search size={16} />
           <input
             type="search"
-            placeholder="Name, LDraw- oder BrickLink-Nummer"
+            placeholder={t('parts.searchPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Lokale Teile und Gesamtkatalog durchsuchen"
+            aria-label={t('parts.searchLabel')}
             data-testid="input-search-library"
           />
-          {query && <button type="button" onClick={() => setQuery('')} aria-label="Suche leeren"><X size={14} /></button>}
+          {query && <button type="button" onClick={() => setQuery('')} aria-label={t('parts.clearSearch')}><X size={14} /></button>}
         </label>
-        <div className="plib-filter" role="group" aria-label="Kategorie">
+        <div className="plib-filter" role="group" aria-label={t('parts.category')}>
           {CATEGORIES.map((c) => (
             <button
-              key={c || 'alle'}
+              key={c.value || 'all'}
               type="button"
-              className={category === c ? 'active' : ''}
-              aria-pressed={category === c}
-              onClick={() => setCategory(c)}
-              data-testid={`button-category-${c || 'alle'}`}
-            >{c || 'Alle'}</button>
+              className={category === c.value ? 'active' : ''}
+              aria-pressed={category === c.value}
+              onClick={() => setCategory(c.value)}
+              data-testid={`button-category-${c.value || 'all'}`}
+            >{t(c.label)}</button>
           ))}
         </div>
       </div>
 
-      <p className="plib-catalog-note">Lokal installierte Teile</p>
+      <p className="plib-catalog-note">{t('parts.localInstalled')}</p>
       <div className="plib-results" aria-live="polite" aria-busy={results === null}>
         {searchError ? (
           <div className="plib-alert" role="alert">
             <AlertTriangle size={14} /><span>{searchError}</span>
-            <button type="button" onClick={() => setSearchNonce((n) => n + 1)} data-testid="button-retry-search">Erneut</button>
+            <button type="button" onClick={() => setSearchNonce((n) => n + 1)} data-testid="button-retry-search">{t('parts.retry')}</button>
           </div>
         ) : results === null ? (
           [0, 1, 2].map((i) => <div key={i} className="plib-row-skel" />)
         ) : results.length === 0 ? (
           <div className="drawer-empty" data-testid="status-library-empty">
             <Search size={19} />
-            <strong>{hasInstalled ? 'Keine passenden Teile' : 'Noch keine Pakete installiert'}</strong>
-            <span>{hasInstalled ? 'Suche nach Name oder LDraw-Nummer, z. B. 3001.' : 'Mitgelieferte Pakete werden lokal eingerichtet. Bei einem Fehler oben erneut versuchen.'}</span>
+            <strong>{hasInstalled ? t('parts.emptyMatches') : t('parts.noPackages')}</strong>
+            <span>{hasInstalled ? t('parts.searchHint') : t('parts.packageHint')}</span>
           </div>
         ) : results.slice(0, visibleCount).map((part) => {
           const body = (
@@ -276,7 +287,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
               <span className="drawer-piece-copy">
                 <strong>{part.name}</strong>
                 <span className="plib-part-number">LDraw {part.ldrawId}</span>
-                <small>{part.category} · Geometrie wird vor dem Platzieren geprüft</small>
+                <small>{t('parts.geometryCheck', { category: categoryLabel(part.category, t) })}</small>
               </span>
             </>
           );
@@ -287,7 +298,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
               className={`drawer-piece plib-part ${selectedPartId === part.ldrawId ? 'chosen' : ''}`}
               disabled={loading}
               onClick={() => onSelect(part)}
-              aria-label={`${part.name}, LDraw ${part.ldrawId}, auswählen`}
+              aria-label={t('parts.selectPart', { name: part.name, id: part.ldrawId })}
               data-testid={`button-library-part-${part.ldrawId}`}
             >
               {body}
@@ -298,7 +309,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
       </div>
       {results && results.length > visibleCount && (
         <button type="button" className="plib-btn" onClick={() => setVisibleCount(count => count + 40)}>
-          Weitere Teile zeigen ({visibleCount} von {results.length})
+          {t('parts.more', { shown: visibleCount, total: results.length })}
         </button>
       )}
       <CatalogPartSearch query={query} category={category} installedIds={installedIds}

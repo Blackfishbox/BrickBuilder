@@ -1,135 +1,231 @@
-<!DOCTYPE html>
-<html lang="de">
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Datenschutzerklärung für BrickBuilder Mobile für Android mit optionalem Geometrie-Download.">
-  <title>Datenschutzerklärung – BrickBuilder Mobile</title>
+  <meta name="description" content="Privacy policy for BrickBuilder Mobile for Android.">
+  <title>Privacy Policy — BrickBuilder Mobile</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; color: #243d37; background: #faf9f4; }
-    * { box-sizing: border-box; }
-    body { margin: 0; }
-    main { max-width: 820px; margin: auto; padding: 32px 22px 64px; overflow-wrap: anywhere; }
-    h1 { font-size: clamp(1.8rem, 6vw, 2.5rem); line-height: 1.2; margin-bottom: 12px; }
-    h2 { font-size: 1.2rem; line-height: 1.4; margin-top: 32px; }
-    a { color: #246b59; text-underline-offset: 3px; }
-    address { font-style: normal; }
-    .scope { padding: 16px; border-left: 4px solid #668b6e; background: #eaf0e5; }
-    .notice { padding: 12px 16px; font-size: .875rem; border: 1px solid #c9ad70; border-radius: 8px; background: #fff3d5; color: #59451f; }
-    .date { color: #52675f; }
-    @media (prefers-color-scheme: dark) {
-      :root { color: #e9eee8; background: #15261f; }
-      a { color: #a3d5be; }
-      .scope { background: #243b2c; }
-      .notice { color: #f2dfb4; background: #3a301d; }
-      .date { color: #bdcbbf; }
-    }
-    @media print { main { max-width: none; padding: 0; } }
+    :root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.65;color:#243d37;background:#faf9f4}
+    *{box-sizing:border-box}body{margin:0}main{max-width:820px;margin:auto;padding:28px 22px 64px;overflow-wrap:anywhere}
+    h1{font-size:clamp(1.8rem,6vw,2.5rem);line-height:1.2;margin-bottom:12px}h2{font-size:1.2rem;line-height:1.4;margin-top:30px}
+    a{color:#246b59;text-underline-offset:3px}address{font-style:normal}.date{color:#52675f}
+    .toolbar{max-width:820px;margin:auto;padding:16px 22px 0;display:flex;justify-content:flex-end}
+    button{min-height:40px;padding:0 12px;border:1px solid #82958a;border-radius:9px;background:transparent;color:inherit;font:inherit;font-weight:700}
+    [data-locale][hidden]{display:none!important}
+    @media(prefers-color-scheme:dark){:root{color:#e9eee8;background:#15261f}a{color:#a3d5be}.date{color:#bdcbbf}}
+    @media print{.toolbar{display:none}main{max-width:none;padding:0}}
   </style>
 </head>
 <body>
-<main>
-  <header>
-    <p>BrickBuilder Mobile · Android-App</p>
-    <h1>Datenschutzerklärung</h1>
-    <p class="date">Stand: 16. November 2026</p>
-  </header>
+  <div class="toolbar"><button id="language-toggle" type="button">Deutsch</button></div>
+  <main>
+    <header>
+      <p>BrickBuilder Mobile · <span data-copy="app-name">Android app</span></p>
+      <h1 data-copy="title">Privacy Policy</h1>
+      <p class="date" data-copy="date">Updated: 20 November 2026</p>
+    </header>
+    <section>
+      <h2 data-copy="contactTitle">1. Controller and contact</h2>
+      <address>
+        [Name des Verantwortlichen]<br>
+        [Straße und Hausnummer]<br>
+        [Postleitzahl und Ort]<br>
+        [Land]
+      </address>
+      <p data-copy="contactText">For privacy questions or to exercise your rights, contact me at
+        <a href="mailto:support@blackfishbox.de">support@blackfishbox.de</a>.</p>
+    </section>
+  </main>
 
-  <section>
-    <h2>1. Verantwortlicher und Kontakt</h2>
-    <address>
-      [Name des Verantwortlichen]<br>
-      [Straße und Hausnummer]<br>
-      [Postleitzahl und Ort]<br>
-      [Land]
-    </address>
-    <p>Bei Fragen zum Datenschutz oder zur Ausübung deiner Rechte erreichst du mich unter
-      <a href="mailto:support@blackfishbox.de">support@blackfishbox.de</a>.</p>
-  </section>
+  <main data-locale="en">
+    <section>
+      <h2>2. Core principle: local processing</h2>
+      <p>BrickBuilder Mobile is a 3D building application for brick models. No user account is required. The Android app processes projects and imported files on your device. The app does not automatically send your models or parts lists to me and does not automatically synchronize them to the cloud.</p>
+      <p>This Android version does not include advertising, tracking, or analytics SDKs and does not use its own service to automatically submit crash reports. It does not access contacts, location, camera, or microphone, and it does not read an advertising ID.</p>
+    </section>
+    <section>
+      <h2>3. Data processed on your device</h2>
+      <ul>
+        <li><strong>Project data:</strong> project names, local project IDs, save times, parts, positions, orientations, colors, and other model information.</li>
+        <li><strong>Imported files:</strong> IO, LDR, MPD, JSON, XML, or CSV files that you select and their parsed contents. These may include original archives, file names, parts lists, quantities, and embedded metadata, such as author information.</li>
+        <li><strong>Local work and library data:</strong> autosaves, required part geometry, installed part packages, catalog and color mappings, local settings, and technical cache data.</li>
+        <li><strong>Export files:</strong> files created when saving or sharing, in the local app cache or at a location you select.</li>
+      </ul>
+      <p>Whether this information contains personal data also depends on what you enter in project names or imported files. Avoid including personal information that is not needed for building.</p>
+      <p>Data is stored, among other places, in the Android WebView's local database (IndexedDB) and app-specific file storage. I cannot access this local content remotely.</p>
+    </section>
+    <section>
+      <h2>4. Purposes and legal bases</h2>
+      <p>Local data is used to display and edit models, import and export files, manage parts lists, reopen projects, and save building progress automatically.</p>
+      <p>Where personal data is processed to provide app functions you request, the legal basis is Article 6(1)(b) GDPR. Where applicable, technically necessary storage and access on your device is based on section 25(2)(2) TDDDG. No tracking cookies are used.</p>
+      <p>If you contact me, I process the information you provide to handle your request. The legal basis is Article 6(1)(b) GDPR for service-related requests or Article 6(1)(f) GDPR otherwise, based on my legitimate interest in responding. Statutory retention duties may require processing under Article 6(1)(c) GDPR.</p>
+    </section>
+    <section>
+      <h2>5. Internet connections and external services</h2>
+      <p>The Android version loads bundled app, catalog, and geometry data from the app package or local storage. A local WebView address is not a publicly accessible server. Unless online loading is enabled, the geometry feature does not connect to my server.</p>
+      <p><strong>Optional geometry download:</strong> In “Privacy (Android)” you can enable “Load missing geometry online.” Only then, when importing or building, the app requests LDraw files that are not available locally, required subfiles, and license texts over HTTPS from <strong>https://brickbuilder.blackfishbox.de/api</strong>. Requests are sent to me as the service operator and to the technical hosting provider <strong>Ultahost</strong>. The server is located in <strong>Frankfurt am Main, Germany</strong>. Requests contain the required LDraw file paths, not your project files, local file names, project names, colors, quantities, or complete parts lists. The sequence of requested parts may still reveal information about a model.</p>
+      <p>These connections technically process your public IP address, request time, requested path including the part identifier, and any technical information supplied by the network stack. The server may log requests and errors, such as response status and transferred data volume. The download feature does not add analytics IDs or advertising IDs. Mobile data charges may apply.</p>
+      <p>Enabling this optional feature is your consent to the download and associated data transfer (Article 6(1)(a) GDPR). You can disable it in the same dialog at any time for future requests. Requests already sent may still reach the server. Downloaded and verified geometry remains stored locally for offline use. Local features remain available without consent, but geometry that is not installed locally cannot be displayed.</p>
+      <p>Where technical server logs are needed for security, troubleshooting, and abuse prevention, they are processed based on Article 6(1)(f) GDPR. The legitimate interest is secure and reliable operation of the download service. Log data is not used for advertising or user profiling. The server's access and error logs are retained for <strong>30 days</strong> and then deleted. Withdrawal stops future downloads but does not automatically remove server logs that were lawfully collected before the end of this period.</p>
+      <p>If you open an external link, for example to a source or license, your browser may connect to that provider. The provider usually receives technical connection data such as your IP address and applies its own privacy policy. Opening a link does not automatically send your models.</p>
+    </section>
+    <section>
+      <h2>6. Import, export, and sharing</h2>
+      <p>Consent to optional online loading also covers missing geometry for visible preview images in the full-catalog search. These files are loaded one at a time from the server described in section 5 and stored locally. The selected color is rendered on your device and is not transmitted. Without consent, Android previews use only locally available geometry.</p>
+      <p>The app processes files that you select through the file picker. You decide which files to provide. A document provider you choose may be a cloud storage service; its own privacy terms apply.</p>
+      <p>An export is first created in the local app cache. Android then opens its save or share dialog. Another app or service receives access to the export only if you choose it. Depending on the format, an export may contain the model, metadata, and retained original content. Review it before sharing.</p>
+      <p>BrickBuilder Mobile does not itself transfer your projects to a cloud service operated by me. Transfers through an email, messenger, or cloud app you choose are handled by that provider.</p>
+    </section>
+    <section>
+      <h2>7. Google Play and Android</h2>
+      <p>If you install or update the app through Google Play, Google processes data as part of its own services. Android may also process system diagnostics or other platform data according to your device settings. This is separate from BrickBuilder Mobile's local model processing.</p>
+      <p>The app does not require an account with its own service and does not integrate its own Google Analytics or advertising measurement. More information is available in <a href="https://policies.google.com/privacy?hl=en" rel="noreferrer">Google's Privacy Policy</a>.</p>
+    </section>
+    <section>
+      <h2>8. Retention, deletion, and backups</h2>
+      <p>Local projects and library data generally remain until you delete them, reset the app data in Android, or uninstall the app. The operating system may clear cache data or storage earlier in some circumstances. The app does not guarantee a retention period and I do not manage a recovery copy.</p>
+      <p>Manage saved projects and installed packages through <strong>“Manage offline storage.”</strong> To fully delete app data, use the Android settings to clear the app's storage or data. The exact wording depends on your device. This removes local projects and autosaves.</p>
+      <p>Export files in the app cache are not automatically deleted immediately after each share. They may be removed by clearing the app cache, clearing app data, or uninstalling the app. You must delete separately saved exports, sent files, and copies in other apps or services yourself. Back up important projects before resetting app data.</p>
+      <p>If you email me, I retain the message for as long as needed to handle the request and, where relevant, protect my legitimate interests. It is then deleted unless statutory retention duties or unresolved claims require otherwise.</p>
+    </section>
+    <section>
+      <h2>9. Security and recipients</h2>
+      <p>The app uses Android's protections for app-specific storage. No additional custom encryption of project data or export files is promised. Protect your device with a screen lock and remember that unlocked devices, exports you share, and other apps may create their own risks.</p>
+      <p>Because projects are processed locally, they are not automatically sent to a hosting, advertising, or analytics service operated by me. When geometry download is enabled, I receive the request data described in section 5; my hosting provider receives connection data needed for technical operation. Other recipients may include document or parts services you explicitly choose. If you contact me, your message is sent to me and to the email services used to handle it. Technical access by those services cannot generally be ruled out.</p>
+      <p>Local model processing does not transfer data to me in a country outside the European Economic Area. For external services you choose, refer to their information about recipients, storage locations, and international transfers.</p>
+    </section>
+    <section>
+      <h2>10. Your rights</h2>
+      <p>Where legal requirements are met, you have rights to access (Article 15 GDPR), rectification (Article 16), erasure (Article 17), restriction of processing (Article 18), and data portability (Article 20). You may withdraw consent for the future where processing is based on consent.</p>
+      <p>You may object under Article 21 GDPR to processing based on Article 6(1)(f) for reasons relating to your particular situation.</p>
+      <p>Contact me at <a href="mailto:support@blackfishbox.de">support@blackfishbox.de</a>. Since I do not store local project content, I cannot provide it remotely or delete it from your device. Local export and deletion options are available in the app. You do not need to send complete models or ID documents to ask a general privacy question.</p>
+      <p>You also have the right to lodge a complaint with a data protection supervisory authority, particularly in the EU member state where you live, work, or where the alleged infringement occurred (Article 77 GDPR).</p>
+    </section>
+    <section>
+      <h2>11. Children and automated decisions</h2>
+      <p>The local processing principles described here also apply when minors use the app. The app does not request a date of birth or create personal user profiles. It does not make automated decisions with legal or similarly significant effects and does not perform profiling within the meaning of Article 22 GDPR.</p>
+    </section>
+    <section>
+      <h2>12. Changes to this policy</h2>
+      <p>This policy will be updated if relevant features, processing, or legal requirements change. The policy applicable to the installed app version is available in the app. New features involving additional data processing should not be considered approved solely because they are not described here.</p>
+    </section>
+  </main>
 
-  <section>
-    <h2>2. Grundprinzip: lokale Verarbeitung</h2>
-    <p>BrickBuilder Mobile ist eine 3D-Konstruktionsanwendung für Klemmbausteinmodelle. Für ihre Nutzung ist kein Benutzerkonto erforderlich. Die Android-App verarbeitet Projekte und importierte Dateien auf deinem Gerät. Es gibt keine automatische Übertragung deiner Modelle oder Teilelisten an mich und keine automatische Cloud-Synchronisierung durch die App.</p>
-    <p>Die hier beschriebene Android-Fassung enthält keine eingebundenen Werbe-, Tracking- oder Analyse-SDKs und keinen eigenen Dienst zur automatischen Übermittlung von Absturzberichten. Sie greift nicht auf Kontakte, Standort, Kamera oder Mikrofon zu und liest keine Werbe-ID aus.</p>
-  </section>
-
-  <section>
-    <h2>3. Welche Daten auf deinem Gerät verarbeitet werden</h2>
-    <ul>
-      <li><strong>Projektdaten:</strong> Projektname, lokale Projektkennungen, Speicherzeitpunkte, Bauteile, Positionen, Ausrichtungen, Farben und sonstige Modellinformationen.</li>
-      <li><strong>Importierte Dateien:</strong> von dir ausgewählte IO-, LDR-, MPD-, JSON-, XML- oder CSV-Dateien und ihre ausgelesenen Inhalte. Dazu können Originalarchive, Dateinamen, Teilelisten, Mengen und enthaltene Metadaten gehören. Metadaten können beispielsweise Autorenangaben enthalten.</li>
-      <li><strong>Lokale Arbeits- und Bibliotheksdaten:</strong> automatische Speicherstände, benötigte Teile-Geometrien, installierte Teilepakete, Katalog- und Farbzuordnungen sowie lokale Einstellungen und technische Cache-Daten.</li>
-      <li><strong>Exportdateien:</strong> beim Speichern oder Teilen erzeugte Dateien im lokalen App-Cache beziehungsweise an dem von dir gewählten Speicherort.</li>
-    </ul>
-    <p>Ob diese Inhalte personenbezogene Daten enthalten, hängt auch davon ab, welche Angaben du in Projektnamen oder importierten Dateien verwendest. Vermeide darin personenbezogene Informationen, die für das Bauen nicht erforderlich sind.</p>
-    <p>Die Speicherung erfolgt unter anderem in der lokalen Datenbank der Android-WebView (IndexedDB) und im appbezogenen Dateispeicher. Ich kann diese lokalen Inhalte nicht aus der Ferne einsehen.</p>
-  </section>
-
-  <section>
-    <h2>4. Zwecke und Rechtsgrundlagen</h2>
-    <p>Die lokalen Daten werden verwendet, um Modelle darzustellen und zu bearbeiten, Dateien zu importieren und zu exportieren, Teilelisten zu verwalten, Projekte wieder zu öffnen und den Baufortschritt automatisch zu sichern.</p>
-    <p>Soweit dabei personenbezogene Daten verarbeitet werden und die Verarbeitung zur Bereitstellung der von dir gewünschten App-Funktionen erforderlich ist, ist die Rechtsgrundlage Art. 6 Abs. 1 Buchst. b DSGVO. Technisch notwendiges Speichern und Auslesen auf deinem Gerät erfolgt, soweit § 25 TDDDG anwendbar ist, auf Grundlage von § 25 Abs. 2 Nr. 2 TDDDG. Es werden keine Tracking-Cookies eingesetzt.</p>
-    <p>Wenn du mich kontaktierst, verarbeite ich deine Angaben zur Bearbeitung der Anfrage. Rechtsgrundlage ist Art. 6 Abs. 1 Buchst. b DSGVO bei leistungsbezogenen Anfragen, ansonsten Art. 6 Abs. 1 Buchst. f DSGVO aufgrund meines berechtigten Interesses, Anfragen zu beantworten. Gesetzliche Aufbewahrungspflichten können eine Verarbeitung nach Art. 6 Abs. 1 Buchst. c DSGVO erfordern.</p>
-  </section>
-
-  <section>
-    <h2>5. Internetverbindungen und externe Angebote</h2>
-    <p>Die Android-Fassung lädt ihre mitgelieferten App-, Katalog- und Geometriedaten aus dem App-Paket beziehungsweise dem lokalen Speicher. Eine lokale WebView-Adresse bezeichnet keinen öffentlich erreichbaren Server. Ohne Aktivierung des Online-Nachladens stellt die Geometriefunktion keine Verbindung zu meinem Server her.</p>
-    <p><strong>Optionaler Geometrie-Download:</strong> Unter „Datenschutz (Android)“ kannst du „Fehlende Geometrien online nachladen“ aktivieren. Erst dann fordert die App beim Importieren oder Bauen lokal nicht vorhandene LDraw-Dateien sowie benötigte Unterdateien und Lizenztexte über HTTPS von <strong>https://brickbuilder.blackfishbox.de/api</strong> an. Die Anfragen gehen an mich als Betreiber dieses Angebots und an den technischen Hosting-Dienstleister <strong>Ultahost</strong>. Der Serverstandort ist <strong>Frankfurt am Main, Deutschland</strong>. Die Anfragen enthalten die benötigten LDraw-Dateipfade, nicht deine Projektdateien, lokalen Dateinamen, Projektnamen, Farben, Mengen oder vollständigen Teilelisten. Aus der Folge angefragter Teile können dennoch Rückschlüsse auf ein Modell gezogen werden.</p>
-    <p>Bei diesen Verbindungen werden technisch deine öffentliche IP-Adresse, Zeitpunkt, angefragter Pfad einschließlich Teilekennung sowie gegebenenfalls vom Netzwerkstack übermittelte technische Angaben verarbeitet. Der Server kann Zugriffe und Fehler protokollieren, etwa Antwortstatus und übertragene Datenmenge. Es werden dabei keine Analysekennungen oder Werbe-IDs durch die Downloadfunktion hinzugefügt. Die Verbindung kann Mobilfunk-Datenvolumen verbrauchen.</p>
-    <p>Das freiwillige Aktivieren ist die Einwilligung für das optionale Nachladen und die damit verbundene Datenübermittlung (Art. 6 Abs. 1 Buchst. a DSGVO). Du kannst die Funktion jederzeit im selben Dialog mit Wirkung für die Zukunft deaktivieren. Bereits abgesendete Anfragen können noch beim Server ankommen. Bereits heruntergeladene und geprüfte Geometrien bleiben lokal für die Offline-Nutzung gespeichert. Ohne Einwilligung bleiben die lokalen Funktionen nutzbar; nicht vorhandene Geometrien können dann nicht dargestellt werden.</p>
-    <p>Soweit technische Serverprotokolle zur Gewährleistung von Sicherheit, Fehleranalyse und Abwehr von Missbrauch erforderlich sind, erfolgt deren Verarbeitung auf Grundlage von Art. 6 Abs. 1 Buchst. f DSGVO. Das berechtigte Interesse ist der sichere und zuverlässige Betrieb des Downloadangebots. Protokolldaten werden nicht zur Werbung oder zur Erstellung von Nutzerprofilen verwendet. Die Zugriffs- und Fehlerprotokolle des Servers werden <strong>30 Tage</strong> aufbewahrt und anschließend gelöscht. Ein Widerruf beendet zukünftige Downloads, löscht aber nicht automatisch bereits rechtmäßig angefallene Serverprotokolle vor Ablauf dieser Frist.</p>
-    <p>Wenn du einen externen Link, beispielsweise zu Quellen oder Lizenzinformationen, selbst öffnest, kann dein Browser eine Verbindung zu diesem Anbieter herstellen. Dabei erhält dieser üblicherweise technische Verbindungsdaten wie deine IP-Adresse. Es gelten dann dessen Datenschutzhinweise. Deine Modelle werden durch das bloße Öffnen eines solchen Links nicht automatisch mitgesendet.</p>
-  </section>
-
-  <section>
-    <h2>6. Import, Export und Teilen</h2>
-    <p>Die Freigabe für das optionale Online-Nachladen umfasst auch fehlende Geometrien für sichtbare Vorschaubilder in der Gesamtkatalogsuche. Diese werden nacheinander über den in Abschnitt 5 genannten Server geladen und lokal gespeichert. Die gewählte Farbe wird auf dem Gerät gerendert und nicht übermittelt. Ohne Freigabe werden unter Android ausschließlich lokal verfügbare Geometrien für Vorschauen verwendet.</p>
-    <p>Die App verarbeitet die von dir über die Dateiauswahl ausgewählten Dateien. Du entscheidest, welche Dateien du bereitstellst. Ein von dir gewählter Dokumentanbieter kann auch ein Cloud-Speicherdienst sein; dessen Verarbeitung richtet sich nach seinen eigenen Datenschutzbedingungen.</p>
-    <p>Für einen Export wird eine Datei im lokalen App-Cache erstellt. Anschließend öffnet sich der Android-Dialog zum Speichern oder Teilen. Erst durch deine Auswahl kann eine andere App oder ein Dienst Zugriff auf die Exportdatei erhalten. Eine solche Datei kann das Modell, Metadaten und abhängig vom Exportformat erhaltene Originalinhalte enthalten. Prüfe sie vor einer Weitergabe.</p>
-    <p>BrickBuilder Mobile überträgt deine Projekte nicht selbst an einen von mir betriebenen Cloud-Dienst. Eine Übertragung durch eine von dir gewählte E-Mail-, Messenger- oder Cloud-App erfolgt dagegen in deren Verantwortungsbereich.</p>
-  </section>
-
-  <section>
-    <h2>7. Google Play und Android</h2>
-    <p>Wenn du die App über Google Play installierst oder aktualisierst, verarbeitet Google Daten im Rahmen seiner eigenen Dienste. Auch Android kann aufgrund deiner Geräteeinstellungen Systemdiagnose- oder andere Plattformdaten verarbeiten. Dies ist von der lokalen Modellverarbeitung durch BrickBuilder Mobile zu unterscheiden.</p>
-    <p>Die App verlangt keine Anmeldung bei einem eigenen App-Konto und integriert keine eigene Google-Analytics- oder Werbeauswertung. Weitere Informationen zu Googles Verarbeitung findest du in der
-      <a href="https://policies.google.com/privacy?hl=de" rel="noreferrer">Datenschutzerklärung von Google</a>.</p>
-  </section>
-
-  <section>
-    <h2>8. Speicherdauer, Löschung und Sicherungen</h2>
-    <p>Lokale Projekte und Bibliotheksdaten bleiben grundsätzlich erhalten, bis du sie löschst, die App-Daten über Android zurücksetzt oder die App deinstallierst. Das Betriebssystem kann Cache-Daten oder Speicher unter bestimmten Umständen früher bereinigen. Die App bietet keine garantierte Aufbewahrungsfrist und keine von mir verwaltete Wiederherstellungskopie.</p>
-    <p>Gespeicherte Projekte und installierte Pakete kannst du über <strong>„Offline-Speicher verwalten“</strong> verwalten. Für eine vollständige Löschung der appinternen Daten verwende in den Android-Einstellungen die Funktion zum Löschen des App-Speichers beziehungsweise der App-Daten. Die genaue Bezeichnung hängt von deinem Gerät ab. Dabei gehen lokale Projekte und automatische Speicherstände verloren.</p>
-    <p>Exportdateien im App-Cache werden nicht unmittelbar nach jedem Teilen automatisch gelöscht. Sie können über das Leeren des App-Caches, das Löschen der App-Daten oder die Deinstallation entfernt werden. Separat gespeicherte Exporte, gesendete Dateien und Kopien in anderen Apps oder bei anderen Diensten musst du dort selbst löschen. Sichere wichtige Projekte vor dem Zurücksetzen der App-Daten.</p>
-    <p>Falls du mir eine E-Mail sendest, bewahre ich diese so lange auf, wie es für die Bearbeitung der Anfrage und gegebenenfalls die Wahrung meiner berechtigten Interessen erforderlich ist. Anschließend wird sie gelöscht, soweit keine gesetzlichen Aufbewahrungspflichten oder noch offenen Ansprüche entgegenstehen.</p>
-  </section>
-
-  <section>
-    <h2>9. Sicherheit und Empfänger</h2>
-    <p>Die App nutzt die Schutzmechanismen von Android für den appbezogenen Speicher. Eine zusätzliche eigene Verschlüsselung der Projektdaten oder Exportdateien wird nicht zugesichert. Schütze dein Gerät durch eine Bildschirmsperre und beachte, dass entsperrte Geräte, von dir freigegebene Exportdateien und andere Apps eigene Risiken mit sich bringen.</p>
-    <p>Da Projekte lokal verarbeitet werden, werden sie nicht automatisch einem Hosting-, Werbe- oder Analysedienst von mir übermittelt. Beim aktivierten Geometrie-Download erhalte ich als Betreiber die in Abschnitt 5 beschriebenen Anfragedaten; mein Hosting-Dienstleister erhält die für den technischen Betrieb erforderlichen Verbindungsdaten. Weitere Empfänger können von dir ausdrücklich ausgewählte Dokument- oder Teilen-Dienste sein. Bei einer freiwilligen Kontaktaufnahme geht deine Nachricht an mich sowie an die zur Bearbeitung eingesetzten E-Mail-Dienste. Ein technischer Zugriff durch diese Dienste kann nicht generell ausgeschlossen werden.</p>
-    <p>Bei der lokalen Modellverarbeitung werden keine Daten an mich in ein Land außerhalb des Europäischen Wirtschaftsraums übermittelt. Bei von dir gewählten externen Diensten gelten deren Angaben zu Empfängern, Speicherorten und internationalen Datenübermittlungen.</p>
-  </section>
-
-  <section>
-    <h2>10. Deine Rechte</h2>
-    <p>Soweit die gesetzlichen Voraussetzungen vorliegen, hast du insbesondere die Rechte auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) und Datenübertragbarkeit (Art. 20). Soweit eine Verarbeitung auf einer Einwilligung beruht, kann diese mit Wirkung für die Zukunft widerrufen werden.</p>
-    <p>Gegen eine Verarbeitung auf Grundlage von Art. 6 Abs. 1 Buchst. f DSGVO kannst du aus Gründen, die sich aus deiner besonderen Situation ergeben, Widerspruch nach Art. 21 DSGVO einlegen.</p>
-    <p>Wende dich dafür an <a href="mailto:support@blackfishbox.de">support@blackfishbox.de</a>. Da ich lokale Projektinhalte nicht speichere, kann ich sie weder aus der Ferne herausgeben noch auf deinem Gerät löschen. Die lokalen Export- und Löschmöglichkeiten stehen dir direkt zur Verfügung. Du musst mir keine vollständigen Modelle oder Ausweiskopien zusenden, nur um eine allgemeine Datenschutzfrage zu stellen.</p>
-    <p>Du hast außerdem das Recht, dich bei einer Datenschutzaufsichtsbehörde zu beschweren, insbesondere in dem EU-Mitgliedstaat deines Aufenthaltsorts, deines Arbeitsplatzes oder des vermuteten Verstoßes (Art. 77 DSGVO).</p>
-  </section>
-
-  <section>
-    <h2>11. Minderjährige und automatisierte Entscheidungen</h2>
-    <p>Die beschriebenen lokalen Verarbeitungsgrundsätze gelten auch, wenn Minderjährige die App verwenden. Die App verlangt kein Geburtsdatum und richtet keine personenbezogenen Nutzerprofile ein. Es erfolgen keine automatisierten Entscheidungen mit rechtlicher oder vergleichbar erheblicher Wirkung und kein Profiling im Sinne von Art. 22 DSGVO.</p>
-  </section>
-
-  <section>
-    <h2>12. Änderungen dieser Erklärung</h2>
-    <p>Diese Erklärung wird angepasst, wenn sich die maßgeblichen Funktionen, Verarbeitungen oder rechtlichen Anforderungen ändern. Die jeweils zur App-Fassung gehörende Erklärung ist innerhalb der App zugänglich. Neue Funktionen mit zusätzlicher Datenverarbeitung dürfen nicht allein aus dieser Erklärung als bereits freigegeben angesehen werden.</p>
-  </section>
-</main>
+  <main data-locale="de" hidden>
+    <section>
+      <h2>2. Grundprinzip: lokale Verarbeitung</h2>
+      <p>BrickBuilder Mobile ist eine 3D-Konstruktionsanwendung für Klemmbausteinmodelle. Für ihre Nutzung ist kein Benutzerkonto erforderlich. Die Android-App verarbeitet Projekte und importierte Dateien auf deinem Gerät. Es gibt keine automatische Übertragung deiner Modelle oder Teilelisten an mich und keine automatische Cloud-Synchronisierung durch die App.</p>
+      <p>Die hier beschriebene Android-Fassung enthält keine eingebundenen Werbe-, Tracking- oder Analyse-SDKs und keinen eigenen Dienst zur automatischen Übermittlung von Absturzberichten. Sie greift nicht auf Kontakte, Standort, Kamera oder Mikrofon zu und liest keine Werbe-ID aus.</p>
+    </section>
+    <section>
+      <h2>3. Welche Daten auf deinem Gerät verarbeitet werden</h2>
+      <ul>
+        <li><strong>Projektdaten:</strong> Projektname, lokale Projektkennungen, Speicherzeitpunkte, Bauteile, Positionen, Ausrichtungen, Farben und sonstige Modellinformationen.</li>
+        <li><strong>Importierte Dateien:</strong> von dir ausgewählte IO-, LDR-, MPD-, JSON-, XML- oder CSV-Dateien und ihre ausgelesenen Inhalte. Dazu können Originalarchive, Dateinamen, Teilelisten, Mengen und enthaltene Metadaten gehören. Metadaten können beispielsweise Autorenangaben enthalten.</li>
+        <li><strong>Lokale Arbeits- und Bibliotheksdaten:</strong> automatische Speicherstände, benötigte Teile-Geometrien, installierte Teilepakete, Katalog- und Farbzuordnungen sowie lokale Einstellungen und technische Cache-Daten.</li>
+        <li><strong>Exportdateien:</strong> beim Speichern oder Teilen erzeugte Dateien im lokalen App-Cache beziehungsweise an dem von dir gewählten Speicherort.</li>
+      </ul>
+      <p>Ob diese Inhalte personenbezogene Daten enthalten, hängt auch davon ab, welche Angaben du in Projektnamen oder importierten Dateien verwendest. Vermeide darin personenbezogene Informationen, die für das Bauen nicht erforderlich sind.</p>
+      <p>Die Speicherung erfolgt unter anderem in der lokalen Datenbank der Android-WebView (IndexedDB) und im appbezogenen Dateispeicher. Ich kann diese lokalen Inhalte nicht aus der Ferne einsehen.</p>
+    </section>
+    <section>
+      <h2>4. Zwecke und Rechtsgrundlagen</h2>
+      <p>Die lokalen Daten werden verwendet, um Modelle darzustellen und zu bearbeiten, Dateien zu importieren und zu exportieren, Teilelisten zu verwalten, Projekte wieder zu öffnen und den Baufortschritt automatisch zu sichern.</p>
+      <p>Soweit dabei personenbezogene Daten verarbeitet werden und die Verarbeitung zur Bereitstellung der von dir gewünschten App-Funktionen erforderlich ist, ist die Rechtsgrundlage Art. 6 Abs. 1 Buchst. b DSGVO. Technisch notwendiges Speichern und Auslesen auf deinem Gerät erfolgt, soweit § 25 TDDDG anwendbar ist, auf Grundlage von § 25 Abs. 2 Nr. 2 TDDDG. Es werden keine Tracking-Cookies eingesetzt.</p>
+      <p>Wenn du mich kontaktierst, verarbeite ich deine Angaben zur Bearbeitung der Anfrage. Rechtsgrundlage ist Art. 6 Abs. 1 Buchst. b DSGVO bei leistungsbezogenen Anfragen, ansonsten Art. 6 Abs. 1 Buchst. f DSGVO aufgrund meines berechtigten Interesses, Anfragen zu beantworten. Gesetzliche Aufbewahrungspflichten können eine Verarbeitung nach Art. 6 Abs. 1 Buchst. c DSGVO erfordern.</p>
+    </section>
+    <section>
+      <h2>5. Internetverbindungen und externe Angebote</h2>
+      <p>Die Android-Fassung lädt ihre mitgelieferten App-, Katalog- und Geometriedaten aus dem App-Paket beziehungsweise dem lokalen Speicher. Eine lokale WebView-Adresse bezeichnet keinen öffentlich erreichbaren Server. Ohne Aktivierung des Online-Nachladens stellt die Geometriefunktion keine Verbindung zu meinem Server her.</p>
+      <p><strong>Optionaler Geometrie-Download:</strong> Unter „Datenschutz (Android)“ kannst du „Fehlende Geometrien online nachladen“ aktivieren. Erst dann fordert die App beim Importieren oder Bauen lokal nicht vorhandene LDraw-Dateien sowie benötigte Unterdateien und Lizenztexte über HTTPS von <strong>https://brickbuilder.blackfishbox.de/api</strong> an. Die Anfragen gehen an mich als Betreiber dieses Angebots und an den technischen Hosting-Dienstleister <strong>Ultahost</strong>. Der Serverstandort ist <strong>Frankfurt am Main, Deutschland</strong>. Die Anfragen enthalten die benötigten LDraw-Dateipfade, nicht deine Projektdateien, lokalen Dateinamen, Projektnamen, Farben, Mengen oder vollständigen Teilelisten. Aus der Folge angefragter Teile können dennoch Rückschlüsse auf ein Modell gezogen werden.</p>
+      <p>Bei diesen Verbindungen werden technisch deine öffentliche IP-Adresse, Zeitpunkt, angefragter Pfad einschließlich Teilekennung sowie gegebenenfalls vom Netzwerkstack übermittelte technische Angaben verarbeitet. Der Server kann Zugriffe und Fehler protokollieren, etwa Antwortstatus und übertragene Datenmenge. Es werden dabei keine Analysekennungen oder Werbe-IDs durch die Downloadfunktion hinzugefügt. Die Verbindung kann Mobilfunk-Datenvolumen verbrauchen.</p>
+      <p>Das freiwillige Aktivieren ist die Einwilligung für das optionale Nachladen und die damit verbundene Datenübermittlung (Art. 6 Abs. 1 Buchst. a DSGVO). Du kannst die Funktion jederzeit im selben Dialog mit Wirkung für die Zukunft deaktivieren. Bereits abgesendete Anfragen können noch beim Server ankommen. Bereits heruntergeladene und geprüfte Geometrien bleiben lokal für die Offline-Nutzung gespeichert. Ohne Einwilligung bleiben die lokalen Funktionen nutzbar; nicht vorhandene Geometrien können dann nicht dargestellt werden.</p>
+      <p>Soweit technische Serverprotokolle zur Gewährleistung von Sicherheit, Fehleranalyse und Abwehr von Missbrauch erforderlich sind, erfolgt deren Verarbeitung auf Grundlage von Art. 6 Abs. 1 Buchst. f DSGVO. Das berechtigte Interesse ist der sichere und zuverlässige Betrieb des Downloadangebots. Protokolldaten werden nicht zur Werbung oder zur Erstellung von Nutzerprofilen verwendet. Die Zugriffs- und Fehlerprotokolle des Servers werden <strong>30 Tage</strong> aufbewahrt und anschließend gelöscht. Ein Widerruf beendet zukünftige Downloads, löscht aber nicht automatisch bereits rechtmäßig angefallene Serverprotokolle vor Ablauf dieser Frist.</p>
+      <p>Wenn du einen externen Link, beispielsweise zu Quellen oder Lizenzinformationen, selbst öffnest, kann dein Browser eine Verbindung zu diesem Anbieter herstellen. Dabei erhält dieser üblicherweise technische Verbindungsdaten wie deine IP-Adresse. Es gelten dann dessen Datenschutzhinweise. Deine Modelle werden durch das bloße Öffnen eines solchen Links nicht automatisch mitgesendet.</p>
+    </section>
+    <section>
+      <h2>6. Import, Export und Teilen</h2>
+      <p>Die Freigabe für das optionale Online-Nachladen umfasst auch fehlende Geometrien für sichtbare Vorschaubilder in der Gesamtkatalogsuche. Diese werden nacheinander über den in Abschnitt 5 genannten Server geladen und lokal gespeichert. Die gewählte Farbe wird auf dem Gerät gerendert und nicht übermittelt. Ohne Freigabe werden unter Android ausschließlich lokal verfügbare Geometrien für Vorschauen verwendet.</p>
+      <p>Die App verarbeitet die von dir über die Dateiauswahl ausgewählten Dateien. Du entscheidest, welche Dateien du bereitstellst. Ein von dir gewählter Dokumentanbieter kann auch ein Cloud-Speicherdienst sein; dessen Verarbeitung richtet sich nach seinen eigenen Datenschutzbedingungen.</p>
+      <p>Für einen Export wird eine Datei im lokalen App-Cache erstellt. Anschließend öffnet sich der Android-Dialog zum Speichern oder Teilen. Erst durch deine Auswahl kann eine andere App oder ein Dienst Zugriff auf die Exportdatei erhalten. Eine solche Datei kann das Modell, Metadaten und abhängig vom Exportformat erhaltene Originalinhalte enthalten. Prüfe sie vor einer Weitergabe.</p>
+      <p>BrickBuilder Mobile überträgt deine Projekte nicht selbst an einen von mir betriebenen Cloud-Dienst. Eine Übertragung durch eine von dir gewählte E-Mail-, Messenger- oder Cloud-App erfolgt dagegen in deren Verantwortungsbereich.</p>
+    </section>
+    <section>
+      <h2>7. Google Play und Android</h2>
+      <p>Wenn du die App über Google Play installierst oder aktualisierst, verarbeitet Google Daten im Rahmen seiner eigenen Dienste. Auch Android kann aufgrund deiner Geräteeinstellungen Systemdiagnose- oder andere Plattformdaten verarbeiten. Dies ist von der lokalen Modellverarbeitung durch BrickBuilder Mobile zu unterscheiden.</p>
+      <p>Die App verlangt keine Anmeldung bei einem eigenen App-Konto und integriert keine eigene Google-Analytics- oder Werbeauswertung. Weitere Informationen zu Googles Verarbeitung findest du in der <a href="https://policies.google.com/privacy?hl=de" rel="noreferrer">Datenschutzerklärung von Google</a>.</p>
+    </section>
+    <section>
+      <h2>8. Speicherdauer, Löschung und Sicherungen</h2>
+      <p>Lokale Projekte und Bibliotheksdaten bleiben grundsätzlich erhalten, bis du sie löschst, die App-Daten über Android zurücksetzt oder die App deinstallierst. Das Betriebssystem kann Cache-Daten oder Speicher unter bestimmten Umständen früher bereinigen. Die App bietet keine garantierte Aufbewahrungsfrist und keine von mir verwaltete Wiederherstellungskopie.</p>
+      <p>Gespeicherte Projekte und installierte Pakete kannst du über <strong>„Offline-Speicher verwalten“</strong> verwalten. Für eine vollständige Löschung der appinternen Daten verwende in den Android-Einstellungen die Funktion zum Löschen des App-Speichers beziehungsweise der App-Daten. Die genaue Bezeichnung hängt von deinem Gerät ab. Dabei gehen lokale Projekte und automatische Speicherstände verloren.</p>
+      <p>Exportdateien im App-Cache werden nicht unmittelbar nach jedem Teilen automatisch gelöscht. Sie können über das Leeren des App-Caches, das Löschen der App-Daten oder die Deinstallation entfernt werden. Separat gespeicherte Exporte, gesendete Dateien und Kopien in anderen Apps oder bei anderen Diensten musst du dort selbst löschen. Sichere wichtige Projekte vor dem Zurücksetzen der App-Daten.</p>
+      <p>Falls du mir eine E-Mail sendest, bewahre ich diese so lange auf, wie es für die Bearbeitung der Anfrage und gegebenenfalls die Wahrung meiner berechtigten Interessen erforderlich ist. Anschließend wird sie gelöscht, soweit keine gesetzlichen Aufbewahrungspflichten oder noch offenen Ansprüche entgegenstehen.</p>
+    </section>
+    <section>
+      <h2>9. Sicherheit und Empfänger</h2>
+      <p>Die App nutzt die Schutzmechanismen von Android für den appbezogenen Speicher. Eine zusätzliche eigene Verschlüsselung der Projektdaten oder Exportdateien wird nicht zugesichert. Schütze dein Gerät durch eine Bildschirmsperre und beachte, dass entsperrte Geräte, von dir freigegebene Exportdateien und andere Apps eigene Risiken mit sich bringen.</p>
+      <p>Da Projekte lokal verarbeitet werden, werden sie nicht automatisch einem Hosting-, Werbe- oder Analysedienst von mir übermittelt. Beim aktivierten Geometrie-Download erhalte ich als Betreiber die in Abschnitt 5 beschriebenen Anfragedaten; mein Hosting-Dienstleister erhält die für den technischen Betrieb erforderlichen Verbindungsdaten. Weitere Empfänger können von dir ausdrücklich ausgewählte Dokument- oder Teilen-Dienste sein. Bei einer freiwilligen Kontaktaufnahme geht deine Nachricht an mich sowie an die zur Bearbeitung eingesetzten E-Mail-Dienste. Ein technischer Zugriff durch diese Dienste kann nicht generell ausgeschlossen werden.</p>
+      <p>Bei der lokalen Modellverarbeitung werden keine Daten an mich in ein Land außerhalb des Europäischen Wirtschaftsraums übermittelt. Bei von dir gewählten externen Diensten gelten deren Angaben zu Empfängern, Speicherorten und internationalen Datenübermittlungen.</p>
+    </section>
+    <section>
+      <h2>10. Deine Rechte</h2>
+      <p>Soweit die gesetzlichen Voraussetzungen vorliegen, hast du insbesondere die Rechte auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) und Datenübertragbarkeit (Art. 20). Soweit eine Verarbeitung auf einer Einwilligung beruht, kann diese mit Wirkung für die Zukunft widerrufen werden.</p>
+      <p>Gegen eine Verarbeitung auf Grundlage von Art. 6 Abs. 1 Buchst. f DSGVO kannst du aus Gründen, die sich aus deiner besonderen Situation ergeben, Widerspruch nach Art. 21 DSGVO einlegen.</p>
+      <p>Wende dich dafür an <a href="mailto:support@blackfishbox.de">support@blackfishbox.de</a>. Da ich lokale Projektinhalte nicht speichere, kann ich sie weder aus der Ferne herausgeben noch auf deinem Gerät löschen. Die lokalen Export- und Löschmöglichkeiten stehen dir direkt zur Verfügung. Du musst mir keine vollständigen Modelle oder Ausweiskopien zusenden, nur um eine allgemeine Datenschutzfrage zu stellen.</p>
+      <p>Du hast außerdem das Recht, dich bei einer Datenschutzaufsichtsbehörde zu beschweren, insbesondere in dem EU-Mitgliedstaat deines Aufenthaltsorts, deines Arbeitsplatzes oder des vermuteten Verstoßes (Art. 77 DSGVO).</p>
+    </section>
+    <section>
+      <h2>11. Minderjährige und automatisierte Entscheidungen</h2>
+      <p>Die beschriebenen lokalen Verarbeitungsgrundsätze gelten auch, wenn Minderjährige die App verwenden. Die App verlangt kein Geburtsdatum und richtet keine personenbezogenen Nutzerprofile ein. Es erfolgen keine automatisierten Entscheidungen mit rechtlicher oder vergleichbar erheblicher Wirkung und kein Profiling im Sinne von Art. 22 DSGVO.</p>
+    </section>
+    <section>
+      <h2>12. Änderungen dieser Erklärung</h2>
+      <p>Diese Erklärung wird angepasst, wenn sich die maßgeblichen Funktionen, Verarbeitungen oder rechtlichen Anforderungen ändern. Die jeweils zur App-Fassung gehörende Erklärung ist innerhalb der App zugänglich. Neue Funktionen mit zusätzlicher Datenverarbeitung dürfen nicht allein aus dieser Erklärung als bereits freigegeben angesehen werden.</p>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const key = "brickbuilder-language";
+      const text = {
+        en: {
+          "app-name": "Android app", title: "Privacy Policy", date: "Updated: 20 November 2026",
+          contactTitle: "1. Controller and contact",
+          contactText: "For privacy questions or to exercise your rights, contact me at"
+        },
+        de: {
+          "app-name": "Android-App", title: "Datenschutzerklärung", date: "Stand: 20. November 2026",
+          contactTitle: "1. Verantwortlicher und Kontakt",
+          contactText: "Bei Fragen zum Datenschutz oder zur Ausübung deiner Rechte erreichst du mich unter"
+        }
+      };
+      const button = document.getElementById("language-toggle");
+      const setLanguage = language => {
+        document.documentElement.lang = language;
+        document.querySelectorAll("[data-locale]").forEach(main => { main.hidden = main.dataset.locale !== language; });
+        document.querySelectorAll("[data-copy]").forEach(element => {
+          const value = text[language][element.dataset.copy];
+          if (value) element.textContent = value;
+        });
+        document.querySelector('meta[name="description"]').content = language === "en"
+          ? "Privacy policy for BrickBuilder Mobile for Android."
+          : "Datenschutzerklärung für BrickBuilder Mobile für Android.";
+        document.title = language === "en" ? "Privacy Policy — BrickBuilder Mobile" : "Datenschutzerklärung – BrickBuilder Mobile";
+        button.textContent = language === "en" ? "Deutsch" : "English";
+        button.setAttribute("aria-label", language === "en" ? "Switch language to German" : "Sprache auf Englisch umstellen");
+      };
+      let language = "en";
+      try { const stored = localStorage.getItem(key); if (stored === "de" || stored === "en") language = stored; } catch {}
+      setLanguage(language);
+      button.addEventListener("click", () => {
+        language = language === "en" ? "de" : "en";
+        setLanguage(language);
+        try { localStorage.setItem(key, language); } catch {}
+      });
+      window.addEventListener("storage", event => { if (event.key === key && (event.newValue === "de" || event.newValue === "en")) setLanguage(event.newValue); });
+    })();
+  </script>
 </body>
 </html>

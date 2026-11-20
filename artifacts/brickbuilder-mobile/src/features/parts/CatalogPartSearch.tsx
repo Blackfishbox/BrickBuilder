@@ -4,6 +4,7 @@ import { searchBuildingCatalog, type CatalogSearchResult } from "../catalog/clie
 import InventoryThumbnail from "../inventory/InventoryThumbnail";
 import type { LibraryPart } from "./types";
 import { incomingLDrawIds } from "../catalog/ldraw-identity";
+import { useI18n } from "@/i18n/I18nProvider";
 export { incomingLDrawIds } from "../catalog/ldraw-identity";
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export default function CatalogPartSearch({ query, category, installedIds, color, colorCode, loading, selectionError, onSelect }: Props) {
+  const { t } = useI18n();
   const [page, setPage] = useState(0);
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{ key: string; rows?: CatalogSearchResult[]; total?: number; error?: string }>();
@@ -23,10 +25,10 @@ export default function CatalogPartSearch({ query, category, installedIds, color
     try {
       const success = await onSelect(part);
       setSelection({ id: rowId, ...(success === false ? {
-        error: "Geometrie konnte nicht vorbereitet werden. Online-Freigabe und Verbindung prüfen; Details stehen in der Fehlermeldung.",
+        error: t("catalog.prepareGeometryFailed"),
       } : {}) });
     } catch (error) {
-      setSelection({ id: rowId, error: error instanceof Error ? error.message : "Geometrie konnte nicht geladen werden." });
+      setSelection({ id: rowId, error: error instanceof Error ? error.message : t("catalog.geometryLoadFailed") });
     }
   }
   const term = query.trim();
@@ -39,21 +41,21 @@ export default function CatalogPartSearch({ query, category, installedIds, color
       void searchBuildingCatalog(term, page * 40, category).then(result => {
         if (active) setState({ key, rows: result.results, total: result.total });
       }).catch((error: unknown) => {
-        if (active) setState({ key, error: error instanceof Error ? error.message : "Katalogsuche fehlgeschlagen." });
+        if (active) setState({ key, error: error instanceof Error ? error.message : t("catalog.searchFailed") });
       });
     }, 200);
     return () => { active = false; clearTimeout(timer); };
   }, [key, term, category, page]);
-  if (term.length < 2) return <p className="plib-catalog-note">Ab zwei Zeichen werden auch nicht mitgelieferte Teile im Gesamtkatalog gesucht.</p>;
+  if (term.length < 2) return <p className="plib-catalog-note">{t("catalog.searchMinChars")}</p>;
   const current = state?.key === key ? state : undefined;
-  return <section className="plib-catalog-search" aria-label="Gesamtkatalog-Treffer" aria-busy={!current}>
-    <h4><Search size={16} /> Gesamtkatalog {current?.total !== undefined && `· ${current.total} Treffer`}</h4>
-    <p className="plib-catalog-note">Gespeicherter Katalog, keine Live-Abfrage bei BrickLink. Treffer ohne verwendbare LDraw-Zuordnung sind ausgeblendet. Fehlende Geometrien sichtbarer Vorschauen werden nacheinander nachgeladen und offline gespeichert. Unter Android ist dafür die Online-Freigabe unter Datenschutz erforderlich.</p>
-    {!current ? <p role="status">Gesamtkatalog wird durchsucht …</p> : current.error ? <div className="plib-alert" role="alert">
-      <AlertTriangle size={16} /><span>{current.error} Lokale Treffer bleiben nutzbar.</span>
-      <button type="button" onClick={() => setRetry(value => value + 1)}>Erneut</button>
+  return <section className="plib-catalog-search" aria-label={t("catalog.results")} aria-busy={!current}>
+    <h4><Search size={16} /> {t("catalog.matches", { count: current?.total ?? 0 })}</h4>
+    <p className="plib-catalog-note">{t("catalog.searchHint")}</p>
+    {!current ? <p role="status">{t("catalog.searching")}</p> : current.error ? <div className="plib-alert" role="alert">
+      <AlertTriangle size={16} /><span>{current.error} {t("catalog.localResultsRemain")}</span>
+      <button type="button" onClick={() => setRetry(value => value + 1)}>{t("catalog.searchRetry")}</button>
     </div> : <>
-      {!current.rows?.length && <p>Keine weiteren Katalogtreffer.</p>}
+      {!current.rows?.length && <p>{t("catalog.noMoreResults")}</p>}
       <ul className="plib-catalog-rows">
         {current.rows?.filter(row => incomingLDrawIds(row).length > 0).map(row => {
           const ids = incomingLDrawIds(row);
@@ -66,26 +68,26 @@ export default function CatalogPartSearch({ query, category, installedIds, color
                 acquireMissing={!loading && !selection?.pending} />}
               <div className="drawer-piece-copy">
                 <strong>{row.name}</strong>
-                <small>Rebrickable {row.id}{brickLinkIds.length ? ` · BrickLink ${brickLinkIds.join(", ")}` : " · BrickLink-Zuordnung nicht bestätigt"}</small>
-                <small>{chosen ? `LDraw ${chosen} · ${local ? "Offline installiert" : "Nicht als Teilepaket installiert"}` : "Keine eindeutige LDraw-Auswahl"}</small>
+                <small>Rebrickable {row.id}{brickLinkIds.length ? ` · BrickLink ${brickLinkIds.join(", ")}` : ` · ${t("catalog.unconfirmedBrickLink")}`}</small>
+                <small>{chosen ? `LDraw ${chosen} · ${local ? t("catalog.offlineInstalled") : t("catalog.notInstalled")}` : t("catalog.noUniqueLdraw")}</small>
               </div>
             </div>
-            {ids.length > 1 && <label>LDraw-Variante wählen
-              <select aria-label={`LDraw-Variante für ${row.id}`} value={chosen}
+            {ids.length > 1 && <label>{t("catalog.chooseVariant")}
+              <select aria-label={t("catalog.chooseVariantFor", { id: row.id })} value={chosen}
                 onChange={event => setChoices(values => ({ ...values, [row.id]: event.target.value }))}>
-                <option value="">Bitte auswählen …</option>
-                {ids.map(id => <option key={id} value={id}>{id}{installedIds.has(id) ? " · offline installiert" : ""}</option>)}
+                <option value="">{t("catalog.choose")}</option>
+                {ids.map(id => <option key={id} value={id}>{id}{installedIds.has(id) ? ` · ${t("catalog.offlineInstalled")}` : ""}</option>)}
               </select>
             </label>}
             <button type="button" disabled={loading || !chosen || Boolean(selection?.id === row.id && selection.pending)} data-testid={`button-catalog-build-${row.id}`}
               onClick={() => void select({
                 id: `catalog:${row.id}:${chosen}`, packageId: "catalog", ldrawId: chosen,
-                file: `parts/${chosen}.dat`, name: row.name, category: category || "Gesamtkatalog", keywords: [],
+                file: `parts/${chosen}.dat`, name: row.name, category: category || t("catalog.full"), keywords: [],
                 ...(brickLinkIds.length === 1 ? { brickLinkId: brickLinkIds[0] } : {}),
               }, row.id)}>
-              {!local && <Download size={15} />}{local ? "Damit bauen" : "Geometrie prüfen / damit bauen"}
+              {!local && <Download size={15} />}{local ? t("catalog.build") : t("catalog.verifyBuild")}
             </button>
-            {selection?.id === row.id && selection.pending && <p role="status">LDraw {chosen}: Geometrie wird geladen und geprüft …</p>}
+            {selection?.id === row.id && selection.pending && <p role="status">{t("catalog.loadingGeometry", { id: chosen })}</p>}
             {selection?.id === row.id && selection.error && <p role="alert" className="plib-error">
               LDraw {chosen}: {selectionError || selection.error}
             </p>}
@@ -93,9 +95,9 @@ export default function CatalogPartSearch({ query, category, installedIds, color
         })}
       </ul>
       {!!current.total && current.total > 40 && <div className="plib-catalog-pager">
-        <button type="button" disabled={page === 0} onClick={() => setPage(value => value - 1)}>Zurück</button>
-        <span>Seite {page + 1} / {Math.ceil(current.total / 40)}</span>
-        <button type="button" disabled={(page + 1) * 40 >= current.total} onClick={() => setPage(value => value + 1)}>Weiter</button>
+         <button type="button" disabled={page === 0} onClick={() => setPage(value => value - 1)}>{t("catalog.previous")}</button>
+         <span>{t("catalog.page", { current: page + 1, total: Math.ceil(current.total / 40) })}</span>
+         <button type="button" disabled={(page + 1) * 40 >= current.total} onClick={() => setPage(value => value + 1)}>{t("catalog.next")}</button>
       </div>}
     </>}
   </section>;
