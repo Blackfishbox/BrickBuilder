@@ -104,6 +104,6 @@ describe("separately licensed explicit BrickLink evidence", () => {
       })),
     };
     const html = renderToStaticMarkup(<Report model={model} bricks={0} />);
-    for (const text of ["401×", "unknown.dat", "mehrdeutig", "3023old", "CC-BY-4.0", MAPPING_SET.version, BRICKLINK_EVIDENCE[1].sourceSha256, "unbestätigt"]) expect(html).toContain(text);
+    for (const text of ["401×", "unknown.dat", "ambiguous", "3023old", "CC-BY-4.0", MAPPING_SET.version, BRICKLINK_EVIDENCE[1].sourceSha256, "unconfirmed"]) expect(html).toContain(text);
   });
 });
