@@ -2,13 +2,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Euler, Group, Matrix4, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
+import { Box3, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import * as instructionOutlines from "../instructions/outlines";
-import BuilderCanvas from "./BuilderCanvas";
+import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
 import { compilePart, worldMatrix } from "./ldraw-geometry";
@@ -21,7 +21,9 @@ import { gunzipSync } from "fflate";
 import { parseLDraw } from "../formats/ldraw/parser";
 import type { ImportedModel } from "../formats/types";
 import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model";
-import { moveImported, tiltImported } from "../editor/ldraw-editing";
+import { moveImported, tiltImported, placePreparedPart } from "../editor/ldraw-editing";
+import type { PreparedPart } from "../editor/ldraw-editing";
+import { localPartBounds } from "./stacking";
 import { commit, createHistory, redo, undo } from "../editor/history";
 import type { Affine } from "../formats/types";
 import { connectionFixture, partLine } from "../connections/fixtures";
@@ -754,6 +756,185 @@ describe("frame-coalesced drag transactions", () => {
     expect(element.querySelector("[aria-label='Kollisionswarnung anzeigen']")).toBeNull();
     expect(element.querySelector("[aria-label='Schwebewarnung anzeigen']")).toBeNull();
   });
+  for (const webgl of [true, false]) {
+    it(`drags a build preview onto plate studs without orbiting and commits the visible snap in ${webgl ? "WebGL" : "compatibility"} mode`, async () => {
+      observed.webglEnabled = webgl;
+      const snapshot = JSON.parse(new TextDecoder().decode(gunzipSync(
+        readFileSync(resolve("public/parts/import-geometry-2026-10-31.bin")),
+      )));
+      const imported = connectionFixture(partLine("3795", 0, -8));
+      const model = connectionFixture(partLine("3023b"));
+      for (const item of [imported, model]) {
+        item.resources = Object.fromEntries(snapshot.files.map((file: { path: string }) => [file.path, file]));
+        item.instances.forEach(instance => { instance.part.status = "resolved"; });
+      }
+      const prepared: PreparedPart = {
+        part: { id: "plate-1x2", packageId: "catalog", ldrawId: "3023b", name: "Plate 1 x 2",
+          category: "Plates", keywords: [], file: "parts/3023b.dat" },
+        model, bottom: localPartBounds(model, model.instances[0].reference)
+          .clone().applyMatrix4(worldMatrix(model.instances[0].matrix)).min.y,
+      };
+      const onPlace = vi.fn();
+      act(() => root.render(<BuilderCanvas bricks={[]} imported={imported} selectedId={null}
+        selectedType="brick-1x2" selectedColor="#B40000" placementPreview={prepared}
+        toolMode="build" onPlace={onPlace} onSelect={vi.fn()} onMove={vi.fn()} />));
+      await act(async () => { await vi.waitFor(() => {
+        if (webgl) expect(observed.scene3d?.getObjectByName("placement-preview")).toBeDefined();
+        else expect(observed.scene).toBeDefined();
+      }); });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      observed.camera!.updateMatrixWorld(true);
+      const cameraPosition = observed.camera!.position.clone();
+      const cameraQuaternion = observed.camera!.quaternion.clone();
+      const project = (x: number, y: number, z: number) => {
+        const point = new Vector3(x, y, z).project(observed.camera!);
+        return { x: (point.x + 1) * 300, y: (1 - point.y) * 300 };
+      };
+      const start = project(4, 0, 3), end = project(0.03, 0.4, 0.52);
+      const search = vi.spyOn(snapping, "magneticConstructionTransform");
+      const fallbackRender = vi.spyOn(FallbackRenderer.prototype, "render");
+      pointer("pointerdown", start.x, start.y);
+      pointer("pointermove", end.x, end.y);
+      flushFrame();
+      expect(onPlace).not.toHaveBeenCalled();
+      expect(observed.camera!.position.equals(cameraPosition)).toBe(true);
+      expect(observed.camera!.quaternion.equals(cameraQuaternion)).toBe(true);
+      const snapped = search.mock.results.at(-1)!.value.transform;
+      expect(snapped.contacts).toHaveLength(2);
+      expect(snapped.matrix).toEqual([1, 0, 0, 0, 0, 1, 0, -16, 0, 0, 1, 10]);
+      if (webgl) {
+        const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
+        const mesh = previewRoot.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
+        const matrix = new Matrix4();
+        mesh.getMatrixAt(0, matrix);
+        expect(matrix.elements[12]).toBeCloseTo(0);
+        expect(matrix.elements[13]).toBeCloseTo(0.8);
+        expect(matrix.elements[14]).toBeCloseTo(0.5);
+      } else {
+        expect((fallbackRender.mock.lastCall![10] as { matrix: Affine }).matrix).toEqual(snapped.matrix);
+      }
+      pointer("pointerup", end.x, end.y);
+      expect(onPlace).toHaveBeenCalledOnce();
+      expect(onPlace.mock.calls[0][1]).toEqual(snapped.matrix);
+      let document = placePreparedPart({ ...createEmptyDocument(), imported }, prepared, onPlace.mock.calls[0][0], "#B40000");
+      const id = document.imported!.instances.at(-1)!.id;
+      document = moveImported(document, id, onPlace.mock.calls[0][0], false, onPlace.mock.calls[0][1]);
+      expect(snapping.activeConnections(document.imported!, id)).toHaveLength(2);
+      onPlace.mockClear();
+      pointer("pointerdown", start.x, start.y, 1);
+      pointer("pointerdown", start.x + 40, start.y, 2);
+      pointer("pointermove", start.x + 80, start.y + 30, 2);
+      pointer("pointerup", start.x + 80, start.y + 30, 2);
+      pointer("pointermove", end.x, end.y, 1);
+      pointer("pointerup", end.x, end.y, 1);
+      expect(observed.camera!.position.equals(cameraPosition)).toBe(false);
+      expect(onPlace).not.toHaveBeenCalled();
+      fallbackRender.mockRestore();
+    });
+    it(`shows a real LDraw placement preview without committing in ${webgl ? "WebGL" : "compatibility"} mode`, async () => {
+      observed.webglEnabled = webgl;
+      const snapshot = JSON.parse(new TextDecoder().decode(gunzipSync(
+        readFileSync(resolve("public/parts/import-geometry-2026-10-31.bin")),
+      )));
+      const model = connectionFixture(partLine("3023b"));
+      model.resources = Object.fromEntries(snapshot.files.map((file: { path: string }) => [file.path, file]));
+      const source = model.instances[0];
+      source.part.status = "resolved";
+      const bottom = localPartBounds(model, source.reference)
+        .clone().applyMatrix4(worldMatrix(source.matrix)).min.y;
+      const prepared: PreparedPart = {
+        part: { id: "plate-1x2", packageId: "catalog", ldrawId: "3023b", name: "Plate 1 x 2",
+          category: "Plates", keywords: [], file: "parts/3023b.dat" },
+        model, bottom,
+      };
+      const onPlace = vi.fn(), props = {
+        projectId: `placement-preview-${webgl}`, bricks: [], imported: undefined, selectedId: null,
+        selectedType: "brick-2x4" as const, selectedColor: "#B40000", selectedColorCode: "4",
+        placementPreview: prepared, toolMode: "build" as const,
+        onMove: vi.fn(), onSelect: vi.fn(), onPlace,
+      };
+      const fallbackRender = vi.spyOn(FallbackRenderer.prototype, "render");
+      act(() => root.render(<BuilderCanvas {...props} />));
+      await act(async () => { await vi.waitFor(() => {
+        if (webgl) expect(observed.scene3d?.getObjectByName("placement-preview")).toBeDefined();
+        else expect(element.querySelector("[data-renderer='canvas-fallback']")).toBeDefined();
+      }); });
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      expect(onPlace).not.toHaveBeenCalled();
+      expect(model.instances).toHaveLength(1);
+      if (webgl) {
+        const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
+        const index = instanceIndex(previewRoot)!;
+        expect(index.model.instances[0].colorCode).toBe("4");
+        expect(index.records.has("placement-preview")).toBe(true);
+      } else {
+        const preview = fallbackRender.mock.lastCall![10] as { surfaces: unknown[]; colorCode: string };
+        expect(preview.surfaces.length).toBeGreaterThan(0);
+        expect(preview.colorCode).toBe("4");
+      }
+
+      observed.camera!.updateMatrixWorld(true);
+      const projected = new Vector3(1, 0, 1).project(observed.camera!);
+      const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      pointer("pointermove", target.x, target.y);
+      flushFrame();
+      if (webgl) {
+        const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
+        const previewMesh = previewRoot.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
+        const matrix = new Matrix4();
+        previewMesh.getMatrixAt(0, matrix);
+        expect(matrix.elements[12]).toBeCloseTo(1);
+        expect(matrix.elements[14]).toBeCloseTo(1);
+      } else {
+        const preview = fallbackRender.mock.lastCall![10] as { matrix: Affine };
+        expect(preview.matrix[3]).toBeCloseTo(20);
+        expect(preview.matrix[11]).toBeCloseTo(20);
+      }
+
+      pointer("pointerdown", target.x, target.y);
+      pointer("pointercancel", target.x, target.y);
+      expect(onPlace).not.toHaveBeenCalled();
+      pointer("pointerdown", target.x, target.y);
+      pointer("pointerup", target.x, target.y);
+      expect(onPlace).toHaveBeenCalledOnce();
+      expect(model.instances).toHaveLength(1);
+    });
+    it(`shows built-in brick geometry at the pointer in ${webgl ? "WebGL" : "compatibility"} mode`, () => {
+      observed.webglEnabled = webgl;
+      const fallbackRender = vi.spyOn(FallbackRenderer.prototype, "render");
+      const props = {
+        bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#e4b844",
+        toolMode: "build" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(),
+      };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      flushFrame();
+      const preview = observed.scene3d?.getObjectByName("placement-preview");
+      if (webgl) {
+        expect(preview).toBeInstanceOf(Mesh);
+        expect((preview as Mesh).geometry.getAttribute("position").count).toBeGreaterThan(0);
+        expect(((preview as Mesh).material as MeshLambertMaterial).color.getHexString()).toBe("e4b844");
+      } else {
+        const brick = fallbackRender.mock.lastCall![11] as Brick;
+        expect(brick).toMatchObject({ id: "placement-preview-brick", type: "brick-1x2", color: "#e4b844" });
+      }
+
+      observed.camera!.updateMatrixWorld(true);
+      const projected = new Vector3(1, 0, 1).project(observed.camera!);
+      const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      pointer("pointermove", target.x, target.y);
+      flushFrame();
+      if (webgl) {
+        expect((preview as Mesh).position.x).toBeCloseTo(1);
+        expect((preview as Mesh).position.z).toBeCloseTo(1);
+      } else {
+        expect(fallbackRender.mock.lastCall![11]).toMatchObject({ x: 1, z: 1 });
+      }
+      expect(props.onPlace).not.toHaveBeenCalled();
+    });
+  }
   it("drags real catalog plate geometry onto both rows with live contacts and identical committed rendering", async () => {
     const snapshot = JSON.parse(new TextDecoder().decode(gunzipSync(readFileSync(resolve("public/parts/import-geometry-2026-10-31.bin")))));
     const sourceText = "1 4 0 -8 0 1 0 0 0 1 0 0 0 1 3795.dat\n1 7 80 -8 0 1 0 0 0 1 0 0 0 1 3023b.dat";

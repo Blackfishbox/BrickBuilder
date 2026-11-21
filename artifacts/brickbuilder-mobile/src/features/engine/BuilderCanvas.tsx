@@ -35,9 +35,9 @@ import {
   instructionRotationFromCameraPose,
 } from "./instruction-camera";
 import { applyInstructionFocus, installInstructionFocus, instructionDisplayColor } from "./instruction-focus";
-import { createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
+import { createImportedGroup, createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
-import { reuseGeometryCache } from "./ldraw-geometry";
+import { compilePart, reuseGeometryCache, worldMatrix } from "./ldraw-geometry";
 import { importedSelectionBounds, pickSoftwareInstance } from "./imported-selection";
 import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftware, applySoftwareInstructionFocus, INTERACTIVE_TRIANGLE_BUDGET, type SoftwareScene } from "./software-scene";
 import { InstanceIndex, instanceIndex } from "./instance-index";
@@ -45,6 +45,7 @@ import {
   activeConnections, magneticConstructionTransform, hasUsableConnections,
 } from "../connections/engine";
 import type { MagneticLatch } from "../connections/engine";
+import { placementSnapModel, PLACEMENT_SNAP_ID } from "./placement-snapping";
 import { ConnectionOverlay } from "../connections/overlay";
 import type { InstructionCamera } from "../instructions/types";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "../instructions/outlines";
@@ -54,6 +55,8 @@ import type { ConnectionTransform } from "../connections/types";
 import { createBuilderLighting } from "./lighting";
 import type { Affine, ImportedModel } from "../formats/types";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
+import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
+import { resolveColor } from "../formats/colors";
 
 import {
   BRICK_DEFINITIONS,
@@ -86,8 +89,10 @@ interface BuilderCanvasProps {
   selectedIds?: readonly string[];
   selectedType: BrickType;
   selectedColor: string;
+  selectedColorCode?: string;
+  placementPreview?: PreparedPart | null;
   toolMode: ToolMode;
-  onPlace: (position: Position3) => void;
+  onPlace: (position: Position3, transform?: Affine) => void;
   onSelect: (id: string | null) => void;
   onViewPartTap?: (id: string) => void;
   onMove: (id: string, position: Position3, transform?: Affine) => void;
@@ -126,6 +131,14 @@ interface ProjectedPoint {
   depth: number;
 }
 
+interface PlacementPreviewGeometry {
+  surfaces: ReturnType<typeof compilePart>;
+  matrix: Affine;
+  colorCode: string;
+}
+
+const PLACEMENT_PREVIEW_ID = "placement-preview";
+
 export class FallbackRenderer {
   readonly domElement = document.createElement("canvas");
   private readonly context = this.domElement.getContext("2d");
@@ -157,6 +170,8 @@ export class FallbackRenderer {
     instructionFocusIds?: ReadonlySet<string>,
     floor: ConstructionArea = constructionArea(new Box3()),
     darkMode = false,
+    placementGeometry?: PlacementPreviewGeometry | null,
+    placementBrick?: Brick | null,
   ): void {
     const context = this.context;
     if (!context) return;
@@ -217,8 +232,8 @@ export class FallbackRenderer {
 
     // Bounded, pretransformed source triangles; never traverse the full model
     // or allocate millions of world-space vectors for a camera movement.
+    const importedFaces: { points: ProjectedPoint[]; depth: number; color: string; alpha: number; opacity: number; selected: boolean }[] = [];
     if (imported) {
-      const faces: { points: ProjectedPoint[]; depth: number; color: string; alpha: number; selected: boolean }[] = [];
       const stride = interactive ? Math.max(1, Math.ceil(imported.triangleCount / INTERACTIVE_TRIANGLE_BUDGET)) : 1;
       for (let triangle = 0; triangle < imported.triangleCount; triangle += stride) {
             if (imported.alpha[triangle] === 0) continue;
@@ -229,12 +244,40 @@ export class FallbackRenderer {
             if (Math.abs(area) < 0.08) continue;
             const id = imported.triangleIds[triangle];
             const color = imported.instructionColors?.[triangle] ?? imported.colors[triangle];
-            faces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color, alpha: imported.alpha[triangle], selected: id === selectedId });
+            importedFaces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color, alpha: imported.alpha[triangle], opacity: 1, selected: id === selectedId });
       }
-      faces.sort((a, b) => b.depth - a.depth);
-      for (const face of faces) {
+    }
+    if (placementGeometry) {
+      const transform = worldMatrix(placementGeometry.matrix);
+      const a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3();
+      const light = new Vector3(0.4, 0.8, 0.5).normalize();
+      for (const surface of placementGeometry.surfaces) {
+        const mapping = resolveColor(surface.colorCode === "16" ? placementGeometry.colorCode : surface.colorCode);
+        const base = new Color(mapping?.hex ?? "#ff00ff");
+        const alpha = (mapping?.alpha ?? 255) / 255 * 0.72;
+        for (let index = 0; index < surface.positions.length; index += 9) {
+          a.fromArray(surface.positions, index).applyMatrix4(transform);
+          b.fromArray(surface.positions, index + 3).applyMatrix4(transform);
+          c.fromArray(surface.positions, index + 6).applyMatrix4(transform);
+          const points = [project(a.x, a.y, a.z), project(b.x, b.y, b.z), project(c.x, c.y, c.z)];
+          if (points.some(point => point.depth < 0.1)) continue;
+          const area = (points[1].x - points[0].x) * (points[2].y - points[0].y) -
+            (points[1].y - points[0].y) * (points[2].x - points[0].x);
+          if (Math.abs(area) < 0.08) continue;
+          normal.copy(b).sub(a).cross(c.clone().sub(a)).normalize();
+          importedFaces.push({
+            points, depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
+            color: base.clone().multiplyScalar(0.58 + 0.42 * Math.abs(normal.dot(light))).getStyle(),
+            alpha, opacity: 1, selected: false,
+          });
+        }
+      }
+    }
+    if (importedFaces.length) {
+      importedFaces.sort((a, b) => b.depth - a.depth);
+      for (const face of importedFaces) {
         polygonPath(context, face.points);
-        context.globalAlpha = face.alpha;
+        context.globalAlpha = face.alpha * face.opacity;
         context.fillStyle = face.color;
         context.fill();
         if (face.selected) {
@@ -245,7 +288,7 @@ export class FallbackRenderer {
       context.globalAlpha = 1;
     }
 
-    const orderedBricks = [...bricks].sort(
+    const orderedBricks = [...bricks, ...(placementBrick ? [placementBrick] : [])].sort(
       (first, second) =>
         camera.position.distanceTo(new Vector3(second.x, second.y, second.z)) -
         camera.position.distanceTo(new Vector3(first.x, first.y, first.z)),
@@ -262,7 +305,7 @@ export class FallbackRenderer {
       // Project the same body and cylindrical studs as WebGL/PDF. Screen-space
       // ellipses cannot represent a stud correctly when its brick is tilted.
       const triangles = localBrickTriangles(brick.type);
-      const faces: { points: ProjectedPoint[]; depth: number; shade: number }[] = [];
+      const faces: { points: ProjectedPoint[]; depth: number; shade: number; opacity: number }[] = [];
       const light = new Vector3(0.4, 0.8, 0.5).normalize();
       for (let index = 0; index < triangles.length; index += 9) {
         const world = [0, 3, 6].map(offset =>
@@ -275,14 +318,17 @@ export class FallbackRenderer {
           points,
           depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
           shade: 0.58 + 0.42 * Math.abs(normal.dot(light)),
+          opacity: brick.id === "placement-preview-brick" ? 0.72 : 1,
         });
       }
       faces.sort((first, second) => second.depth - first.depth);
       for (const face of faces) {
         polygonPath(context, face.points);
         context.fillStyle = color.clone().multiplyScalar(face.shade).getStyle();
+        context.globalAlpha = face.opacity;
         context.fill();
       }
+      context.globalAlpha = 1;
 
       if (selectedId === brick.id) {
         const selectionTop = [
@@ -396,6 +442,8 @@ export function BuilderCanvas({
   selectedIds,
   selectedType,
   selectedColor,
+  selectedColorCode,
+  placementPreview,
   toolMode,
   onPlace,
   onSelect,
@@ -414,6 +462,12 @@ export function BuilderCanvas({
   const rendererRef = useRef<WebGLRenderer | FallbackRenderer | null>(null);
   const brickRootRef = useRef<Group | null>(null);
   const importedRootRef = useRef<Group | null>(null);
+  const placementRootRef = useRef<Group | Mesh | null>(null);
+  const placementIndexRef = useRef<InstanceIndex | null>(null);
+  const placementPreviewGeometryRef = useRef<PlacementPreviewGeometry | null>(null);
+  const placementPreviewBrickRef = useRef<Brick | null>(null);
+  const placementBottomRef = useRef(0);
+  const placementSourceMatrixRef = useRef<Affine | null>(null);
   const sceneModelRef = useRef<ImportedModel | undefined>(undefined);
   const sceneProjectRef = useRef<string | undefined>(undefined);
   const selectionOutlineRef = useRef<Box3Helper | null>(null);
@@ -539,6 +593,8 @@ export function BuilderCanvas({
     selectedIds,
     selectedType,
     selectedColor,
+    selectedColorCode,
+    placementPreview,
     toolMode,
     onPlace,
     onSelect,
@@ -586,6 +642,8 @@ export function BuilderCanvas({
     selectedIds,
     selectedType,
     selectedColor,
+    selectedColorCode,
+    placementPreview,
     toolMode,
     onPlace,
     onSelect,
@@ -754,6 +812,8 @@ export function BuilderCanvas({
             propsRef.current.instructionFocusIds,
             constructionAreaRef.current,
             propsRef.current.darkMode,
+            placementPreviewGeometryRef.current,
+            placementPreviewBrickRef.current,
           );
         }
         overlay.draw(camera, importedOffsetRef.current, id => {
@@ -815,6 +875,19 @@ export function BuilderCanvas({
         disposeImported(importedRootRef.current);
         importedRootRef.current = null;
       }
+      if (placementRootRef.current) {
+        scene.remove(placementRootRef.current);
+        if (placementRootRef.current instanceof Group) disposeImportedScene(placementRootRef.current);
+        else {
+          placementRootRef.current.geometry.dispose();
+          disposeMaterial(placementRootRef.current.material);
+        }
+        placementRootRef.current = null;
+      }
+      placementIndexRef.current = null;
+      placementPreviewGeometryRef.current = null;
+      placementPreviewBrickRef.current = null;
+      placementSourceMatrixRef.current = null;
       scene.traverse((object) => {
         if (object instanceof InstancedMesh) object.dispose();
         if (object instanceof Mesh) {
@@ -848,6 +921,87 @@ export function BuilderCanvas({
     grid.material.opacity = darkMode ? 0.72 : 0.62;
     invalidatorRef.current?.();
   }, [darkMode]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (placementRootRef.current) {
+      scene.remove(placementRootRef.current);
+      if (placementRootRef.current instanceof Group) disposeImportedScene(placementRootRef.current);
+      else {
+        placementRootRef.current.geometry.dispose();
+        disposeMaterial(placementRootRef.current.material);
+      }
+    }
+    placementRootRef.current = null;
+    placementIndexRef.current = null;
+    placementPreviewGeometryRef.current = null;
+    placementPreviewBrickRef.current = null;
+    placementSourceMatrixRef.current = null;
+    placementBottomRef.current = 0;
+    if (toolMode !== "build") {
+      invalidatorRef.current?.();
+      return;
+    }
+    const target = cameraStateRef.current.target;
+    if (placementPreview) {
+      try {
+        const source = placementPreview.model.instances[0];
+        if (!source || source.part.status !== "resolved") throw new Error("Part geometry is unavailable.");
+        const colorCode = appearanceCode(selectedColor, selectedColorCode);
+        const instance = { ...source, id: PLACEMENT_PREVIEW_ID, colorCode, color: resolveColor(colorCode) };
+        const model: ImportedModel = { ...placementPreview.model, instances: [instance] };
+        const matrix = [...source.matrix] as Affine;
+        matrix[3] = target.x * 20;
+        matrix[7] = placementPreview.bottom * 20;
+        matrix[11] = target.z * 20;
+        placementSourceMatrixRef.current = [...source.matrix] as Affine;
+        placementBottomRef.current = placementPreview.bottom;
+        placementPreviewGeometryRef.current = {
+          surfaces: compilePart(model, source.reference, "16"), matrix, colorCode,
+        };
+        if (rendererRef.current instanceof WebGLRenderer) {
+          const root = createImportedGroup(model);
+          const index = new InstanceIndex(root, model);
+          index.preview(PLACEMENT_PREVIEW_ID, matrix);
+          root.name = "placement-preview";
+          root.traverse(object => {
+            if (!(object instanceof Mesh)) return;
+            for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+              material.transparent = true;
+              material.opacity = 0.72;
+              material.depthWrite = false;
+            }
+            object.renderOrder = 5;
+          });
+          scene.add(root);
+          placementRootRef.current = root;
+          placementIndexRef.current = index;
+        }
+      } catch (error) {
+        setToggleToast(`${placementPreview.part.ldrawId}: ${error instanceof Error ? error.message : String(error)}`);
+        placementPreviewGeometryRef.current = null;
+      }
+    } else {
+      const brick: Brick = {
+        id: "placement-preview-brick", type: selectedType, color: selectedColor,
+        x: target.x, y: 0, z: target.z, rotation: 0,
+      };
+      placementPreviewBrickRef.current = brick;
+      if (rendererRef.current instanceof WebGLRenderer) {
+        const material = new MeshLambertMaterial({
+          color: selectedColor, transparent: true, opacity: 0.72, depthWrite: false,
+        });
+        const mesh = new Mesh(brickGeometry(selectedType).clone(), material);
+        mesh.name = "placement-preview";
+        mesh.position.set(target.x, 0, target.z);
+        mesh.renderOrder = 5;
+        scene.add(mesh);
+        placementRootRef.current = mesh;
+      }
+    }
+    invalidatorRef.current?.();
+  }, [placementPreview, selectedColor, selectedColorCode, selectedType, toolMode]);
 
   useEffect(() => {
     invalidatorRef.current?.();
@@ -1205,6 +1359,66 @@ export function BuilderCanvas({
         ? { x: intersection.x, y, z: intersection.z }
         : null;
     };
+    const placementTarget = (point: PointerPoint): Position3 | null => {
+      const hit = findBrick(point);
+      if (!hit) return projectToPlane(point, 0);
+      const brick = propsRef.current.bricks.find(item => item.id === hit.id);
+      const y = brick ? brick.y + BRICK_HEIGHT : Math.max(0, hit.point.y);
+      return projectToPlane(point, y);
+    };
+    let snapContext: { original?: ImportedModel; prepared: PreparedPart; model: ImportedModel } | undefined;
+    let placementLatch: MagneticLatch | undefined;
+    const updatePlacementPreview = (destination: Position3 | null): Affine | undefined => {
+      if (!destination || propsRef.current.toolMode !== "build") return;
+      const x = Math.round(destination.x * 2) / 2;
+      const z = Math.round(destination.z * 2) / 2;
+      const brick = placementPreviewBrickRef.current;
+      if (brick) {
+        const next = { ...brick, x, y: destination.y, z };
+        placementPreviewBrickRef.current = next;
+        const mesh = placementRootRef.current;
+        if (mesh instanceof Mesh) {
+          mesh.position.set(x, destination.y, z);
+          mesh.rotation.set(0, 0, 0);
+        }
+      }
+      const preview = placementPreviewGeometryRef.current;
+      if (preview) {
+        let matrix = [...(placementSourceMatrixRef.current ?? preview.matrix)] as Affine;
+        matrix[3] = x * 20;
+        matrix[7] = (placementBottomRef.current - destination.y) * 20;
+        matrix[11] = z * 20;
+        const { imported: original, placementPreview: prepared } = propsRef.current;
+        if (prepared) {
+          if (snapContext?.original !== original || snapContext?.prepared !== prepared) {
+            snapContext = { original, prepared, model: placementSnapModel(original, prepared) };
+            placementLatch = undefined;
+          }
+          const snapped = magneticConstructionTransform(snapContext.model, PLACEMENT_SNAP_ID, {
+            x: destination.x,
+            y: destination.y - importedOffsetRef.current - prepared.bottom,
+            z: destination.z,
+          }, placementLatch);
+          placementLatch = snapped.latch;
+          matrix = [...snapped.transform.matrix] as Affine;
+          if (overlayRef.current) overlayRef.current.contacts = snapped.transform.contacts;
+          setConnectionStatus(snapped.transform.contacts.length
+            ? translateRef.current("canvas.magnetSnapped", { count: snapped.transform.contacts.length })
+            : "");
+          // The preview root is in world coordinates; project transforms are not.
+          const world = [...matrix] as Affine;
+          world[7] -= importedOffsetRef.current * 20;
+          preview.matrix = world;
+          placementIndexRef.current?.preview(PLACEMENT_PREVIEW_ID, world);
+          invalidatorRef.current?.();
+          return matrix;
+        }
+        preview.matrix = matrix;
+        placementIndexRef.current?.preview(PLACEMENT_PREVIEW_ID, matrix);
+      }
+      invalidatorRef.current?.();
+      return undefined;
+    };
 
     const rollback = () => {
       pendingPreviewRef.current = null;
@@ -1382,6 +1596,10 @@ export function BuilderCanvas({
       clickRef.current = { id: event.pointerId, start: point, moved: false, startedAt: performance.now() };
       const current = propsRef.current;
       const hit = current.toolMode === "view" ? null : findBrick(point);
+      if (current.toolMode === "build") {
+        placementLatch = undefined;
+        updatePlacementPreview(placementTarget(point));
+      }
       if (current.toolMode === "select") {
         if (hit) {
           const alreadySelected = current.selectedIds?.includes(hit.id) ?? false;
@@ -1421,7 +1639,12 @@ export function BuilderCanvas({
     };
 
     const onPointerMove = (event: PointerEvent) => {
-      if (!pointersRef.current.has(event.pointerId)) return;
+      if (!pointersRef.current.has(event.pointerId)) {
+        if (propsRef.current.toolMode === "build") {
+          updatePlacementPreview(placementTarget({ x: event.clientX, y: event.clientY }));
+        }
+        return;
+      }
       event.preventDefault();
       const previous = pointerLastRef.current.get(event.pointerId);
       const currentPoint = { x: event.clientX, y: event.clientY };
@@ -1443,6 +1666,12 @@ export function BuilderCanvas({
       }
       // A remaining finger must not resume the part action or orbit after takeover.
       if (cameraOnlyRef.current) return;
+      // A single finger belongs exclusively to the part in build mode.
+      // Camera navigation remains available through two-finger gestures.
+      if (propsRef.current.toolMode === "build") {
+        updatePlacementPreview(placementTarget(currentPoint));
+        return;
+      }
 
       const start = dragRef.current;
       const click = clickRef.current;
@@ -1539,7 +1768,7 @@ export function BuilderCanvas({
               else current.onMove(drag.id, destination, transform);
             }
           }
-        } else if (current.toolMode === "build" && click && !click.moved) {
+        } else if (current.toolMode === "build" && click) {
           const hit = findBrick(point);
           let destination: Position3 | null = null;
           if (hit) {
@@ -1549,7 +1778,11 @@ export function BuilderCanvas({
           } else {
             destination = projectToPlane(point, 0);
           }
-          if (destination) current.onPlace({ ...destination, y: destination.y - importedOffsetRef.current });
+          if (destination) {
+            const transform = updatePlacementPreview(destination);
+            current.onPlace({ ...destination, y: destination.y - importedOffsetRef.current }, transform);
+            placementLatch = undefined;
+          }
         } else if (current.toolMode === "delete" && click && !click.moved) {
           const hit = findBrick(point);
           if (hit) current.onSelect(hit.id);

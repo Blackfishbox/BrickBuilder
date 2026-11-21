@@ -14,6 +14,9 @@ import { allocatedCounts } from "../inventory/accounting";
 import { builderDatabase, loadProject } from "@/storage/database";
 import { brickBounds } from "./brick-transform";
 import { stackingBounds } from "../engine/stacking";
+import { localPartBounds } from "../engine/stacking";
+import { worldMatrix } from "../engine/ldraw-geometry";
+import { activeConnections } from "../connections/engine";
 
 vi.mock("../catalog/client", () => ({
   useCatalog: () => ({ status: "ready" }),
@@ -61,8 +64,14 @@ it("commits inventory snapping once and preserves exact height through manual ed
     id: "plate", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat",
   }, model: model("1 4 0 0 0 1 0 0 0 1 0 0 0 1 3022.dat") };
   vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
+  const beforePreview = editor.document;
+  const canUndoBeforePreview = editor.canUndo;
   await act(async () => { await editor.selectInventoryPart({ listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3022", colorCode: "4" }); });
   expect(editor.toolMode).toBe("build");
+  expect(editor.placementPreview).toBe(prepared);
+  expect(editor.document).toBe(beforePreview);
+  expect(editor.canUndo).toBe(canUndoBeforePreview);
+  expect(allocatedCounts(editor.document).get(inventory.rows[0].id) ?? 0).toBe(0);
   await act(async () => editor.place({ x: 0.28, y: 1.4, z: 0.2 }));
   const placed = editor.imported!.instances[1], id = placed.id;
   expect(placed.matrix[3]).toBeCloseTo(4.6);
@@ -107,6 +116,61 @@ it("commits inventory snapping once and preserves exact height through manual ed
   await act(async () => editor.redo());
   await act(async () => { await editor.save(); });
   expect((await loadProject(editor.document.id))!.imported!.instances.find(instance => instance.id === id)).toEqual(fine);
+});
+
+it("places a catalog 1x2 plate onto a 2x6 plate through the editor transaction", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const resources = Object.fromEntries(["bricks", "plates"].flatMap(group =>
+    JSON.parse(readFileSync(resolve(`public/parts/ldraw-${group}-2026-10-31.json`), "utf8")).files,
+  ).map(file => [file.path, file])) as ImportedModel["resources"];
+  const support = readFileSync(resolve("src/features/connections/fixtures/3795.dat"), "utf8");
+  resources["parts/3795.dat"] = {
+    ...resources["parts/3020.dat"], path: "parts/3795.dat", content: support,
+  };
+  const createModel = (sourceText: string): ImportedModel => {
+    const imported: ImportedModel = {
+      version: 1, format: "ldr", sourceName: "placement.ldr", sourceText,
+      originalBytes: Array.from(new TextEncoder().encode(sourceText)), ...parseLDraw(sourceText),
+      resources, legalDocuments: [],
+    };
+    imported.instances.forEach(instance => { instance.part.status = "resolved"; });
+    return imported;
+  };
+  const base = createModel("1 16 0 -8 0 1 0 0 0 1 0 0 0 1 3795.dat\n");
+  const plateModel = createModel("1 4 0 0 0 1 0 0 0 1 0 0 0 1 3023b.dat\n");
+  const source = plateModel.instances[0];
+  const prepared: PreparedPart = {
+    part: { id: "catalog-3023b", packageId: "test", ldrawId: "3023b", name: "Plate 1 x 2",
+      category: "Plates", keywords: [], file: "parts/3023b.dat" },
+    model: plateModel,
+    bottom: localPartBounds(plateModel, source.reference)
+      .clone().applyMatrix4(worldMatrix(source.matrix)).min.y,
+  };
+  vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
+  await act(async () => editor.importProject({ ...createEmptyDocument(), imported: base }));
+  await act(async () => { await editor.selectLibraryPart(prepared.part); });
+  expect(editor.placementPreview).toBe(prepared);
+  await act(async () => editor.place({ x: 0.03, y: 0.4, z: 0.52 }));
+  const placed = editor.imported!.instances[1];
+  expect(placed.matrix).toEqual([1, 0, 0, 0, 0, 1, 0, -16, 0, 0, 1, 10]);
+  expect(activeConnections(editor.imported!, placed.id)).toHaveLength(2);
+  await act(async () => editor.undo());
+  expect(editor.imported!.instances).toHaveLength(1);
+  await act(async () => editor.redo());
+  expect(activeConnections(editor.imported!, placed.id)).toHaveLength(2);
+  await act(async () => editor.undo());
+  // A latched preview is authoritative even if the raw finger left its center.
+  await act(async () => editor.place({ x: 0.48, y: 0.6, z: 0.9 }, placed.matrix));
+  expect(editor.imported!.instances[1].matrix).toEqual(placed.matrix);
+  expect(activeConnections(editor.imported!, editor.imported!.instances[1].id)).toHaveLength(2);
 });
 
 it("clamps legacy saved bricks and allows fine steps without grid rounding", async () => {

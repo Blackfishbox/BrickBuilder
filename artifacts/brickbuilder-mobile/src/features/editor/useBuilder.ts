@@ -451,7 +451,7 @@ export function useBuilder() {
   }, [t, updateDocument]);
 
   const place = useCallback(
-    (position: Position3) => {
+    (position: Position3, previewTransform?: Affine) => {
       if (toolMode === "delete" || partLoading) return;
       const selection = placementRef.current;
        if (!selection) { setPartError(t("inventory.chooseFirst")); return; }
@@ -465,8 +465,8 @@ export function useBuilder() {
           inheritStackingBounds(document.imported, next.imported!);
           const instance = next.imported!.instances.at(-1)!;
           const origin = { x: position.x, y: -instance.matrix[7] / 20, z: position.z };
-           const result = constructionTransform(next.imported!, id, origin);
-           next = moveImported(next, id, { x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20 }, false, result.matrix);
+           const matrix = previewTransform ?? constructionTransform(next.imported!, id, origin).matrix;
+           next = moveImported(next, id, { x: matrix[3] / 20, y: -matrix[7] / 20, z: matrix[11] / 20 }, false, matrix);
           return next;
         });
         setSelectedId(id); setPartError(null);
@@ -839,6 +839,7 @@ export function useBuilder() {
     selectedColor,
     selectedColorCode,
     selectedPart: preparedPart?.part ?? null,
+    placementPreview: preparedPart,
     selectedInstance: document.imported?.instances.find(instance => instance.id === selectedId) ?? null,
     selectLibraryPart, selectInventoryPart, replacePartsInventory, selectedInventory, cancelPartPreparation, partLoading, partError,
     spreadInventoryParts,

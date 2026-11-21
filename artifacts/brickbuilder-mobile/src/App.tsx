@@ -374,6 +374,8 @@ function App() {
                 selectedIds={rotationTargetIds}
                 selectedType={editor.selectedType}
                 selectedColor={editor.selectedColor}
+                 selectedColorCode={editor.selectedColorCode}
+                 placementPreview={editor.placementPreview}
                 toolMode={editor.toolMode}
                 onPlace={editor.place}
                 onSelect={editor.select}

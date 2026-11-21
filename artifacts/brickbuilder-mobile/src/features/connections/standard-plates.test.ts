@@ -65,6 +65,16 @@ describe("standard plate mating from installed source geometry", () => {
     expect(saved.imported!.resources["parts/3023.dat"].content).toBe(source);
     expect(next.imported!.originalBytes).toBe(originalBytes);
   });
+  it("releases a held 1x2 plate connection after the pointer is deliberately pulled away", () => {
+    const model = fixture(), id = model.instances[1].id;
+    const snapped = magneticConstructionTransform(model, id, { x: 0.03, y: 0.4, z: 0.52 });
+    expect(snapped.transform.contacts).toHaveLength(2);
+    const held = magneticConstructionTransform(model, id, { x: 0.12, y: 0.4, z: 0.6 }, snapped.latch);
+    expect(held.transform).toBe(snapped.transform);
+    const released = magneticConstructionTransform(model, id, { x: 5, y: 0.4, z: 0.52 }, held.latch);
+    expect(released.transform.contacts).toHaveLength(0);
+    expect(released.latch).toBeUndefined();
+  });
   it("matches both sockets on a rotated off-grid 2x6 support without rounding the imported origin", () => {
     const base = fixture("3023", true), basis = "0 0 1 0 1 0 -1 0 0";
     const model = connectionFixture([partLine("3795", 4.6, -8, 3.4, basis), partLine("3023", 160, -8, 0, basis)].join("\n"));
