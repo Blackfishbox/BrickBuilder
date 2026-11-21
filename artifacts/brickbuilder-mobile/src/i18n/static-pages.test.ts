@@ -26,22 +26,22 @@ const pages = [
   },
 ];
 
-it.each(pages)("defaults to German and switches $file to English", ({ file, english, german, englishSelector, germanSelector }) => {
+it.each(pages)("defaults to English and switches $file to German", ({ file, english, german, englishSelector, germanSelector }) => {
   const dom = new JSDOM(readFileSync(new URL(file, import.meta.url), "utf8"), {
     runScripts: "dangerously",
     url: "https://brickbuilder.test/",
   });
   try {
     const { document, localStorage } = dom.window;
-    expect(document.documentElement.lang).toBe("de");
-    expect(document.querySelector(germanSelector)?.textContent?.replace(/\s+/g, "")).toBe(german.replace(/\s+/g, ""));
+    expect(document.documentElement.lang).toBe("en");
+    expect(document.querySelector(englishSelector)?.textContent?.replace(/\s+/g, "")).toBe(english.replace(/\s+/g, ""));
     const button = document.querySelector<HTMLButtonElement>("#language-toggle")!;
     button.click();
-    expect(document.documentElement.lang).toBe("en");
-    expect(localStorage.getItem("brickbuilder-language")).toBe("en");
-    expect(document.querySelector(englishSelector)?.textContent?.replace(/\s+/g, "")).toBe(english.replace(/\s+/g, ""));
-    button.click();
     expect(document.documentElement.lang).toBe("de");
+    expect(localStorage.getItem("brickbuilder-language")).toBe("de");
+    expect(document.querySelector(germanSelector)?.textContent?.replace(/\s+/g, "")).toBe(german.replace(/\s+/g, ""));
+    button.click();
+    expect(document.documentElement.lang).toBe("en");
   } finally {
     dom.window.close();
   }
@@ -61,7 +61,7 @@ it("keeps the Android privacy contact email visible after switching languages", 
 
     document.querySelector<HTMLButtonElement>("#language-toggle")!.click();
 
-    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.lang).toBe("de");
     expect(email.isConnected).toBe(true);
     expect(email.textContent).toBe("support@blackfishbox.de");
   } finally {

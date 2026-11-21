@@ -13,8 +13,8 @@ To add a language:
    and `german` are the current examples).
 5. Run the app type check and i18n tests.
 
-`I18nProvider` stores the selection locally and defaults to German. The landing
-page and privacy pages are standalone HTML, so their translations and German
+`I18nProvider` stores the selection locally and defaults to English. The landing
+page and privacy pages are standalone HTML, so their translations and English
 defaults are maintained in those pages' own dictionaries.
 
 Keep catalog names, part IDs, imported project text, and legal license text in

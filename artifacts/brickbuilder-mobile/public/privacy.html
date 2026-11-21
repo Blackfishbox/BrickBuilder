@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,7 +19,7 @@
   </style>
 </head>
 <body>
-  <div class="toolbar"><button id="language-toggle" type="button" aria-label="Sprache auf Englisch umstellen">English</button></div>
+  <div class="toolbar"><button id="language-toggle" type="button" aria-label="Switch language to German">Deutsch</button></div>
   <main>
     <header>
       <p>BrickBuilder Mobile · <span data-copy="app-name">Android app</span></p>
@@ -216,7 +216,7 @@
         button.textContent = language === "en" ? "Deutsch" : "English";
         button.setAttribute("aria-label", language === "en" ? "Switch language to German" : "Sprache auf Englisch umstellen");
       };
-      let language = "de";
+      let language = "en";
       try { const stored = localStorage.getItem(key); if (stored === "de" || stored === "en") language = stored; } catch {}
       setLanguage(language);
       button.addEventListener("click", () => {

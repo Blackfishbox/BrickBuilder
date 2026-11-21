@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102b23">
-  <meta name="description" content="BrickBuilder Mobile: Klemmbausteinmodelle auf Android in 3D bauen, bearbeiten und speichern.">
-  <title>BrickBuilder Mobile — Mobile 3D-Bauwerkstatt</title>
+  <meta name="description" content="BrickBuilder Mobile: Build, edit, and save brick models in 3D on Android.">
+  <title>BrickBuilder Mobile — Mobile 3D Building Studio</title>
   <style>
     :root{color-scheme:light;--forest:#102b23;--forest2:#1b4034;--cream:#f4f2e8;--paper:#fbfaf5;--ink:#24382f;--muted:#61736a;--terra:#d85d41;--line:#e3e0d5;--gold:#e3ba61}
     *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--cream);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55}a{color:inherit}.wrap{width:min(1120px,calc(100% - 40px));margin:auto}
@@ -28,7 +28,7 @@
   <header class="top">
     <div class="wrap nav">
       <a class="brand" href="#start" aria-label="BrickBuilder Mobile"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>BrickBuilder <span style="color:#e6bd62">Mobile</span></span></a>
-      <nav class="nav-right" aria-label="Hauptnavigation"><button class="language-toggle" id="language-toggle" type="button" aria-label="Sprache auf Englisch umstellen">English</button><a class="nav-link" href="#funktionen" data-copy="nav.features">Funktionen</a><a class="nav-link" href="#offline" data-copy="nav.offline">Offline & lokal</a><a class="button" href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer" data-copy="nav.play">Bei Google Play ansehen ↗</a></nav>
+      <nav class="nav-right" aria-label="Main navigation"><button class="language-toggle" id="language-toggle" type="button" aria-label="Switch language to German">Deutsch</button><a class="nav-link" href="#funktionen" data-copy="nav.features">Funktionen</a><a class="nav-link" href="#offline" data-copy="nav.offline">Offline & lokal</a><a class="button" href="https://play.google.com/store/apps/details?id=brickbuilder.blackfishbox.de" target="_blank" rel="noopener noreferrer" data-copy="nav.play">Bei Google Play ansehen ↗</a></nav>
     </div>
   </header>
   <main id="start">
@@ -195,7 +195,7 @@
         document.querySelector(".nav-right").setAttribute("aria-label", language === "en" ? "Main navigation" : "Hauptnavigation");
         document.querySelector(".hero-visual").setAttribute("aria-label", language === "en" ? "BrickBuilder Mobile app screenshot" : "Screenshot der mobilen BrickBuilder-App");
       };
-      let language = "de";
+      let language = "en";
       try {
         const stored = localStorage.getItem(storageKey);
         if (stored === "de" || stored === "en") language = stored;

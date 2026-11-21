@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,8 +17,8 @@
   </style>
 </head>
 <body>
-  <div class="top"><a href="index.html">BrickBuilder Mobile</a><button id="language-toggle" type="button" aria-label="Sprache auf Englisch umstellen">English</button></div>
-  <main data-language="en" hidden>
+  <div class="top"><a href="index.html">BrickBuilder Mobile</a><button id="language-toggle" type="button" aria-label="Switch language to German">Deutsch</button></div>
+  <main data-language="en">
     <header><h1>Privacy information</h1><p class="date">Updated: 20 November 2026</p></header>
     <section>
       <h2>1. Contact</h2>
@@ -47,7 +47,7 @@
       <p>You may also lodge a complaint with a data protection supervisory authority, particularly in the EU country where you live, work, or where an alleged infringement occurred.</p>
     </section>
   </main>
-  <main data-language="de">
+  <main data-language="de" hidden>
     <header><h1>Datenschutzhinweise</h1><p class="date">Stand: 20. November 2026</p></header>
     <section>
       <h2>1. Kontakt</h2>
@@ -89,7 +89,7 @@
         button.textContent = language === "en" ? "Deutsch" : "English";
         button.setAttribute("aria-label", language === "en" ? "Switch language to German" : "Sprache auf Englisch umstellen");
       };
-      let language = "de";
+      let language = "en";
       try { const stored = localStorage.getItem(key); if (stored === "de" || stored === "en") language = stored; } catch {}
       setLanguage(language);
       button.addEventListener("click", () => {

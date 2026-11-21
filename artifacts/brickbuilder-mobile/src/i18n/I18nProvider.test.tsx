@@ -25,8 +25,29 @@ afterEach(() => {
   document.documentElement.lang = "";
 });
 
-it("defaults to German, persists the selected language, and updates the document language", async () => {
+it("defaults to English, persists the selected language, and updates the document language", async () => {
   localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+
+  await act(async () => root!.render(<I18nProvider><LanguageProbe /></I18nProvider>));
+  expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("View");
+  expect(document.documentElement.lang).toBe("en");
+  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBeNull();
+
+  await act(async () => host!.querySelector("button")!.click());
+  expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("Ansicht");
+  expect(document.documentElement.lang).toBe("de");
+  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("de");
+
+  await act(async () => host!.querySelector("button")!.click());
+  expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("View");
+  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
+});
+
+it("restores a previously selected German language", async () => {
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, "de");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -34,14 +55,4 @@ it("defaults to German, persists the selected language, and updates the document
   await act(async () => root!.render(<I18nProvider><LanguageProbe /></I18nProvider>));
   expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("Ansicht");
   expect(document.documentElement.lang).toBe("de");
-  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBeNull();
-
-  await act(async () => host!.querySelector("button")!.click());
-  expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("View");
-  expect(document.documentElement.lang).toBe("en");
-  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
-
-  await act(async () => host!.querySelector("button")!.click());
-  expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("Ansicht");
-  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("de");
 });

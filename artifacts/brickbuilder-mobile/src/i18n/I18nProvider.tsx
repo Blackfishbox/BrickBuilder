@@ -14,9 +14,9 @@ const I18nContext = createContext<I18nValue | null>(null);
 function storedLocale(): Locale {
   try {
     const value = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return supportedLocales.includes(value as Locale) ? value as Locale : "de";
+    return supportedLocales.includes(value as Locale) ? value as Locale : "en";
   } catch {
-    return "de";
+    return "en";
   }
 }
 
