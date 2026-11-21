@@ -12,6 +12,7 @@ import { BrickLinkExportError, type PartsListIssue } from './bricklink/export';
 import './format-dialog.css';
 import { exportFile } from '@/platform/export-file';
 import { importFileAccept } from '@/platform/import-file';
+import { isAndroidBuild, remoteGeometryEnabled } from '@/features/privacy/geometry-consent';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { MessageId } from '@/i18n/messages';
 import { localizedImportIssue } from './issue-message';
@@ -153,6 +154,7 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
   const controller = useRef<AbortController | null>(null);
   const [progress, setProgress] = useState<GeometryProgress | null>(null);
   const [mode, setMode] = useState<'import' | 'export'>(initialMode);
+  const showOfflineImportWarning = isAndroidBuild() && !remoteGeometryEnabled();
   useEffect(() => () => {
     controller.current?.abort(); viewController.current?.abort(); viewController.current = null; token.current++;
   }, []);
@@ -268,6 +270,13 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
 
         {mode === 'import' && <div className="fmt-section">
           <h3><span>01</span> {t('format.importSection')}</h3>
+          {showOfflineImportWarning && <div className="fmt-offline-warning" role="alert" data-testid="warning-offline-import-incomplete">
+            <AlertTriangle size={20} aria-hidden="true" />
+            <div>
+              <strong>{t('format.offlineImportWarningTitle')}</strong>
+              <p>{t('format.offlineImportWarning')}</p>
+            </div>
+          </div>}
           <label className="fmt-drop">
             <FileUp size={20} />
             <span><b>{fileName || t('format.chooseFile')}</b><small>{t('format.fileSupport')}</small></span>

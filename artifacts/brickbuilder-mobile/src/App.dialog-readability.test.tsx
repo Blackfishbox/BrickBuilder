@@ -8,6 +8,7 @@ import { I18nProvider, LANGUAGE_STORAGE_KEY } from "@/i18n/I18nProvider";
 import { createEmptyDocument } from "@/features/editor/model";
 import { parseInventory } from "@/features/inventory/import";
 import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
+import { setRemoteGeometryEnabled } from "@/features/privacy/geometry-consent";
 
 const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
 
@@ -210,6 +211,8 @@ it.each(["light", "dark"] as const)(
     expect(dialog.querySelector('[data-testid="button-export-bricklink"]')).not.toBeNull();
     act(() => dialog.querySelector<HTMLButtonElement>('[data-testid="tab-format-import"]')!.click());
     expect(dialog.querySelector<HTMLInputElement>('[data-testid="input-import-file"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-testid="warning-offline-import-incomplete"]')?.textContent)
+      .toContain("Import kann unvollständig sein");
     act(() => dialog.querySelector<HTMLButtonElement>('[data-testid="button-close-formats"]')!.click());
 
     openProjectMenu(container);
@@ -249,6 +252,30 @@ it.each(["light", "dark"] as const)(
     expect(parts.querySelector('[data-testid="tab-inventory"]')?.getAttribute("aria-selected")).toBe("true");
   },
 );
+
+it("hides the Android import completeness warning when online geometry is enabled", async () => {
+  const container = await mount("light");
+  expect(setRemoteGeometryEnabled(true)).toBe(true);
+
+  openProjectMenu(container);
+  act(() => container.querySelector<HTMLButtonElement>('[data-testid="button-open-export"]')!.click());
+  const dialog = container.querySelector<HTMLElement>('[data-testid="dialog-formats"]')!;
+  act(() => dialog.querySelector<HTMLButtonElement>('[data-testid="tab-format-import"]')!.click());
+
+  expect(dialog.querySelector('[data-testid="warning-offline-import-incomplete"]')).toBeNull();
+});
+
+it("shows the Android import warning in English too", async () => {
+  const container = await mount("light", false, "en");
+
+  openProjectMenu(container);
+  act(() => container.querySelector<HTMLButtonElement>('[data-testid="button-open-export"]')!.click());
+  const dialog = container.querySelector<HTMLElement>('[data-testid="dialog-formats"]')!;
+  act(() => dialog.querySelector<HTMLButtonElement>('[data-testid="tab-format-import"]')!.click());
+
+  expect(dialog.querySelector('[data-testid="warning-offline-import-incomplete"]')?.textContent)
+    .toContain("The import may be incomplete");
+});
 
 it("keeps dark inventory errors and storage details on readable theme tokens", () => {
   expect(darkThemeCss).toMatch(/\.dark \.inv-panel :is\(\.inv-error, \.inv-issue, \.inv-problems\)[\s\S]*?color:\s*hsl\(8 80% 82%\)/);
