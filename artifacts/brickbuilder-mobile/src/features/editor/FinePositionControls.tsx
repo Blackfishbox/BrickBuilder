@@ -23,9 +23,10 @@ const directions: { label: MessageId; axis: keyof Position3; sign: number; Icon:
   { label: "fine.up", axis: "y", sign: 1, Icon: ArrowUpFromLine },
   { label: "fine.down", axis: "y", sign: -1, Icon: ArrowDownFromLine },
 ];
-export default function FinePositionControls({ onNudge, onOpenChange }: {
+export default function FinePositionControls({ onNudge, onOpenChange, portalOnMobile = false }: {
   onNudge(delta: Position3): void;
   onOpenChange?(open: boolean): void;
+  portalOnMobile?: boolean;
 }) {
   const { t } = useI18n();
   const panelId = `fine-position-panel-${useId().replace(/:/g, "")}`;
@@ -42,7 +43,8 @@ export default function FinePositionControls({ onNudge, onOpenChange }: {
       <Move3d size={18} aria-hidden="true" />
     </button>
     <DraggablePanel className="fine-position-panel" panelId={panelId} title={t("fine.axes")}
-      headingClassName="fine-position-heading" handleTestId="button-move-fine-panel" hidden={!open}>
+      headingClassName="fine-position-heading" handleTestId="button-move-fine-panel"
+      portalOnMobile={portalOnMobile} hidden={!open}>
       <small>{t("fine.step")}</small>
       <div className="fine-position-grid">
         {directions.map(({ label, axis, sign, Icon }) => <button key={label} type="button"

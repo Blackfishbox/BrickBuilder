@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Grip } from "lucide-react";
 import { useDraggablePanel } from "./useDraggablePanel";
 
@@ -9,6 +10,7 @@ export default function DraggablePanel({
   headingClassName,
   handleTestId,
   hidden = false,
+  portalOnMobile = false,
   children,
 }: {
   className: string;
@@ -17,10 +19,20 @@ export default function DraggablePanel({
   headingClassName: string;
   handleTestId: string;
   hidden?: boolean;
+  portalOnMobile?: boolean;
   children: ReactNode;
 }) {
+  const [mobileViewport, setMobileViewport] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 760,
+  );
+  useEffect(() => {
+    const updateViewport = () => setMobileViewport(window.innerWidth <= 760);
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
   const { panelRef, position, onPointerDown } = useDraggablePanel<HTMLDivElement>();
-  return <div ref={panelRef} id={panelId} className={`${className}${position ? " is-positioned" : ""}`}
+  const panel = <div ref={panelRef} id={panelId}
+    className={`${className}${position ? " is-positioned" : ""}${portalOnMobile && mobileViewport ? " draggable-panel-portal" : ""}`}
     style={position ? { left: position.left, top: position.top } : undefined}
     hidden={hidden} role="group" aria-label={title}>
     <div className={`draggable-panel-heading ${headingClassName}`}>
@@ -32,4 +44,5 @@ export default function DraggablePanel({
     </div>
     {children}
   </div>;
+  return portalOnMobile && mobileViewport ? createPortal(panel, document.body) : panel;
 }

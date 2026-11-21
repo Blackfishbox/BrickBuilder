@@ -74,6 +74,9 @@ it("commits inventory snapping once and preserves exact height through manual ed
   expect(allocatedCounts(editor.document).get(inventory.rows[0].id) ?? 0).toBe(0);
   await act(async () => editor.place({ x: 0.28, y: 1.4, z: 0.2 }));
   const placed = editor.imported!.instances[1], id = placed.id;
+  expect(editor.toolMode).toBe("select");
+  expect(editor.selectedId).toBe(id);
+  expect(editor.placementPreview).toBeNull();
   expect(placed.matrix[3]).toBeCloseTo(4.6);
   expect(placed.matrix[7]).toBeCloseTo(-32);
   expect(placed.matrix[11]).toBeCloseTo(3.4);
@@ -341,6 +344,8 @@ it("places a catalog 1x2 plate onto a 2x6 plate through the editor transaction",
   await act(async () => editor.place({ x: 0.03, y: 0.4, z: 0.52 }));
   const placed = editor.imported!.instances[1];
   expect(placed.matrix).toEqual([1, 0, 0, 0, 0, 1, 0, -16, 0, 0, 1, 10]);
+  expect(editor.toolMode).toBe("select");
+  expect(editor.selectedId).toBe(placed.id);
   expect(activeConnections(editor.imported!, placed.id)).toHaveLength(2);
   await act(async () => editor.undo());
   expect(editor.imported!.instances).toHaveLength(1);
@@ -348,6 +353,7 @@ it("places a catalog 1x2 plate onto a 2x6 plate through the editor transaction",
   expect(activeConnections(editor.imported!, placed.id)).toHaveLength(2);
   await act(async () => editor.undo());
   // A latched preview is authoritative even if the raw finger left its center.
+  await act(async () => { await editor.selectLibraryPart(prepared.part); });
   await act(async () => editor.place({ x: 0.48, y: 0.6, z: 0.9 }, placed.matrix));
   expect(editor.imported!.instances[1].matrix).toEqual(placed.matrix);
   expect(activeConnections(editor.imported!, editor.imported!.instances[1].id)).toHaveLength(2);

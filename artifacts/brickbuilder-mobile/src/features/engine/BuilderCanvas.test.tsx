@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Color, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, Vector2, Vector3 } from "three";
+import { Box3, Color, DoubleSide, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -429,15 +429,17 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   const localGeometry = localEdge.geometry;
   const edgeMaterial = importedEdge.material as ShaderMaterial;
   expect(importedEdge.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
+  expect(edgeMaterial.side).toBe(DoubleSide);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.25);
   expect(localEdge.visible).toBe(false);
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
-  expect(edgeMaterial.uniforms.lineWidth.value).toBe(10);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(18);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
   expect(localEdge.visible).toBe(true);
+  expect(importedEdge.visible).toBe(true);
   expect(importedEdge.geometry).toBe(importedGeometry);
   expect(localEdge.geometry).toBe(localGeometry);
   const transformRows = importedEdge.geometry.getAttribute("instanceRow0");
@@ -469,7 +471,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   camera.lookAt(0, 0, 0);
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
-  expect(observedLineWidths).toContain(10);
+  expect(observedLineWidths).toContain(18);
   expect(software.records.size).toBe(1);
 });
 

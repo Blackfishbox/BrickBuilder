@@ -141,6 +141,7 @@ function App() {
         panelId={`rotation-selection-panel-${mobile ? "mobile" : "desktop"}`}
         title={t("group.title")} headingClassName="rotation-selection-heading"
         handleTestId={`button-move-group-panel-${mobile ? "mobile" : "desktop"}`}
+        portalOnMobile={mobile}
         hidden={!groupSelectionOpen}>
         <label className="rotation-selection-search">
           <span className="sr-only">{t("group.search")}</span>
@@ -459,7 +460,7 @@ function App() {
               <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? t("editor.stone")}</span>
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")} title={t("editor.placeHigher")}>↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")} title={t("editor.placeLower")}>↓</button>
-              <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
+              <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} portalOnMobile />
               {rotationSelection(true)}
               <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                 tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
@@ -467,6 +468,7 @@ function App() {
                 onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds, rotationPivot)} onTilt={editor.setSelectedTilt}
                 onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                 open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
+                 portalOnMobile
                 anchors={availableRotationAnchors} rotationPivot={rotationPivot} onPivotChange={setRotationPivot} />
               <button type="button" onClick={editor.deleteSelected} aria-label={t("editor.deleteSelected")} data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>

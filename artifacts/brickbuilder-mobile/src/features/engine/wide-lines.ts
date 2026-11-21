@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Color, ShaderMaterial, Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, Color, DoubleSide, ShaderMaterial, Vector2 } from "three";
 import {
   FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER,
 } from "./instruction-focus";
@@ -40,6 +40,8 @@ export function expandWideLines(source: Float32Array): BufferGeometry {
 export function wideLineMaterial(): ShaderMaterial {
   return new ShaderMaterial({
     transparent: true,
+    // Screen-space quads face either direction depending on the source edge.
+    side: DoubleSide,
     depthWrite: false,
     uniforms: {
       lineWidth: { value: 1 },

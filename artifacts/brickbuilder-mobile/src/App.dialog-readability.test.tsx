@@ -238,8 +238,10 @@ it("keeps all three mobile panels open on a grip tap and moves them only after d
     const menu = container.querySelector<HTMLElement>(item.selector)!;
     const toggle = menu.querySelector<HTMLButtonElement>(`[data-testid="${item.toggle}"]`)!;
     await act(async () => toggle.click());
-    const panel = menu.querySelector<HTMLElement>(item.panel)!;
-    const grip = menu.querySelector<HTMLElement>(`[data-testid="${item.grip}"]`)!;
+    const panel = documentRef.body.querySelector<HTMLElement>(`${item.panel}.draggable-panel-portal`)!;
+    const grip = panel.querySelector<HTMLElement>(`[data-testid="${item.grip}"]`)!;
+    expect(panel).not.toBeNull();
+    expect(panel.parentElement).toBe(documentRef.body);
     const pointer = (target: EventTarget, type: string, x: number, y: number) => {
       const event = new Event(type, { bubbles: true, cancelable: true });
       Object.defineProperties(event, { pointerId: { value: 3 }, pointerType: { value: "touch" }, clientX: { value: x }, clientY: { value: y } });

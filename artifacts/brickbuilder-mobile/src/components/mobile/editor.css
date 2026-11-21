@@ -105,7 +105,7 @@
   box-shadow: inset 0 0 0 1px rgba(183,107,82,.2);
 }
 .thick-edges-sample { width: 16px; height: 4px; border-radius: 3px; background: currentColor; }
-.thick-edges-toggle[aria-pressed="true"] .thick-edges-sample { width: 22px; height: 8px; }
+.thick-edges-toggle[aria-pressed="true"] .thick-edges-sample { width: 24px; height: 12px; }
 .context-label { font: 500 9px var(--app-font-mono); letter-spacing: .17em; color: #85918a; }
 .context-divider { width: 1px; height: 13px; background: #d4d4c8; }
 .brick-count { color: #41534b; font: 500 11px var(--app-font-mono); }

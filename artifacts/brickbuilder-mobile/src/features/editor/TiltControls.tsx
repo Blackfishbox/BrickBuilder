@@ -25,6 +25,7 @@ export default function TiltControls({
   onTilt,
   onOpenChange,
   open,
+  portalOnMobile = false,
   anchors = [],
   rotationPivot,
   onPivotChange,
@@ -38,6 +39,7 @@ export default function TiltControls({
   onTilt(axis: "x" | "z", angle: number): void;
   onOpenChange?(open: boolean): void;
   open?: boolean;
+  portalOnMobile?: boolean;
   anchors?: RotationAnchor[];
   rotationPivot?: [number, number, number] | null;
   onPivotChange?(pivot: [number, number, number] | null): void;
@@ -140,7 +142,7 @@ export default function TiltControls({
       </button>
       <DraggablePanel className="tilt-panel" panelId={`tilt-panel-${controlId}`}
         title={t("tilt.title")} headingClassName="tilt-panel-heading"
-        handleTestId="button-move-tilt-panel" hidden={!isOpen}>
+        handleTestId="button-move-tilt-panel" portalOnMobile={portalOnMobile} hidden={!isOpen}>
         <small>{t("tilt.range")}</small>
         {anchors.length > 0 && <label className="tilt-anchor-control">
           <span>{t("tilt.anchor")}</span>

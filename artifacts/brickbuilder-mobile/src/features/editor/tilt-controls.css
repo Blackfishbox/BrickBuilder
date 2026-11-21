@@ -24,6 +24,19 @@
   cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
 }
 .panel-drag-handle:active { cursor: grabbing; }
+.draggable-panel-portal {
+  position: fixed !important; z-index: 2147483000 !important; left: 50%; right: auto;
+  bottom: calc(125px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  width: min(300px, calc(100vw - 16px)); max-height: calc(100dvh - 150px);
+  overflow: auto; pointer-events: auto;
+}
+.draggable-panel-portal.fine-position-panel { width: min(260px, calc(100vw - 16px)); }
+.draggable-panel-portal.is-positioned {
+  z-index: 2147483000 !important; right: auto; bottom: auto; transform: none;
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .draggable-panel-portal { bottom: calc(56px + env(safe-area-inset-bottom)); }
+}
 .tilt-anchor-control {
   display: grid; grid-column: 1 / -1; gap: 6px; color: #536c5f; font-size: 10px; font-weight: 800;
 }

@@ -484,10 +484,12 @@ export function useBuilder() {
            next = moveImported(next, id, { x: matrix[3] / 20, y: -matrix[7] / 20, z: matrix[11] / 20 }, false, matrix);
           return next;
         });
-        setSelectedId(id); setPartError(null);
+        setSelectedId(id);
+        setPartError(null);
+        setToolMode("select");
       } catch (error) { setPartError(error instanceof Error ? error.message : String(error)); }
     },
-    [selectedColor, selectedColorCode, partLoading, toolMode, updateDocument, t],
+    [selectedColor, selectedColorCode, partLoading, toolMode, updateDocument, setToolMode, t],
   );
 
   const move = useCallback(
