@@ -10,8 +10,27 @@
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 200px; padding: 10px;
   border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; box-shadow: 0 4px 14px #27393024;
 }
-.tilt-panel strong, .tilt-panel small { grid-column: 1 / -1; }
+.tilt-panel-heading {
+  display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 36px;
+}
+.tilt-panel-heading strong { min-width: 0; }
+.tilt-panel small { grid-column: 1 / -1; }
 .tilt-panel small { color: #78867c; font-size: 10px; }
+.tilt-panel-drag {
+  display: grid; place-items: center; flex: none; width: 40px; height: 36px; padding: 0;
+  border: 1px solid #dcded3; border-radius: 8px; background: #f0eee4; color: #536c5f;
+  cursor: grab; touch-action: none;
+}
+.tilt-panel-drag:active { cursor: grabbing; }
+.tilt-anchor-control {
+  display: grid; grid-column: 1 / -1; gap: 6px; color: #536c5f; font-size: 10px; font-weight: 800;
+}
+.tilt-anchor-control select {
+  min-width: 0; width: 100%; min-height: 40px; padding: 0 8px;
+  border: 1px solid #dcded3; border-radius: 8px; background: #fffef9; color: #30463d; font: inherit;
+}
+.tilt-anchor-control .tilt-anchor-source { font-weight: 500; }
 .tilt-axis-control {
   display: grid; grid-column: 1 / -1; grid-template-columns: 58px minmax(80px, 1fr) 42px;
   align-items: center; gap: 8px; min-height: 44px;
@@ -51,3 +70,24 @@
 .dark .tilt-axis-control label, .dark .tilt-axis-control output { color: #d5e4da; }
 .dark .tilt-axis-control input[type="range"] { accent-color: #9fc9aa; }
 .dark .mobile-selection-actions .tilt-controls summary { background: #26362e; color: #d5e4da; }
+.dark .tilt-panel-drag, .dark .tilt-anchor-control select {
+  border-color: #46564b; background: #26362e; color: #d5e4da;
+}
+
+.tilt-panel.is-positioned {
+  position: fixed; z-index: 100; right: auto; bottom: auto; transform: none;
+  box-sizing: border-box; width: min(300px, calc(100vw - 16px)); min-width: 0;
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
+  overflow-y: auto;
+}
+.tilt-safe-area-probe {
+  position: fixed; visibility: hidden; pointer-events: none; width: 0; height: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+@media (max-width: 900px) {
+  .mobile-selection-actions .tilt-panel.is-positioned {
+    left: auto; right: auto; bottom: auto;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
+  }
+}

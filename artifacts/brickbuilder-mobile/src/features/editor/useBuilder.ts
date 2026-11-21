@@ -724,14 +724,18 @@ export function useBuilder() {
     setHistory(next);
   }, []);
 
-  const setSelectedRotation = useCallback((angle: number, selectedIds: string[] = selectedId ? [selectedId] : []) => {
+  const setSelectedRotation = useCallback((
+    angle: number,
+    selectedIds: string[] = selectedId ? [selectedId] : [],
+    rotationPivot?: [number, number, number] | null,
+  ) => {
     if (!selectedId || !Number.isFinite(angle)) return;
     const rotationY = clampRotationAngle(Math.round(angle));
     const transaction = rotationEditRef.current;
     if (transaction) {
       const document = transaction.document;
       const nextDocument = rotateSelection(document, selectedIds, selectedId, rotationY,
-        document.imported ? constructionGround(document.imported) : 0);
+        document.imported ? constructionGround(document.imported) : 0, rotationPivot);
       const next = { ...transaction, document: nextDocument };
       historyRef.current = next;
       documentRef.current = nextDocument;
@@ -741,6 +745,7 @@ export function useBuilder() {
     updateDocument(document => rotateSelection(
       document, selectedIds, selectedId, rotationY,
       document.imported ? constructionGround(document.imported) : 0,
+      rotationPivot,
     ));
   }, [constructionGround, selectedId, updateDocument]);
 

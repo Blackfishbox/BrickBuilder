@@ -36,6 +36,8 @@ export interface ImportedInstance {
   tiltZ?: number;
   /** Original source transform used to apply yaw and tilt without accumulated drift. */
   rotationBaseMatrix?: Affine;
+  /** Explicit local Shadow Library connection location used as a yaw pivot, in LDU. */
+  rotationPivot?: [number, number, number];
   /** Original basis used to edit the user-applied tilt without accumulating drift. */
   tiltBaseMatrix?: Affine;
   part: { ldrawId: string; studioId?: string; brickLinkId?: string; name?: string; mapping?: PartMappingResult; status: "resolved" | "missing" };

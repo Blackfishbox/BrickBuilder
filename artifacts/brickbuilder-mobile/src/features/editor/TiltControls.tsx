@@ -1,9 +1,11 @@
-import { useId, useRef, type PointerEvent as ReactPointerEvent } from "react";
-import { Rotate3d } from "lucide-react";
+import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Grip, Rotate3d } from "lucide-react";
 import "./tilt-controls.css";
 import { useI18n } from "@/i18n/I18nProvider";
+import type { RotationAnchor } from "@/features/connections/rotation-anchors";
 
 type SliderAxis = "y" | "x" | "z";
+type PanelPosition = { left: number; top: number };
 type TouchGesture = {
   axis: SliderAxis;
   x: number;
@@ -22,6 +24,10 @@ export default function TiltControls({
   tiltZ,
   onTilt,
   onOpenChange,
+  open,
+  anchors = [],
+  rotationPivot,
+  onPivotChange,
 }: {
   rotationY?: number;
   onRotate?(angle: number): void;
@@ -31,12 +37,106 @@ export default function TiltControls({
   tiltZ: number;
   onTilt(axis: "x" | "z", angle: number): void;
   onOpenChange?(open: boolean): void;
+  open?: boolean;
+  anchors?: RotationAnchor[];
+  rotationPivot?: [number, number, number] | null;
+  onPivotChange?(pivot: [number, number, number] | null): void;
 }) {
   const { t } = useI18n();
   const controlId = useId().replace(/:/g, "");
   const gesture = useRef<TouchGesture | null>(null);
   const lastTap = useRef<SliderTap | null>(null);
   const lastReset = useRef<{ axis: SliderAxis; at: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const safeAreaRef = useRef<HTMLDivElement>(null);
+  const panelDrag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const panelDragListeners = useRef<{ move: (event: PointerEvent) => void; end: (event: PointerEvent) => void } | null>(null);
+  const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
+
+  const clampPanelPosition = (left: number, top: number): PanelPosition => {
+    const panel = panelRef.current;
+    const viewport = window.visualViewport;
+    const rect = panel?.getBoundingClientRect();
+    const width = viewport?.width ?? window.innerWidth;
+    const height = viewport?.height ?? window.innerHeight;
+    const offsetLeft = viewport?.offsetLeft ?? 0;
+    const offsetTop = viewport?.offsetTop ?? 0;
+    const safeArea = safeAreaRef.current ? getComputedStyle(safeAreaRef.current) : null;
+    const safeLeft = Number.parseFloat(safeArea?.paddingLeft ?? "0") || 0;
+    const safeRight = Number.parseFloat(safeArea?.paddingRight ?? "0") || 0;
+    const safeTop = Number.parseFloat(safeArea?.paddingTop ?? "0") || 0;
+    const safeBottom = Number.parseFloat(safeArea?.paddingBottom ?? "0") || 0;
+    const panelWidth = rect?.width ?? 300;
+    const panelHeight = rect?.height ?? 240;
+    const margin = 8;
+    const minLeft = offsetLeft + safeLeft + margin;
+    const minTop = offsetTop + safeTop + margin;
+    return {
+      left: Math.min(Math.max(minLeft, left), Math.max(minLeft, offsetLeft + width - safeRight - panelWidth - margin)),
+      top: Math.min(Math.max(minTop, top), Math.max(minTop, offsetTop + height - safeBottom - panelHeight - margin)),
+    };
+  };
+
+  useEffect(() => {
+    if (!panelPosition) return;
+    const clampAfterResize = () => setPanelPosition(position => position
+      ? clampPanelPosition(position.left, position.top) : position);
+    window.addEventListener("resize", clampAfterResize);
+    window.visualViewport?.addEventListener("resize", clampAfterResize);
+    return () => {
+      window.removeEventListener("resize", clampAfterResize);
+      window.visualViewport?.removeEventListener("resize", clampAfterResize);
+    };
+  }, [panelPosition]);
+
+  const startPanelDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!panelRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (panelDragListeners.current) {
+      window.removeEventListener("pointermove", panelDragListeners.current.move, true);
+      window.removeEventListener("pointerup", panelDragListeners.current.end, true);
+      window.removeEventListener("pointercancel", panelDragListeners.current.end, true);
+    }
+    const rect = panelRef.current.getBoundingClientRect();
+    const initial = clampPanelPosition(rect.left, rect.top);
+    setPanelPosition(initial);
+    panelDrag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...initial };
+    const move = (pointerEvent: PointerEvent) => {
+      const drag = panelDrag.current;
+      if (!drag || drag.pointerId !== pointerEvent.pointerId) return;
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
+      setPanelPosition(clampPanelPosition(
+        drag.left + pointerEvent.clientX - drag.x,
+        drag.top + pointerEvent.clientY - drag.y,
+      ));
+    };
+    const end = (pointerEvent: PointerEvent) => {
+      if (panelDrag.current?.pointerId !== pointerEvent.pointerId) return;
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
+      panelDrag.current = null;
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
+      panelDragListeners.current = null;
+    };
+    panelDragListeners.current = { move, end };
+    // Capture-phase window listeners work even when Android WebView does not
+    // preserve pointer capture on a button through a fixed-panel rerender.
+    window.addEventListener("pointermove", move, { capture: true, passive: false });
+    window.addEventListener("pointerup", end, { capture: true, passive: false });
+    window.addEventListener("pointercancel", end, { capture: true, passive: false });
+  };
+
+  useEffect(() => () => {
+    const listeners = panelDragListeners.current;
+    if (!listeners) return;
+    window.removeEventListener("pointermove", listeners.move, true);
+    window.removeEventListener("pointerup", listeners.end, true);
+    window.removeEventListener("pointercancel", listeners.end, true);
+  }, []);
 
   const reset = (axis: SliderAxis) => {
     lastReset.current = { axis, at: performance.now() };
@@ -114,13 +214,39 @@ export default function TiltControls({
   });
 
   return (
-    <details className="tilt-controls" data-testid="tilt-controls-menu" onToggle={event => onOpenChange?.(event.currentTarget.open)}>
+    <details className="tilt-controls" data-testid="tilt-controls-menu" open={open}
+      onToggle={event => onOpenChange?.(event.currentTarget.open)}>
       <summary aria-label={t("tilt.open")} title={t("tilt.title")} data-testid="button-tilt-controls">
         <Rotate3d size={17} aria-hidden="true" />
       </summary>
-      <div className="tilt-panel" role="group" aria-label={t("tilt.axes")}>
-        <strong>{t("tilt.title")}</strong>
+      <div ref={panelRef} className={`tilt-panel${panelPosition ? " is-positioned" : ""}`}
+        style={panelPosition ? { left: panelPosition.left, top: panelPosition.top } : undefined}
+        role="group" aria-label={t("tilt.axes")}>
+        <div ref={safeAreaRef} className="tilt-safe-area-probe" aria-hidden="true" />
+        <div className="tilt-panel-heading">
+          <strong>{t("tilt.title")}</strong>
+          <button type="button" className="tilt-panel-drag" aria-label={t("tilt.movePanel")} title={t("tilt.movePanel")}
+            onPointerDown={startPanelDrag} data-testid="button-move-tilt-panel">
+            <Grip size={17} aria-hidden="true" />
+          </button>
+        </div>
         <small>{t("tilt.range")}</small>
+        {anchors.length > 0 && <label className="tilt-anchor-control">
+          <span>{t("tilt.anchor")}</span>
+          <select aria-label={t("tilt.anchor")} value={rotationPivot
+            ? anchors.find(anchor => anchor.id === rotationPivot.map(value => Math.round(value * 1000) / 1000).join(","))?.id ?? "origin"
+            : "origin"}
+            onChange={event => onPivotChange?.(anchors.find(anchor => anchor.id === event.currentTarget.value)?.position ?? null)}
+            data-testid="select-rotation-anchor">
+            <option value="origin">{t("tilt.origin")}</option>
+            {anchors.map((anchor, index) => (
+              <option key={anchor.id} value={anchor.id}>
+                {t(`tilt.anchor.${anchor.family}`)} {index + 1} · ({anchor.position.map(value => Number(value.toFixed(2))).join(", ")})
+              </option>
+            ))}
+          </select>
+          <small className="tilt-anchor-source">{t("tilt.anchorSource")}</small>
+        </label>}
         <div className="tilt-axis-control">
           <label htmlFor={`${controlId}-slider-y`}>{t("tilt.rotation")}</label>
           <input

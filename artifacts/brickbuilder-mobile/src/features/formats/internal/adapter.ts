@@ -47,6 +47,7 @@ const schema = z.object({
       tiltX: z.number().finite().min(-180).max(180).optional(),
       tiltZ: z.number().finite().min(-180).max(180).optional(),
       rotationBaseMatrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]).optional(),
+      rotationPivot: z.tuple([finite, finite, finite]).optional(),
       tiltBaseMatrix: z.tuple([finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite, finite]).optional(),
       sourcePath: z.array(z.string()),
       allocation: allocationSchema.optional(),

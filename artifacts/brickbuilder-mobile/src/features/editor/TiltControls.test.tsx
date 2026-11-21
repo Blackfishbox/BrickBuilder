@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import TiltControls from "./TiltControls";
+import type { RotationAnchor } from "@/features/connections/rotation-anchors";
 
 let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement | undefined;
@@ -43,6 +44,55 @@ it("shows only three whole-degree sliders for rotation and tilt", () => {
   expect(host.querySelector('[data-testid="value-tilt-z"]')?.textContent).toBe("-24°");
   expect(host.querySelector('[aria-label="Drehung und Neigung einstellen"]')).toBeTruthy();
   expect(host.querySelector('[aria-label="Drehung und Neigung einstellen"]')?.textContent?.trim()).toBe("");
+});
+
+it("uses only supplied anchors and reports an explicit origin fallback", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const anchor: RotationAnchor = {
+    id: "0,-0.823,-9.895", position: [0, -0.82275, -9.8951], family: "clip",
+    evidencePath: "parts/3820.dat", evidenceLine: 12,
+  };
+  const onPivotChange = vi.fn();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls tiltX={0} tiltZ={0} onTilt={vi.fn()} anchors={[anchor]}
+    onPivotChange={onPivotChange} rotationPivot={null} />));
+
+  const select = host.querySelector<HTMLSelectElement>('[data-testid="select-rotation-anchor"]')!;
+  expect([...select.options].map(option => option.value)).toEqual(["origin", anchor.id]);
+  act(() => {
+    select.value = anchor.id;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(onPivotChange).toHaveBeenCalledWith(anchor.position);
+});
+
+it("keeps the open rotation panel inside the viewport while dragging its handle", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("innerWidth", 320);
+  vi.stubGlobal("innerHeight", 240);
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls open tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
+  const panel = host.querySelector<HTMLElement>(".tilt-panel")!;
+  vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+    x: 24, y: 20, left: 24, top: 20, right: 294, bottom: 228, width: 270, height: 208, toJSON: () => ({}),
+  });
+  const handle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const dispatch = (type: string, x: number, y: number) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { pointerId: { value: 1 }, clientX: { value: x }, clientY: { value: y } });
+    (type === "pointerdown" ? handle : window).dispatchEvent(event);
+  };
+  act(() => {
+    dispatch("pointerdown", 120, 100);
+    dispatch("pointermove", 700, 700);
+    dispatch("pointerup", 700, 700);
+  });
+
+  const left = Number.parseFloat(panel.style.left), top = Number.parseFloat(panel.style.top);
+  expect(left).toBeGreaterThanOrEqual(8);
+  expect(left + 270).toBeLessThanOrEqual(312);
+  expect(top).toBeGreaterThanOrEqual(8);
+  expect(top + 208).toBeLessThanOrEqual(232);
 });
 
 it("sends slider changes as whole-degree values", () => {

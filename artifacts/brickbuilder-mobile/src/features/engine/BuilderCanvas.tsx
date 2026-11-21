@@ -95,6 +95,7 @@ interface BuilderCanvasProps {
   onPlace: (position: Position3, transform?: Affine) => void;
   onSelect: (id: string | null) => void;
   onViewPartTap?: (id: string) => void;
+  onOpenRotationControls?: (id: string) => void;
   onMove: (id: string, position: Position3, transform?: Affine) => void;
   onMoveGroup?: (ids: readonly string[], delta: Position3) => void;
 }
@@ -354,6 +355,8 @@ export class FallbackRenderer {
 
 const geometryCache = new Map<BrickType, BufferGeometry>();
 const VIEW_TAP_MAX_DURATION_MS = 400;
+const PART_DOUBLE_TAP_INTERVAL_MS = 360;
+const PART_TAP_ACTION_DELAY_MS = 380;
 
 function polygonPath(context: CanvasRenderingContext2D, points: ProjectedPoint[]): void {
   if (!points.length) return;
@@ -448,6 +451,7 @@ export function BuilderCanvas({
   onPlace,
   onSelect,
   onViewPartTap,
+  onOpenRotationControls,
   onMove,
   onMoveGroup,
 }: BuilderCanvasProps) {
@@ -483,6 +487,19 @@ export function BuilderCanvas({
   const interactionTimeRef = useRef(-Infinity);
   const buildControllerRef = useRef<AbortController | null>(null);
   const [sceneStatus, setSceneStatus] = useState<string | null>(null);
+  useEffect(() => {
+    previousPartTapRef.current = null;
+    const pending = pendingTapActionRef.current;
+    if (pending) window.clearTimeout(pending.timer);
+    pendingTapActionRef.current = null;
+  }, [projectId]);
+  useEffect(() => {
+    if (pendingTapActionRef.current) {
+      window.clearTimeout(pendingTapActionRef.current.timer);
+      pendingTapActionRef.current = null;
+      previousPartTapRef.current = null;
+    }
+  }, [toolMode]);
   useEffect(() => {
     if (!viewExporterRef) return;
     const exporter: ViewExporter = async (format, options) => {
@@ -599,6 +616,7 @@ export function BuilderCanvas({
     onPlace,
     onSelect,
     onViewPartTap,
+    onOpenRotationControls,
     onMove,
     onMoveGroup,
   });
@@ -612,6 +630,8 @@ export function BuilderCanvas({
   const clickRef = useRef<{ id: number; start: PointerPoint; moved: boolean; startedAt: number } | null>(
     null,
   );
+  const previousPartTapRef = useRef<{ id: string; x: number; y: number; at: number } | null>(null);
+  const pendingTapActionRef = useRef<{ timer: number; projectId?: string; action: () => void } | null>(null);
   const cameraStateRef = useRef({
     theta: DEFAULT_INSTRUCTION_THETA,
     phi: DEFAULT_INSTRUCTION_PHI,
@@ -648,6 +668,7 @@ export function BuilderCanvas({
     onPlace,
     onSelect,
     onViewPartTap,
+    onOpenRotationControls,
     onMove,
     onMoveGroup,
   };
@@ -1558,6 +1579,14 @@ export function BuilderCanvas({
       invalidatorRef.current?.();
     };
 
+    const flushPendingTap = () => {
+      const pending = pendingTapActionRef.current;
+      if (!pending) return;
+      window.clearTimeout(pending.timer);
+      pendingTapActionRef.current = null;
+      if (propsRef.current.projectId === pending.projectId) pending.action();
+    };
+
     const startGesture = () => {
       const ids = [...pointersRef.current.keys()];
       if (ids.length < 2) {
@@ -1575,6 +1604,8 @@ export function BuilderCanvas({
       };
       rollback();
       clickRef.current = null;
+      previousPartTapRef.current = null;
+      flushPendingTap();
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -1730,6 +1761,61 @@ export function BuilderCanvas({
       const point = { x: event.clientX, y: event.clientY };
       const current = propsRef.current;
       const click = clickRef.current;
+      const stationaryTap = pointersRef.current.size === 1 && !cameraOnlyRef.current &&
+        !!click && !click.moved && performance.now() - click.startedAt < VIEW_TAP_MAX_DURATION_MS;
+      const tapHit = stationaryTap && (current.toolMode !== "view" || autoSelectOnTapRef.current)
+        ? findBrick(point) : null;
+      let suppressTapAction = false;
+      if (tapHit && stationaryTap) {
+        const previousTap = previousPartTapRef.current;
+        const now = performance.now();
+        const isDoubleTap = previousTap?.id === tapHit.id &&
+          now - previousTap.at <= PART_DOUBLE_TAP_INTERVAL_MS &&
+          Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 32;
+        if (isDoubleTap) {
+          if (pendingTapActionRef.current) {
+            window.clearTimeout(pendingTapActionRef.current.timer);
+            pendingTapActionRef.current = null;
+          }
+          previousPartTapRef.current = null;
+          rollback();
+          dragRef.current = null;
+          if (current.onOpenRotationControls) current.onOpenRotationControls(tapHit.id);
+          else current.onSelect(tapHit.id);
+          suppressTapAction = true;
+        } else {
+          flushPendingTap();
+          previousPartTapRef.current = { id: tapHit.id, x: point.x, y: point.y, at: now };
+          if (current.toolMode === "build") {
+            const brick = current.bricks.find(item => item.id === tapHit.id);
+            const y = brick ? brick.y + BRICK_HEIGHT : Math.max(0, tapHit.point.y);
+            const destination = projectToPlane(point, y);
+            if (destination) {
+              const adjusted = { ...destination, y: destination.y - importedOffsetRef.current };
+              const projectAtTap = current.projectId;
+              const timer = window.setTimeout(() => {
+                if (pendingTapActionRef.current?.timer !== timer) return;
+                pendingTapActionRef.current = null;
+                previousPartTapRef.current = null;
+                if (propsRef.current.projectId !== projectAtTap) return;
+                updatePlacementPreview(destination);
+                propsRef.current.onPlace(adjusted);
+              }, PART_TAP_ACTION_DELAY_MS);
+              pendingTapActionRef.current = {
+                timer, projectId: projectAtTap,
+                action: () => {
+                  updatePlacementPreview(destination);
+                  propsRef.current.onPlace(adjusted);
+                },
+              };
+              suppressTapAction = true;
+            }
+          }
+        }
+      } else if (previousPartTapRef.current) {
+        previousPartTapRef.current = null;
+        flushPendingTap();
+      }
       if (current.onViewCameraChange && cameraInteractionStartRef.current && (click?.moved || cameraOnlyRef.current)) {
         const state = cameraStateRef.current, reference = cameraReferenceRef.current;
         const start = cameraInteractionStartRef.current;
@@ -1745,7 +1831,7 @@ export function BuilderCanvas({
         }, rotation);
         cameraInteractionStartRef.current = null;
       }
-      if (pointersRef.current.size === 1 && !cameraOnlyRef.current) {
+      if (!suppressTapAction && pointersRef.current.size === 1 && !cameraOnlyRef.current) {
         const drag = dragRef.current;
         if (drag?.pointerId === event.pointerId && drag.moved) {
           resolveDrag(drag);
@@ -1821,6 +1907,11 @@ export function BuilderCanvas({
       pointerLastRef.current.delete(event.pointerId);
       cameraInteractionStartRef.current = null;
       rollback();
+      previousPartTapRef.current = null;
+      if (pendingTapActionRef.current) {
+        window.clearTimeout(pendingTapActionRef.current.timer);
+        pendingTapActionRef.current = null;
+      }
       if (gesturePairRef.current?.includes(event.pointerId)) startGesture();
       if (pointersRef.current.size === 0) cameraOnlyRef.current = false;
       clickRef.current = null;
@@ -1835,6 +1926,9 @@ export function BuilderCanvas({
       rollback(); pointersRef.current.clear(); pointerLastRef.current.clear();
       gestureStartRef.current = null; gesturePairRef.current = null; cameraOnlyRef.current = false;
       cameraInteractionStartRef.current = null;
+      previousPartTapRef.current = null;
+      if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
+      pendingTapActionRef.current = null;
     };
     window.addEventListener("blur", onBlur);
     return () => {
@@ -1844,6 +1938,9 @@ export function BuilderCanvas({
       host.removeEventListener("pointercancel", onPointerCancel);
       host.removeEventListener("lostpointercapture", onPointerCancel);
       window.removeEventListener("blur", onBlur);
+      if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
+      pendingTapActionRef.current = null;
+      previousPartTapRef.current = null;
       rollback(); rollbackRef.current = null;
     };
   }, []);

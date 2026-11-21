@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ViewExporter } from '@/features/engine/view-export';
 import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
@@ -51,6 +51,7 @@ import { resolveColor } from '@/features/formats/colors';
 import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/color-theme';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isGeneratedProjectName } from '@/i18n/project-name';
+import { rotationAnchors } from '@/features/connections/rotation-anchors';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -83,6 +84,8 @@ function App() {
   const [finePositionOpen, setFinePositionOpen] = useState(false);
   const [groupSelectionOpen, setGroupSelectionOpen] = useState(false);
   const [tiltControlsOpen, setTiltControlsOpen] = useState(false);
+  const openRotationForRef = useRef<string | null>(null);
+  const [rotationPivot, setRotationPivot] = useState<[number, number, number] | null>(null);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
@@ -93,7 +96,13 @@ function App() {
   const [colorTargetQuery, setColorTargetQuery] = useState("");
   useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setGroupSelectionOpen(false); }, [editor.selectedId, editor.toolMode]);
-  useEffect(() => { setTiltControlsOpen(false); }, [editor.selectedId, editor.toolMode]);
+  useEffect(() => {
+    if (openRotationForRef.current === editor.selectedId) {
+      openRotationForRef.current = null;
+      return;
+    }
+    setTiltControlsOpen(false);
+  }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { setAdditionalRotationIds([]); setRotationTargetQuery(""); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { applyColorTheme(theme); }, [theme]);
@@ -142,6 +151,15 @@ function App() {
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
   const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
+  const availableRotationAnchors = useMemo(() => editor.selectedInstance && editor.imported
+    ? rotationAnchors(editor.selectedInstance.reference, editor.imported) : [],
+  [editor.selectedInstance?.reference, editor.imported]);
+  useEffect(() => {
+    const savedPivot = editor.selectedInstance?.rotationPivot;
+    setRotationPivot(savedPivot && availableRotationAnchors.some(anchor =>
+      anchor.id === savedPivot.map(value => Math.round(value * 1000) / 1000).join(","))
+      ? savedPivot : null);
+  }, [editor.selectedId, editor.document.id]);
   const selectedPartNumber = editor.selectedInstance?.part.ldrawId
     ?? (selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId : editor.selectedPart?.ldrawId);
   const colorReferences = colorInstances.length ? colorInstances.map(instance => instance.part.ldrawId)
@@ -383,6 +401,12 @@ function App() {
                   editor.setToolMode('select');
                   editor.select(id);
                 }}
+                onOpenRotationControls={(id) => {
+                  openRotationForRef.current = id;
+                  editor.setToolMode('select');
+                  editor.select(id);
+                  setTiltControlsOpen(true);
+                }}
                 onMove={editor.move}
                 onMoveGroup={editor.moveGroup}
               />}
@@ -412,9 +436,10 @@ function App() {
               <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                 tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                 rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
+                onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds, rotationPivot)} onTilt={editor.setSelectedTilt}
                 onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
-                onOpenChange={setTiltControlsOpen} />
+                open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
+                anchors={availableRotationAnchors} rotationPivot={rotationPivot} onPivotChange={setRotationPivot} />
               <button type="button" onClick={editor.deleteSelected} aria-label={t("editor.deleteSelected")} data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
             </div>
           )}
@@ -476,9 +501,10 @@ function App() {
                 <TiltControls key={`desktop-tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
                   tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
                   rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                  onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds)} onTilt={editor.setSelectedTilt}
+                  onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds, rotationPivot)} onTilt={editor.setSelectedTilt}
                   onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
-                  onOpenChange={setTiltControlsOpen} />
+                  open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
+                  anchors={availableRotationAnchors} rotationPivot={rotationPivot} onPivotChange={setRotationPivot} />
                 <FinePositionControls key={`desktop-fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
               </>
             ) : (

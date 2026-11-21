@@ -89,6 +89,38 @@ describe("editable imported LDraw instances", () => {
     expect(setImportedRotation(original, id, 361).imported!.instances[0].rotationY).toBe(360);
     expect(setImportedRotation(original, id, -1).imported!.instances[0].rotationY).toBeUndefined();
   });
+  it("keeps a selected evidence-backed connection point fixed through rotation, saves, undo and exports", async () => {
+    const original = fixture(), id = original.imported.instances[0].id;
+    const source = original.imported.instances[0];
+    source.matrix = [1, 0, 0, 40, 0, 1, 0, -20, 0, 0, 1, 60];
+    const pivot: [number, number, number] = [20, 0, 0];
+    const anchorBefore = new Vector3(...pivot).applyMatrix4(worldMatrix(source.matrix));
+    const rotated = rotateSelection(original, [id], id, 90, 0, pivot);
+    const instance = rotated.imported!.instances[0];
+    const anchorAfter = new Vector3(...pivot).applyMatrix4(worldMatrix(instance.matrix));
+
+    expect(anchorAfter.distanceTo(anchorBefore)).toBeLessThan(1e-8);
+    expect(instance.matrix[3]).not.toBe(source.matrix[3]);
+    expect(instance).toMatchObject({ rotationY: 90, rotationPivot: pivot });
+    const changedPivotAngle = setImportedRotation(rotated, id, 135);
+    expect(changedPivotAngle.imported!.instances[0].rotationPivot).toEqual(pivot);
+    expect(new Vector3(...pivot).applyMatrix4(worldMatrix(changedPivotAngle.imported!.instances[0].matrix))
+      .distanceTo(anchorBefore)).toBeLessThan(1e-8);
+
+    const saved = importInternal(exportInternal(rotated));
+    expect(saved.imported!.instances[0].rotationPivot).toEqual(pivot);
+    for (const bytes of [exportLDR(rotated), exportMPD(rotated), readZip(exportIO(rotated))["model.ldr"]]) {
+      expect(parseLDraw(new TextDecoder().decode(bytes)).instances[0].matrix)
+        .toEqual(instance.matrix.map(value => value || 0));
+    }
+
+    const history = commit(createHistory(original), rotated);
+    expect(undo(history).document).toEqual(original);
+    expect(redo(undo(history)).document).toEqual(rotated);
+    await builderDatabase.open();
+    await saveProject(rotated);
+    expect((await loadProject(rotated.id))!.imported!.instances[0].rotationPivot).toEqual(pivot);
+  });
   it("rotates a mixed selection around its shared center and records one restorable edit", async () => {
     const document = fixture();
     const localA = { id: "local-a", type: "brick-2x4" as const, color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };

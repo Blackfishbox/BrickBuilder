@@ -1344,8 +1344,10 @@ describe("frame-coalesced drag transactions", () => {
   });
   async function mount(toolMode: ToolMode = "select") {
     const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn(), onViewPartTap = vi.fn();
+    const onOpenRotationControls = vi.fn(), onPlace = vi.fn();
     const props = { projectId: "one", bricks: [], imported: model, selectedId: model.instances[0].id,
-      selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode, onMove, onSelect, onViewPartTap, onPlace: vi.fn() };
+      selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode, onMove, onSelect,
+      onViewPartTap, onOpenRotationControls, onPlace };
     act(() => { root.render(<BuilderCanvas {...props} />); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     host = element.querySelector("[data-testid='canvas-3d']")!;
@@ -1361,6 +1363,18 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onViewPartTap).toHaveBeenCalledWith(model.instances[0].id);
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(props.onMove).not.toHaveBeenCalled();
+  });
+  it("opens rotation controls on a deliberate double tap without placing the part", async () => {
+    const { props, point, model } = await mount("build");
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onOpenRotationControls).toHaveBeenCalledWith(model.instances[0].id);
+    expect(props.onPlace).not.toHaveBeenCalled();
+    expect(props.onMove).not.toHaveBeenCalled();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+    expect(props.onPlace).not.toHaveBeenCalled();
   });
   it("keeps long presses in view mode while allowing camera orbit", async () => {
     const { props, point } = await mount("view");

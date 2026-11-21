@@ -157,6 +157,18 @@ it("switches to selection mode and selects a tapped part from the view canvas", 
   expect(editor.select).toHaveBeenCalledWith("imported-part-17");
 });
 
+it("opens the existing rotation controls when the canvas reports a part double tap", async () => {
+  const host = await mount("light", true);
+  const openControls = canvasProps.current.onOpenRotationControls as (id: string) => void;
+  expect(openControls).toBeTypeOf("function");
+
+  act(() => openControls("selected-brick"));
+
+  expect(editor.setToolMode).toHaveBeenCalledWith("select");
+  expect(editor.select).toHaveBeenCalledWith("selected-brick");
+  expect(host.querySelector<HTMLDetailsElement>('[data-testid="tilt-controls-menu"]')?.open).toBe(true);
+});
+
 it("starts in English and switches the visible app labels to German", async () => {
   const container = await mount("light", false, "en");
   expect(container.textContent).toContain("View");
