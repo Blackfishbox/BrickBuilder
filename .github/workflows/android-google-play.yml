@@ -291,11 +291,6 @@ jobs:
           PLAY_RELEASE_NOTES_DE: ${{ inputs.release_notes_de }}
           PLAY_RELEASE_NOTES_EN: ${{ inputs.release_notes_en }}
         run: node scripts/android/play-release-notes.mjs
-      - name: Prepare the English store listing in the release edit
-        id: prepare_listing
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-        run: node scripts/android/play-store-listing.mjs
       - name: Publish the signed bundle to the closed alpha test
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
         with:
@@ -308,10 +303,3 @@ jobs:
           changesNotSentForReview: "false"
           releaseName: ${{ needs.android.outputs.version_name }} (${{ needs.android.outputs.version_code }})
           whatsNewDirectory: generated-artifacts/google-play/whatsnew
-          existingEditId: ${{ steps.prepare_listing.outputs.edit_id }}
-      - name: Discard the uncommitted Play edit after a failure
-        if: failure() && steps.prepare_listing.outputs.edit_id != ''
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_PLAY_EDIT_ID: ${{ steps.prepare_listing.outputs.edit_id }}
-        run: node scripts/android/play-store-listing.mjs --discard

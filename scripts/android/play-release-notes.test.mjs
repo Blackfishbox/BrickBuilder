@@ -36,10 +36,14 @@ test("a complete release note summarizes a batch with missing or oversized histo
     "Recent change\n\nRelease-Notes-DE: This historical note is superseded by the complete batch summary.",
     `Prepare release\n\nRelease-Notes-DE-Complete: ${summary}`,
   ]), summary);
+  assert.equal(summarizeCommitMessages([
+    "First summary\n\nRelease-Notes-EN-Complete: Older failed-run summary.",
+    "Second summary\n\nRelease-Notes-EN-Complete: Newest complete summary.",
+    "Later fix\n\nRelease-Notes-EN: A follow-up change after the summary.",
+  ], "en"), "Newest complete summary.\n• A follow-up change after the summary.");
   assert.throws(() => summarizeCommitMessages([
-    "First summary\n\nRelease-Notes-DE-Complete: Zusammenfassung eins.",
-    "Second summary\n\nRelease-Notes-DE-Complete: Zusammenfassung zwei.",
-  ]), /exactly one/);
+    "Duplicate summaries\n\nRelease-Notes-EN-Complete: First.\nRelease-Notes-EN-Complete: Second.",
+  ], "en"), /at most one/);
   assert.equal(summarizeCommitMessages([
     "Older commit without English notes",
     "Localization rollout\n\nRelease-Notes-EN-Complete: Added an English store listing and bilingual change notes.",

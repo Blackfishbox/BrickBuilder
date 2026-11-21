@@ -23,5 +23,8 @@ Release-Notes-DE-Complete: Vollständige kurze Zusammenfassung auf Deutsch.
 Release-Notes-EN-Complete: A complete concise summary in English.
 ```
 
-A complete note replaces the per-commit aggregation for its language only.
-Manual workflow runs can instead provide separate German and English notes.
+A complete note replaces earlier per-commit aggregation for its language. If a
+later failed release attempt also has a complete note, the newest one takes
+precedence; ordinary notes on commits after it are appended. Each commit may
+contain at most one complete note per language. Manual workflow runs can instead
+provide separate German and English notes.

@@ -15,8 +15,6 @@ const RELEASE_AUTOMATION_FILES = new Set([
   "artifacts/brickbuilder-mobile/android/variables.gradle",
   "scripts/android/play-release-notes.mjs",
   "scripts/android/play-release-notes.test.mjs",
-  "scripts/android/play-store-listing.mjs",
-  "scripts/android/play-store-listing.test.mjs",
 ]);
 
 /** Every non-merge commit since the previous successful Play release must state its actual user-visible change. */
@@ -26,17 +24,27 @@ export function summarizeCommitMessages(messages, language = "de") {
   if (!messages.length) {
     throw new Error(`No commits found for this release. Add ${locale.label} release notes or provide them manually.`);
   }
-  const completeNotes = messages.flatMap(message =>
-    [...message.matchAll(new RegExp(`^${locale.completeTrailer}:\\s*(.*?)\\s*$`, "gim"))].map(match => match[1].trim()),
-  );
-  if (completeNotes.length > 0) {
-    if (completeNotes.length !== 1 || !completeNotes[0]) {
-      throw new Error(`A release batch must contain exactly one non-empty ${locale.completeTrailer} trailer.`);
+  let lastCompleteIndex = -1;
+  let completeSummary = "";
+  messages.forEach((message, index) => {
+    const subject = message.split(/\r?\n/, 1)[0].trim() || "(commit without subject)";
+    const completeNotes = [...message.matchAll(new RegExp(`^${locale.completeTrailer}:\\s*(.*?)\\s*$`, "gim"))];
+    if (completeNotes.length > 1) {
+      throw new Error(`Commit "${subject}" must contain at most one ${locale.completeTrailer} trailer.`);
     }
-    return validateNotes(completeNotes[0], language);
-  }
+    if (completeNotes.length === 1) {
+      completeSummary = completeNotes[0][1].trim();
+      if (!completeSummary) throw new Error(`Commit "${subject}" has an empty ${locale.completeTrailer} trailer.`);
+      lastCompleteIndex = index;
+    }
+  });
   const notes = [], seen = new Set();
-  for (const message of messages) {
+  if (completeSummary) {
+    const note = validateNotes(completeSummary, language);
+    notes.push(note);
+    seen.add(note.replace(/\s+/g, " ").toLocaleLowerCase(locale.locale));
+  }
+  for (const message of messages.slice(lastCompleteIndex + 1)) {
     const subject = message.split(/\r?\n/, 1)[0].trim() || "(commit without subject)";
     const trailers = [...message.matchAll(new RegExp(`^${locale.trailer}:\\s*(.*?)\\s*$`, "gim"))];
     // Replit task merges can add generated metadata-only commits without user-written trailers.
@@ -56,7 +64,10 @@ export function summarizeCommitMessages(messages, language = "de") {
     if (!seen.has(key)) { seen.add(key); notes.push(note); }
   }
   if (notes.length === 0) throw new Error(`No concrete ${locale.label} release notes found. Add a ${locale.trailer} trailer.`);
-  const result = notes.map(note => `• ${note}`).join("\n");
+  const result = [
+    ...(completeSummary ? [notes[0]] : []),
+    ...notes.slice(completeSummary ? 1 : 0).map(note => `• ${note}`),
+  ].join("\n");
   if ([...result].length > 500) {
     throw new Error(
       `Combined ${locale.label} release notes are ${[...result].length} characters; Google Play allows 500. ` +

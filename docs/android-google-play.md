@@ -22,8 +22,8 @@ The ordinary web/PWA build remains unchanged.
 
 The Android-branch release workflow retains only the signed AAB and matching
 ProGuard/R8 `mapping.txt` as downloadable GitHub artifacts, and uploads both to
-Google Play with German and English release notes. It also adds the versioned
-English store listing without replacing the existing German listing. The
+Google Play with German and English release notes. It does not change store
+listing text or graphics; those are managed separately in Play Console. The
 one-time emulator screen-measurement and screenshot workflow has been removed;
 signing, privacy and ordinary regression checks remain.
 
@@ -156,11 +156,9 @@ Workflow: `.github/workflows/android-google-play.yml`.
    project containing your service account.
 2. In Play Console, invite the service account's email under **Users and
    permissions**. Grant access to `brickbuilder.blackfishbox.de`, permission to
-   view app information, **Release apps to testing tracks**, and **Manage store
-   presence**. The latter is required to commit the English listing together
-   with the AAB. Do not grant production-release permissions for this workflow.
-   Ensure the closed track's exact API identifier is `alpha`, with its
-   testers/countries configured.
+   view app information and **Release apps to testing tracks**. Do not grant
+   production-release permissions for this workflow. Ensure the closed track's
+   exact API identifier is `alpha`, with its testers/countries configured.
 3. The app listing must already exist. If no binary has ever been uploaded,
    perform the first signed AAB upload manually in Play Console; the API cannot
    create the initial app listing. Complete required declarations, Play App
@@ -199,15 +197,11 @@ Workflow: `.github/workflows/android-google-play.yml`.
    intervening failed runs are included. Before the first successful automated
    release, it summarizes the current push's changes; manual runs use the latest
    commit unless localized notes are supplied.
-4. The workflow prepares the English (`en-US`) title and descriptions from
-   `play-store-listing/en-US/` in the same Google Play edit as the release. The
-   existing German listing is not replaced.
-5. The pinned upload action sends the AAB, R8 mapping, both sets of notes and the
-   English listing to app `brickbuilder.blackfishbox.de`, track **`alpha`**, with
-   release status **`completed`** and `changesNotSentForReview: false`. The
-   account must be authorized to manage the app's store listing as well as
-   release to testing tracks. A permission failure stops the edit before the
-   bundle or listing is committed; an unused edit is discarded.
+4. The pinned upload action sends the AAB, R8 mapping and both sets of notes to
+   app `brickbuilder.blackfishbox.de`, track **`alpha`**, with release status
+   **`completed`** and `changesNotSentForReview: false`. The workflow does not
+   modify store listing text or graphics, including a manually maintained
+   English (`en-US`) listing.
 
 The notes are precise, hand-written German and English commit trailers, not an AI
 translation or a claim that every changed area contains a verified bug fix.
@@ -217,10 +211,6 @@ older commits during a localization rollout. For manual notes, use **Run
 workflow**, select `android/google-play`, and fill in `release_notes_de` and/or
 `release_notes_en`. The optional `version_name` input overrides the displayed
 version. The GitHub Actions step summary shows both localized notes.
-
-The English listing source is in `play-store-listing/en-US/`. Its title, short
-description and full description are checked against Google Play's current
-character limits before making the API request.
 
 `completed` requests rollout to all eligible testers of this closed track.
 Google review, managed publishing, incomplete declarations or account
