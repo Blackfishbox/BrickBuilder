@@ -1,4 +1,4 @@
-import { BoxGeometry, BufferGeometry, CylinderGeometry } from "three";
+import { BoxGeometry, BufferGeometry, CylinderGeometry, EdgesGeometry } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BrickType } from "../editor/model";
 
@@ -44,6 +44,23 @@ export function createLocalBrickGeometry(type: BrickType): BufferGeometry {
 }
 
 const triangleCache = new Map<BrickType, Float32Array>();
+const edgeCache = new Map<BrickType, Float32Array>();
+
+/** Read-only sharp edges for the compatibility renderer and GPU outline batches. */
+export function localBrickEdges(type: BrickType): Float32Array {
+  const cached = edgeCache.get(type);
+  if (cached) return cached;
+  const geometry = createLocalBrickGeometry(type);
+  const edges = new EdgesGeometry(geometry, 0.65);
+  try {
+    const positions = new Float32Array(edges.getAttribute("position").array);
+    edgeCache.set(type, positions);
+    return positions;
+  } finally {
+    edges.dispose();
+    geometry.dispose();
+  }
+}
 
 /** Read-only local triangles for the interactive canvas fallback. */
 export function localBrickTriangles(type: BrickType): Float32Array {

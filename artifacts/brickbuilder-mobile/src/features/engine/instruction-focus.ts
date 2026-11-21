@@ -1,4 +1,4 @@
-import { Color, Group, InstancedBufferAttribute, InstancedMesh, MeshLambertMaterial, LineSegments, ShaderMaterial } from "three";
+import { Color, Group, InstancedBufferAttribute, InstancedMesh, Mesh, MeshLambertMaterial, LineSegments, ShaderMaterial } from "three";
 
 export const FOCUS_ATTRIBUTE = "instructionFocus";
 export const FOCUS_VERTEX_HEADER = "attribute float instructionFocus;\nvarying float vInstructionFocus;\n";
@@ -32,7 +32,8 @@ export function installInstructionFocus(mesh: InstancedMesh): void {
 export function applyInstructionFocus(root: Group | null, current?: ReadonlySet<string>): void {
   if (!root) return;
   for (const draw of root.children) {
-    if (!(draw instanceof InstancedMesh || draw instanceof LineSegments)) continue;
+    if (!(draw instanceof InstancedMesh || draw instanceof LineSegments ||
+      (draw instanceof Mesh && draw.geometry.isInstancedBufferGeometry))) continue;
     const ids = draw.userData.brickIds as string[] | undefined;
     if (!ids) continue;
     const size = draw instanceof InstancedMesh ? draw.instanceMatrix.count : draw.geometry.getAttribute("instanceRow0")?.count;
@@ -48,7 +49,7 @@ export function applyInstructionFocus(root: Group | null, current?: ReadonlySet<
       if (attribute!.getX(slot) !== value) { attribute!.setX(slot, value); changed = true; }
     });
     if (changed) attribute.needsUpdate = true;
-    if (draw instanceof LineSegments && draw.material instanceof ShaderMaterial) {
+    if ((draw instanceof LineSegments || draw.userData.isWideEdgeMesh) && draw.material instanceof ShaderMaterial) {
       draw.material.uniforms.instructionFocusEnabled.value = current !== undefined;
     }
   }

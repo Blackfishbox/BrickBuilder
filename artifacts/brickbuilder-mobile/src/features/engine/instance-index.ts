@@ -8,7 +8,7 @@ import { compilePart, installCompiledPart, reuseGeometryCache, sameSceneSources,
 import { createImportedGroup, disposeImportedScene, measureImportedScene, DEFAULT_GEOMETRY_BUDGET, SceneBudgetExceeded } from "./imported-scene";
 import { FOCUS_ATTRIBUTE } from "./instruction-focus";
 
-type Draw = InstancedMesh | LineSegments<InstancedBufferGeometry>;
+type Draw = InstancedMesh | Mesh<InstancedBufferGeometry> | LineSegments<InstancedBufferGeometry>;
 interface Slot { draw: Draw; index: number }
 interface RecordEntry { instance: ImportedInstance; slots: Slot[]; bounds: Box3 }
 export interface UpdateCounters {
@@ -76,7 +76,8 @@ export class InstanceIndex {
     this.model = model;
     for (const instance of model.instances) this.records.set(instance.id, { instance, slots: [], bounds: new Box3() });
     for (const child of root.children) {
-      if (!(child instanceof InstancedMesh || child instanceof LineSegments) || !child.userData.batchKey) continue;
+    if (!(child instanceof InstancedMesh || child instanceof LineSegments ||
+      (child instanceof Mesh && child.geometry.isInstancedBufferGeometry)) || !child.userData.batchKey) continue;
       const draw = child as Draw;
       this.batches.set(draw.userData.batchKey, draw);
       ids(draw).forEach((id, index) => this.records.get(id)?.slots.push({ draw, index }));
@@ -120,22 +121,25 @@ export class InstanceIndex {
     if (measureImportedScene(this.root).bufferBytes + bytes > this.maxBytes) throw new SceneBudgetExceeded();
     let next: Draw;
     if (draw instanceof InstancedMesh) {
-      next = new InstancedMesh(draw.geometry, draw.material, nextCapacity);
-      next.count = draw.count;
-      next.boundingBox = draw.boundingBox?.clone() ?? null;
-      next.boundingSphere = draw.boundingSphere?.clone() ?? null;
-      next.instanceMatrix.array.set(draw.instanceMatrix.array);
+      const mesh = new InstancedMesh(draw.geometry, draw.material, nextCapacity);
+      mesh.count = draw.count;
+      mesh.boundingBox = draw.boundingBox?.clone() ?? null;
+      mesh.boundingSphere = draw.boundingSphere?.clone() ?? null;
+      mesh.instanceMatrix.array.set(draw.instanceMatrix.array);
       if (draw.instanceColor) {
-        next.setColorAt(0, new Color());
-        next.instanceColor!.array.set(draw.instanceColor.array);
+        mesh.setColorAt(0, new Color());
+        mesh.instanceColor!.array.set(draw.instanceColor.array);
       }
       const focus = new Float32Array(nextCapacity);
       focus.set(draw.geometry.getAttribute(FOCUS_ATTRIBUTE).array);
-      next.geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(focus, 1));
+      mesh.geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(focus, 1));
+      next = mesh;
       draw.dispose(); // Only the replaced instancing buffers, not shared geometry/material.
     } else {
       const geometry = new InstancedBufferGeometry();
-      geometry.setAttribute("position", draw.geometry.getAttribute("position"));
+      for (const [name, attribute] of Object.entries(draw.geometry.attributes)) {
+        if (!name.startsWith("instanceRow") && name !== FOCUS_ATTRIBUTE) geometry.setAttribute(name, attribute);
+      }
       for (let row = 0; row < 3; row++) {
         const old = draw.geometry.getAttribute(`instanceRow${row}`);
         const array = new Float32Array(nextCapacity * 4); array.set(old.array);
@@ -143,7 +147,9 @@ export class InstanceIndex {
       }
       geometry.instanceCount = draw.geometry.instanceCount;
       geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(nextCapacity), 1));
-      next = new LineSegments(geometry, draw.material);
+      next = draw instanceof LineSegments
+        ? new LineSegments(geometry, draw.material)
+        : new Mesh(geometry, draw.material);
       draw.geometry.dispose();
     }
     next.name = draw.name; next.userData = { ...draw.userData };

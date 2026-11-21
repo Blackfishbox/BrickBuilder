@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Grip, Rotate3d } from "lucide-react";
 import "./tilt-controls.css";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -6,6 +6,7 @@ import type { RotationAnchor } from "@/features/connections/rotation-anchors";
 
 type SliderAxis = "y" | "x" | "z";
 type PanelPosition = { left: number; top: number };
+type PanelDrag = { pointerId: number; x: number; y: number; left: number; top: number; moved: boolean };
 type TouchGesture = {
   axis: SliderAxis;
   x: number;
@@ -49,7 +50,7 @@ export default function TiltControls({
   const lastReset = useRef<{ axis: SliderAxis; at: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const safeAreaRef = useRef<HTMLDivElement>(null);
-  const panelDrag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const panelDrag = useRef<PanelDrag | null>(null);
   const panelDragListeners = useRef<{ move: (event: PointerEvent) => void; end: (event: PointerEvent) => void } | null>(null);
   const suppressSummaryClick = useRef(false);
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
@@ -101,16 +102,15 @@ export default function TiltControls({
     }
     const rect = panelRef.current.getBoundingClientRect();
     const initial = clampPanelPosition(rect.left, rect.top);
-    setPanelPosition(initial);
-    panelDrag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...initial };
+    panelDrag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...initial, moved: false };
     const move = (pointerEvent: PointerEvent) => {
       const drag = panelDrag.current;
       if (!drag || drag.pointerId !== pointerEvent.pointerId) return;
       pointerEvent.preventDefault();
       pointerEvent.stopPropagation();
-      if (Math.hypot(pointerEvent.clientX - drag.x, pointerEvent.clientY - drag.y) > 4) {
-        suppressSummaryClick.current = true;
-      }
+      if (!drag.moved && Math.hypot(pointerEvent.clientX - drag.x, pointerEvent.clientY - drag.y) <= 6) return;
+      drag.moved = true;
+      suppressSummaryClick.current = true;
       setPanelPosition(clampPanelPosition(
         drag.left + pointerEvent.clientX - drag.x,
         drag.top + pointerEvent.clientY - drag.y,
@@ -135,6 +135,16 @@ export default function TiltControls({
     window.addEventListener("pointermove", move, { capture: true, passive: false });
     window.addEventListener("pointerup", end, { capture: true, passive: false });
     window.addEventListener("pointercancel", end, { capture: true, passive: false });
+  };
+
+  const keepPanelOpen = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const details = panelRef.current?.closest("details");
+    if (details && !details.open) {
+      details.open = true;
+      onOpenChange?.(true);
+    }
   };
 
   useEffect(() => () => {
@@ -241,7 +251,7 @@ export default function TiltControls({
           <strong>{t("tilt.title")}</strong>
           <button type="button" className="tilt-panel-drag" aria-label={t("tilt.movePanel")} title={t("tilt.movePanel")}
             onPointerDown={startPanelDrag}
-            onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+            onClick={keepPanelOpen}
             data-testid="button-move-tilt-panel">
             <Grip size={17} aria-hidden="true" />
           </button>

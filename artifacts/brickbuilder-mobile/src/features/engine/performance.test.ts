@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { Color, InstancedBufferGeometry, InstancedMesh, LineSegments, SRGBColorSpace } from "three";
+import { Color, InstancedBufferGeometry, InstancedMesh, Mesh, SRGBColorSpace } from "three";
 import type { ImportedModel } from "../formats/types";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { compilePart, createImportedGroup, hasCompiledPart } from "./ldraw-geometry";
@@ -46,7 +46,7 @@ describe("bounded large-model rendering", () => {
     const stats = measureImportedScene(root);
     expect(stats.drawObjects).toBe(4); // Two inherited alpha groups, fixed paint, edges.
     expect(stats.bufferBytes).toBeLessThan(2 * 1024 * 1024);
-    const edges = root.children.filter(child => child instanceof LineSegments);
+    const edges = root.children.filter(child => child instanceof Mesh && child.userData.isWideEdgeMesh);
     expect(edges).toHaveLength(1);
     expect(edges[0].geometry).toBeInstanceOf(InstancedBufferGeometry);
     expect((edges[0].geometry as InstancedBufferGeometry).instanceCount).toBe(10_000);

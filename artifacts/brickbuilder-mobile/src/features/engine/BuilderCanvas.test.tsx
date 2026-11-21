@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, Vector2, Vector3 } from "three";
+import { Box3, Color, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -64,7 +64,11 @@ vi.mock("./software-scene", async importOriginal => {
 let root: Root, element: HTMLDivElement, host: HTMLElement;
 let frames: Map<number, FrameRequestCallback>, nextFrame: number;
 let resizeCallbacks: ResizeObserverCallback[], canvasHeight: number;
-const context = new Proxy({}, { get: () => vi.fn(), set: () => true });
+let observedLineWidths: number[];
+const context = new Proxy({}, {
+  get: () => vi.fn(),
+  set: (_target, key, value) => { if (key === "lineWidth") observedLineWidths.push(value as number); return true; },
+});
 const contact: Contact = {
   id: "moving:socket|target:stud", movingId: "moving", movingConnectorId: "socket", targetId: "target", targetConnectorId: "stud",
   family: "cylinder", position: [0, 0, 0], orientation: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], state: "candidate",
@@ -114,6 +118,7 @@ beforeEach(() => {
   frames = new Map(); nextFrame = 0; observed.scene = undefined; observed.scene3d = undefined;
   observed.camera = undefined; observed.cameraPose = undefined; observed.webglEnabled = false; observed.preparations = 0;
   resizeCallbacks = []; canvasHeight = 600;
+  observedLineWidths = [];
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   vi.stubGlobal("ResizeObserver", class {
@@ -145,6 +150,62 @@ beforeEach(() => {
   element = document.createElement("div"); document.body.appendChild(element); root = createRoot(element);
 });
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+describe("temporary rotation anchor marker", () => {
+  for (const webgl of [true, false]) {
+    it(`tracks selection and stays outside model geometry in ${webgl ? "WebGL" : "compatibility"} mode`, async () => {
+      observed.webglEnabled = webgl;
+      const model = engineFixture(1, 3);
+      const anchor: [number, number, number] = [1, 0, 0];
+      const props = {
+        projectId: `rotation-anchor-marker-${webgl}`,
+        bricks: [], imported: model, selectedId: model.instances[0].id, selectedRotationAnchor: anchor,
+        selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode: "select" as const,
+        onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(),
+      };
+      act(() => root.render(<BuilderCanvas {...props} />));
+      host = element.querySelector("[data-testid='canvas-3d']")!;
+      await act(async () => {
+        await vi.waitFor(() => expect(webgl
+          ? observed.scene3d?.children.some(child => instanceIndex(child as Group))
+          : observed.scene).toBeTruthy());
+      });
+      flushFrame();
+
+      const marker = element.querySelector<HTMLElement>("[data-testid='rotation-anchor-marker']")!;
+      expect(marker.style.display).toBe("grid");
+      expect(Number.isFinite(Number.parseFloat(marker.style.left))).toBe(true);
+      expect(Number.isFinite(Number.parseFloat(marker.style.top))).toBe(true);
+      expect(marker.style.pointerEvents).toBe("none");
+      const modelRoot = webgl ? observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group : null;
+      const importOffset = modelRoot?.position.y ?? Math.max(0, -observed.scene!.bounds.min.y);
+      const expectedPoint = new Vector3(...anchor)
+        .applyMatrix4(worldMatrix(model.instances[0].matrix));
+      expectedPoint.y += importOffset;
+      expectedPoint.project(observed.camera!);
+      expect(Number.parseFloat(marker.style.left)).toBeCloseTo((expectedPoint.x + 1) * 300, 4);
+      expect(Number.parseFloat(marker.style.top)).toBeCloseTo((1 - expectedPoint.y) * 300, 4);
+      const initialPosition = { left: marker.style.left, top: marker.style.top };
+      if (webgl) {
+        expect(observed.scene3d!.children.some(child => child.name === "rotation-anchor-marker")).toBe(false);
+      }
+
+      act(() => root.render(<BuilderCanvas {...props} selectedRotationAnchor={[2, 0, 0]} />));
+      flushFrame();
+      const changedPosition = { left: marker.style.left, top: marker.style.top };
+      expect(changedPosition).not.toEqual(initialPosition);
+      act(() => root.render(<BuilderCanvas {...props} selectedRotationAnchor={null} />));
+      flushFrame();
+      expect(marker.style.display).toBe("none");
+
+      act(() => root.render(<BuilderCanvas {...props} selectedRotationAnchor={anchor} selectedId={null} />));
+      flushFrame();
+      expect(marker.style.display).toBe("none");
+      expect(changedPosition.left).not.toBe("");
+      expect(changedPosition.top).not.toBe("");
+    });
+  }
+});
 
 function currentImportedBounds(webgl: boolean): Box3 {
   const bounds = new Box3();
@@ -335,6 +396,73 @@ for (const webgl of [true, false]) {
     expect(drawing.mock.lastCall![2]).toHaveLength(3);
   });
 }
+
+it("toggles screen-space edge width without rebuilding imported or local model geometry", async () => {
+  observed.webglEnabled = true;
+  const imported = engineFixture(1, 1);
+  const brick: Brick = { id: "local-edge", type: "brick-2x2", color: "#B40000", x: 3, y: 0, z: 0, rotation: 0 };
+  const props = { projectId: "thick-edges", bricks: [brick], imported, selectedId: null,
+    selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "view" as const,
+    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), thickEdges: false };
+  await act(async () => root.render(<BuilderCanvas {...props} />));
+  await act(async () => {
+    await vi.waitFor(() => {
+      const modelRoot = observed.scene3d?.children.find(child => instanceIndex(child as Group)) as Group | undefined;
+      expect(modelRoot?.getObjectByName("ldraw:instanced-edges")).toBeDefined();
+    });
+  });
+  flushFrame();
+
+  const modelRoot = observed.scene3d!.children.find(child => instanceIndex(child as Group)) as Group;
+  const importedEdge = modelRoot.getObjectByName("ldraw:instanced-edges") as Mesh;
+  const localEdge = observed.scene3d!.getObjectByName("brick-edges-brick-2x2") as Mesh;
+  const importedGeometry = importedEdge.geometry;
+  const localGeometry = localEdge.geometry;
+  const edgeMaterial = importedEdge.material as ShaderMaterial;
+  expect(importedEdge.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
+  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.25);
+  expect(localEdge.visible).toBe(false);
+
+  await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
+  flushFrame();
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(4);
+  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.9);
+  expect(localEdge.visible).toBe(true);
+  expect(importedEdge.geometry).toBe(importedGeometry);
+  expect(localEdge.geometry).toBe(localGeometry);
+  const transformRows = importedEdge.geometry.getAttribute("instanceRow0");
+  const beforeMove = transformRows.array[3];
+  const moved = [...imported.instances[0].matrix] as Affine;
+  moved[3] += 40;
+  instanceIndex(modelRoot)!.preview(imported.instances[0].id, moved);
+  expect(transformRows.array[3]).not.toBe(beforeMove);
+  await act(async () => root.render(<BuilderCanvas {...props} thickEdges darkMode />));
+  flushFrame();
+  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("d5e4da");
+
+  await act(async () => root.render(<BuilderCanvas {...props} />));
+  flushFrame();
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
+  expect(localEdge.visible).toBe(false);
+});
+
+it("draws bounded thicker source edges in the compatibility renderer", async () => {
+  const model = engineFixture(1, 1);
+  const software = await softwareRendering.createSoftwareScene(model);
+  expect([...software.records.values()].some(record => record.localEdges.length > 0)).toBe(true);
+  expect(software.edgeRecords.length).toBeLessThanOrEqual(software.records.size);
+  const local: Brick = { id: "compat-local", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };
+  const renderer = new FallbackRenderer();
+  renderer.setSize(600, 600);
+  const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
+  camera.position.set(10, 10, 10);
+  camera.lookAt(0, 0, 0);
+  renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
+    constructionArea(new Box3()), false, null, null, true);
+  expect(observedLineWidths).toContain(4);
+  expect(software.records.size).toBe(1);
+});
 
 describe("frame-coalesced drag transactions", () => {
   for (const webgl of [true, false]) {
@@ -875,6 +1003,22 @@ describe("frame-coalesced drag transactions", () => {
         expect(preview.colorCode).toBe("4");
       }
 
+      act(() => root.render(<BuilderCanvas {...props} selectedColor="#F4F4F4" selectedColorCode="15" />));
+      flushFrame();
+      expect(onPlace).not.toHaveBeenCalled();
+      expect(model.instances[0].colorCode).not.toBe("15");
+      if (webgl) {
+        const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
+        const mesh = previewRoot.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
+        const color = new Color();
+        mesh.getColorAt(0, color);
+        expect(color.getHexString()).toBe("f4f4f4");
+        expect(instanceIndex(previewRoot)!.model.instances[0].colorCode).toBe("15");
+      } else {
+        const preview = fallbackRender.mock.lastCall![10] as { surfaces: unknown[]; colorCode: string };
+        expect(preview.colorCode).toBe("15");
+      }
+
       observed.camera!.updateMatrixWorld(true);
       const projected = new Vector3(1, 0, 1).project(observed.camera!);
       const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
@@ -900,8 +1044,30 @@ describe("frame-coalesced drag transactions", () => {
       pointer("pointerup", target.x, target.y);
       expect(onPlace).toHaveBeenCalledOnce();
       expect(model.instances).toHaveLength(1);
+
+      await act(async () => root.render(<BuilderCanvas {...props} toolMode="select" />));
+      flushFrame();
+      if (webgl) {
+        expect(observed.scene3d?.getObjectByName("placement-preview")).toBeUndefined();
+      } else {
+        expect(fallbackRender.mock.lastCall![10]).toBeNull();
+        expect(fallbackRender.mock.lastCall![11]).toBeNull();
+      }
+      expect(onPlace).toHaveBeenCalledOnce();
+      expect(model.instances).toHaveLength(1);
+
+      await act(async () => root.render(<BuilderCanvas {...props} projectId="next-project" />));
+      flushFrame();
+      if (webgl) {
+        expect(observed.scene3d?.getObjectByName("placement-preview")).toBeUndefined();
+      } else {
+        expect(fallbackRender.mock.lastCall![10]).toBeNull();
+        expect(fallbackRender.mock.lastCall![11]).toBeNull();
+      }
+      expect(onPlace).toHaveBeenCalledOnce();
+      expect(model.instances).toHaveLength(1);
     });
-    it(`shows built-in brick geometry at the pointer in ${webgl ? "WebGL" : "compatibility"} mode`, () => {
+    it(`updates built-in brick preview color in ${webgl ? "WebGL" : "compatibility"} mode`, () => {
       observed.webglEnabled = webgl;
       const fallbackRender = vi.spyOn(FallbackRenderer.prototype, "render");
       const props = {
@@ -921,14 +1087,26 @@ describe("frame-coalesced drag transactions", () => {
         expect(brick).toMatchObject({ id: "placement-preview-brick", type: "brick-1x2", color: "#e4b844" });
       }
 
+      act(() => root.render(<BuilderCanvas {...props} selectedColor="#1E5AA8" />));
+      flushFrame();
+      expect(props.onPlace).not.toHaveBeenCalled();
+      if (webgl) {
+        const updatedPreview = observed.scene3d?.getObjectByName("placement-preview") as Mesh;
+        expect(updatedPreview).toBeInstanceOf(Mesh);
+        expect((updatedPreview.material as MeshLambertMaterial).color.getHexString()).toBe("1e5aa8");
+      } else {
+        expect(fallbackRender.mock.lastCall![11]).toMatchObject({ color: "#1E5AA8" });
+      }
+
       observed.camera!.updateMatrixWorld(true);
       const projected = new Vector3(1, 0, 1).project(observed.camera!);
       const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
       pointer("pointermove", target.x, target.y);
       flushFrame();
       if (webgl) {
-        expect((preview as Mesh).position.x).toBeCloseTo(1);
-        expect((preview as Mesh).position.z).toBeCloseTo(1);
+        const currentPreview = observed.scene3d?.getObjectByName("placement-preview") as Mesh;
+        expect(currentPreview.position.x).toBeCloseTo(1);
+        expect(currentPreview.position.z).toBeCloseTo(1);
       } else {
         expect(fallbackRender.mock.lastCall![11]).toMatchObject({ x: 1, z: 1 });
       }

@@ -1,12 +1,13 @@
 import {
   Box3, BufferAttribute, BufferGeometry, Color, DoubleSide, Group,
   InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh,
-  LineSegments, Material, Mesh, MeshLambertMaterial, ShaderMaterial,
+  LineSegments, Material, Mesh, MeshLambertMaterial,
 } from "three";
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
 import { compilePart, worldMatrix, type Surface } from "./ldraw-geometry";
-import { installInstructionFocus, FOCUS_ATTRIBUTE, FOCUS_VERTEX_HEADER, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX } from "./instruction-focus";
+import { installInstructionFocus, FOCUS_ATTRIBUTE } from "./instruction-focus";
+import { expandWideLines, wideLineMaterial } from "./wide-lines";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
 function sharedAttribute(array: Float32Array): BufferAttribute {
   let attribute = sharedAttributes.get(array);
@@ -20,6 +21,7 @@ export interface SceneBuildOptions {
   maxGeometryBytes?: number;
 }
 export const DEFAULT_GEOMETRY_BUDGET = 96 * 1024 * 1024;
+const MAX_WIDE_EDGE_SEGMENTS = 100_000;
 export class SceneBudgetExceeded extends Error {
   constructor() { super("Das Modell überschreitet das mobile Grafik-Speicherbudget."); }
 }
@@ -101,11 +103,14 @@ function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[
 function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[]): void {
   const length = surfaces.reduce((sum, surface) => sum + surface.edges.length, 0);
   if (!length) return;
-  const positions = new Float32Array(length);
+  if (length / 6 > MAX_WIDE_EDGE_SEGMENTS) throw new SceneBudgetExceeded();
+  const source = new Float32Array(length);
   let offset = 0;
-  for (const surface of surfaces) { positions.set(surface.edges, offset); offset += surface.edges.length; }
+  for (const surface of surfaces) { source.set(surface.edges, offset); offset += surface.edges.length; }
+  const expanded = expandWideLines(source);
   const geometry = new InstancedBufferGeometry();
-  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
+  expanded.dispose();
   const rows = [new Float32Array(instances.length * 4), new Float32Array(instances.length * 4), new Float32Array(instances.length * 4)];
   const bounds = new Box3(), transformed = new Box3();
   geometry.computeBoundingBox();
@@ -121,34 +126,11 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
   geometry.instanceCount = instances.length;
   geometry.boundingBox = bounds;
   geometry.computeBoundingSphere();
-  const lines = new LineSegments(geometry, new ShaderMaterial({
-    transparent: true, depthWrite: false,
-    uniforms: { instructionFocusEnabled: { value: false } },
-    vertexShader: FOCUS_VERTEX_HEADER + `
-      attribute vec4 instanceRow0;
-      attribute vec4 instanceRow1;
-      attribute vec4 instanceRow2;
-      void main() {
-        ${FOCUS_VERTEX}
-        vec4 p = vec4(position, 1.0);
-        vec3 transformed = vec3(dot(instanceRow0, p), dot(instanceRow1, p), dot(instanceRow2, p));
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
-      }`,
-    fragmentShader: FOCUS_FRAGMENT_HEADER + `
-      uniform bool instructionFocusEnabled;
-      void main() {
-        gl_FragColor = vec4(vec3(0.03310477), 0.25);
-        if (instructionFocusEnabled) {
-          gl_FragColor = vInstructionFocus > 1.5
-            ? vec4(0.6, 0.015, 0.01, 0.95)
-            : vec4(vec3(0.45), 0.12);
-        }
-        #include <colorspace_fragment>
-      }`,
-  }));
+  const lines = new Mesh(geometry, wideLineMaterial());
   // The shader's per-instance transform is not represented by Object3D.matrix.
   lines.frustumCulled = false;
   lines.name = "ldraw:instanced-edges";
+  lines.userData.isWideEdgeMesh = true;
   lines.userData.brickIds = instances.map(instance => instance.id);
   lines.userData.batchKey = `${instances[0].reference.toLowerCase()}|edges`;
   lines.userData.localBounds = local;

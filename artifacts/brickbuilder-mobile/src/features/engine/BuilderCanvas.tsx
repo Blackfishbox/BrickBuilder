@@ -11,6 +11,8 @@ import {
   EdgesGeometry,
   Group,
   InstancedMesh,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
   LineBasicMaterial,
   LineSegments,
   Material,
@@ -23,11 +25,12 @@ import {
   Raycaster,
   Scene,
   SRGBColorSpace,
+  ShaderMaterial,
   Vector2,
   Vector3,
   WebGLRenderer,
 } from "three";
-import { createLocalBrickGeometry, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
+import { createLocalBrickGeometry, localBrickEdges, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -57,6 +60,7 @@ import type { Affine, ImportedModel } from "../formats/types";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
+import { expandWideLines, setWideLineResolution, wideLineMaterial } from "./wide-lines";
 
 import {
   BRICK_DEFINITIONS,
@@ -75,6 +79,8 @@ interface BuilderCanvasProps {
   viewExporterRef?: MutableRefObject<ViewExporter | null>;
   showConstructionControls?: boolean;
   darkMode?: boolean;
+  /** Screen-space edge stroke; false preserves the original one-pixel view. */
+  thickEdges?: boolean;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
   viewCamera?: InstructionCamera;
@@ -87,6 +93,8 @@ interface BuilderCanvasProps {
   imported?: ImportedModel;
   selectedId: string | null;
   selectedIds?: readonly string[];
+  /** Temporary display-only local LDU position for the selected imported part. */
+  selectedRotationAnchor?: [number, number, number] | null;
   selectedType: BrickType;
   selectedColor: string;
   selectedColorCode?: string;
@@ -173,6 +181,7 @@ export class FallbackRenderer {
     darkMode = false,
     placementGeometry?: PlacementPreviewGeometry | null,
     placementBrick?: Brick | null,
+    thickEdges = false,
   ): void {
     const context = this.context;
     if (!context) return;
@@ -289,6 +298,39 @@ export class FallbackRenderer {
       context.globalAlpha = 1;
     }
 
+    let remainingEdgeSegments = 12_000;
+    if (thickEdges) {
+      context.beginPath();
+      context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
+      context.lineWidth = 4;
+      const drawSegments = (positions: Float32Array, transform: import("three").Matrix4, yOffset = 0) => {
+        const a = new Vector3(), b = new Vector3();
+        for (let index = 0; index + 5 < positions.length && remainingEdgeSegments > 0; index += 6) {
+          remainingEdgeSegments--;
+          a.fromArray(positions, index).applyMatrix4(transform);
+          b.fromArray(positions, index + 3).applyMatrix4(transform);
+          const first = project(a.x, a.y + yOffset, a.z);
+          const second = project(b.x, b.y + yOffset, b.z);
+          if (first.depth < 0.1 || second.depth < 0.1) continue;
+          context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
+        }
+      };
+      if (imported) {
+        for (const record of imported.edgeRecords) {
+          if (remainingEdgeSegments <= 0) break;
+          if (record.localEdges.length) drawSegments(record.localEdges, worldMatrix(record.currentMatrix), importOffset);
+        }
+      }
+      if (placementGeometry) {
+        const transform = worldMatrix(placementGeometry.matrix);
+        for (const surface of placementGeometry.surfaces) {
+          if (remainingEdgeSegments <= 0) break;
+          drawSegments(surface.edges, transform);
+        }
+      }
+      context.stroke();
+    }
+
     const orderedBricks = [...bricks, ...(placementBrick ? [placementBrick] : [])].sort(
       (first, second) =>
         camera.position.distanceTo(new Vector3(second.x, second.y, second.z)) -
@@ -330,6 +372,24 @@ export class FallbackRenderer {
         context.fill();
       }
       context.globalAlpha = 1;
+
+      if (thickEdges && remainingEdgeSegments > 0) {
+        const edges = localBrickEdges(brick.type);
+        context.beginPath();
+        context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
+          context.lineWidth = 4;
+        const point = new Vector3();
+        for (let index = 0; index + 5 < edges.length && remainingEdgeSegments > 0; index += 6) {
+          remainingEdgeSegments--;
+          const a = point.fromArray(edges, index).applyMatrix4(transform);
+          const first = project(a.x, a.y, a.z);
+          const b = point.fromArray(edges, index + 3).applyMatrix4(transform);
+          const second = project(b.x, b.y, b.z);
+          if (first.depth < 0.1 || second.depth < 0.1) continue;
+          context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
+        }
+        context.stroke();
+      }
 
       if (selectedId === brick.id) {
         const selectionTop = [
@@ -443,10 +503,12 @@ export function BuilderCanvas({
   imported,
   selectedId,
   selectedIds,
+  selectedRotationAnchor = null,
   selectedType,
   selectedColor,
   selectedColorCode,
   placementPreview,
+  thickEdges = false,
   toolMode,
   onPlace,
   onSelect,
@@ -461,6 +523,7 @@ export function BuilderCanvas({
   localeRef.current = locale;
   translateRef.current = t;
   const hostRef = useRef<HTMLDivElement>(null);
+  const rotationAnchorMarkerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const rendererRef = useRef<WebGLRenderer | FallbackRenderer | null>(null);
@@ -470,6 +533,8 @@ export function BuilderCanvas({
   const placementIndexRef = useRef<InstanceIndex | null>(null);
   const placementPreviewGeometryRef = useRef<PlacementPreviewGeometry | null>(null);
   const placementPreviewBrickRef = useRef<Brick | null>(null);
+  const placementContextRef = useRef({ projectId, preview: placementPreview });
+  const stalePlacementPreviewRef = useRef(false);
   const placementBottomRef = useRef(0);
   const placementSourceMatrixRef = useRef<Affine | null>(null);
   const sceneModelRef = useRef<ImportedModel | undefined>(undefined);
@@ -608,10 +673,12 @@ export function BuilderCanvas({
     imported,
     selectedId,
     selectedIds,
+    selectedRotationAnchor,
     selectedType,
     selectedColor,
     selectedColorCode,
     placementPreview,
+    thickEdges,
     toolMode,
     onPlace,
     onSelect,
@@ -661,10 +728,12 @@ export function BuilderCanvas({
     imported,
     selectedId,
     selectedIds,
+    selectedRotationAnchor,
     selectedType,
     selectedColor,
     selectedColorCode,
     placementPreview,
+    thickEdges,
     toolMode,
     onPlace,
     onSelect,
@@ -817,6 +886,16 @@ export function BuilderCanvas({
         if (activeRenderer instanceof WebGLRenderer) {
           const ratio = interactive ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
           if (ratio !== lastPixelRatio) { activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; }
+          scene.traverse(object => {
+            if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
+              !(object.material instanceof ShaderMaterial)) return;
+            const enabled = propsRef.current.thickEdges;
+            object.material.uniforms.lineWidth.value = enabled ? 4 : 1;
+            object.material.uniforms.edgeOpacity.value = enabled ? 0.9 : 0.25;
+            object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#d5e4da" : "#080b09");
+            if (object.name.startsWith("brick-edges-")) object.visible = enabled;
+            setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
+          });
           importedRootRef.current?.children.forEach(child => {
             if (child.name === "ldraw:instanced-edges") child.visible = !interactive;
           });
@@ -836,7 +915,50 @@ export function BuilderCanvas({
             propsRef.current.darkMode,
             placementPreviewGeometryRef.current,
             placementPreviewBrickRef.current,
+            propsRef.current.thickEdges,
           );
+        }
+        const marker = rotationAnchorMarkerRef.current;
+        const selectedAnchor = propsRef.current.selectedRotationAnchor;
+        const selectedInstance = selectedAnchor && propsRef.current.selectedId
+          ? propsRef.current.imported?.instances.find(instance => instance.id === propsRef.current.selectedId)
+          : undefined;
+        if (marker && selectedAnchor && selectedInstance && sceneModelRef.current === propsRef.current.imported) {
+          camera.updateMatrixWorld(true);
+          let displayMatrix = selectedInstance.matrix;
+          const drag = dragRef.current;
+          const draggedMember = drag?.members.find(member => member.id === selectedInstance.id);
+          if (drag && draggedMember?.matrix && drag.destination) {
+            if (drag.members.length > 1) {
+              displayMatrix = [...draggedMember.matrix] as Affine;
+              displayMatrix[3] += (drag.destination.x - drag.origin.x) * 20;
+              displayMatrix[7] -= (drag.destination.y - drag.origin.y) * 20;
+              displayMatrix[11] += (drag.destination.z - drag.origin.z) * 20;
+            } else if (drag.connection) {
+              displayMatrix = drag.connection.matrix;
+            } else if (drag.id === selectedInstance.id) {
+              displayMatrix = [...draggedMember.matrix] as Affine;
+              displayMatrix[3] = drag.destination.x * 20;
+              displayMatrix[7] = -(drag.destination.y - importedOffsetRef.current) * 20;
+              displayMatrix[11] = drag.destination.z * 20;
+            }
+          }
+          const screenPoint = new Vector3(...selectedAnchor)
+            .applyMatrix4(worldMatrix(displayMatrix));
+          screenPoint.y += importedOffsetRef.current;
+          screenPoint.project(camera);
+          if (screenPoint.x >= -1 && screenPoint.x <= 1 &&
+            screenPoint.y >= -1 && screenPoint.y <= 1 &&
+            screenPoint.z >= -1 && screenPoint.z <= 1) {
+            const rectangle = host.getBoundingClientRect();
+            marker.style.display = "grid";
+            marker.style.left = `${(screenPoint.x + 1) * rectangle.width / 2}px`;
+            marker.style.top = `${(1 - screenPoint.y) * rectangle.height / 2}px`;
+          } else {
+            marker.style.display = "none";
+          }
+        } else if (marker) {
+          marker.style.display = "none";
         }
         overlay.draw(camera, importedOffsetRef.current, id => {
           const box = importedRootRef.current ? instanceIndex(importedRootRef.current)?.records.get(id)?.bounds : softwareSceneRef.current?.instanceBounds.get(id);
@@ -945,6 +1067,18 @@ export function BuilderCanvas({
   }, [darkMode]);
 
   useEffect(() => {
+    const previous = placementContextRef.current;
+    if (previous.projectId !== projectId) {
+      stalePlacementPreviewRef.current = !!placementPreview && placementPreview === previous.preview;
+    } else if (previous.preview !== placementPreview) {
+      stalePlacementPreviewRef.current = false;
+    }
+    placementContextRef.current = { projectId, preview: placementPreview };
+  }, [projectId, placementPreview]);
+
+  useEffect(() => { invalidatorRef.current?.(); }, [thickEdges]);
+
+  useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
     if (placementRootRef.current) {
@@ -961,7 +1095,7 @@ export function BuilderCanvas({
     placementPreviewBrickRef.current = null;
     placementSourceMatrixRef.current = null;
     placementBottomRef.current = 0;
-    if (toolMode !== "build") {
+    if (toolMode !== "build" || stalePlacementPreviewRef.current) {
       invalidatorRef.current?.();
       return;
     }
@@ -1023,11 +1157,15 @@ export function BuilderCanvas({
       }
     }
     invalidatorRef.current?.();
-  }, [placementPreview, selectedColor, selectedColorCode, selectedType, toolMode]);
+  }, [placementPreview, projectId, selectedColor, selectedColorCode, selectedType, toolMode]);
 
   useEffect(() => {
     invalidatorRef.current?.();
   }, [viewRotation?.[0], viewRotation?.[1], viewRotation?.[2]]);
+
+  useEffect(() => {
+    invalidatorRef.current?.();
+  }, [selectedRotationAnchor?.[0], selectedRotationAnchor?.[1], selectedRotationAnchor?.[2]]);
 
   useEffect(() => { refreshInstructionFocus(); }, [instructionFocusIds]);
   useEffect(() => { if (viewStepId) restoreStepCamera(); }, [viewStepId, viewCamera]);
@@ -1269,6 +1407,41 @@ export function BuilderCanvas({
       });
       instances.instanceMatrix.needsUpdate = true;
       nextRoot.add(instances);
+    }
+
+    const localEdgeGroups = new Map<BrickType, Brick[]>();
+    for (const brick of bricks) {
+      const group = localEdgeGroups.get(brick.type) ?? [];
+      group.push(brick);
+      localEdgeGroups.set(brick.type, group);
+    }
+    for (const [type, groupBricks] of localEdgeGroups) {
+      const expanded = expandWideLines(localBrickEdges(type));
+      const geometry = new InstancedBufferGeometry();
+      for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
+      expanded.dispose();
+      const rows = [new Float32Array(groupBricks.length * 4), new Float32Array(groupBricks.length * 4), new Float32Array(groupBricks.length * 4)];
+      const bounds = new Box3(), transformed = new Box3();
+      geometry.computeBoundingBox();
+      const local = geometry.boundingBox!.clone();
+      groupBricks.forEach((brick, index) => {
+        const matrix = brickTransformMatrix(brick), elements = matrix.elements;
+        for (let row = 0; row < 3; row++) rows[row].set(
+          [elements[row], elements[4 + row], elements[8 + row], elements[12 + row]], index * 4,
+        );
+        bounds.union(transformed.copy(local).applyMatrix4(matrix));
+      });
+      rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
+      geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array(groupBricks.length), 1));
+      geometry.instanceCount = groupBricks.length;
+      geometry.boundingBox = bounds;
+      geometry.computeBoundingSphere();
+      const edgeMesh = new Mesh(geometry, wideLineMaterial());
+      edgeMesh.name = `brick-edges-${type}`;
+      edgeMesh.userData.brickIds = groupBricks.map(brick => brick.id);
+      edgeMesh.userData.isWideEdgeMesh = true;
+      edgeMesh.frustumCulled = false;
+      nextRoot.add(edgeMesh);
     }
 
     const selected = bricks.find((brick) => brick.id === selectedId);
@@ -1721,13 +1894,12 @@ export function BuilderCanvas({
       const click = clickRef.current;
       if (
         click?.id === event.pointerId &&
-        Math.hypot(event.clientX - click.start.x, event.clientY - click.start.y) > 10
+        Math.hypot(event.clientX - click.start.x, event.clientY - click.start.y) > 5
       ) {
         click.moved = true;
       }
-      // In build mode a one-finger drag moves the uncommitted preview; it does
-      // not orbit the camera. Mark it as a drag so the release places it rather
-      // than being treated as a tap on the part underneath.
+      // A single finger belongs exclusively to the part in build mode.
+      // Camera navigation remains available through two-finger gestures.
       if (propsRef.current.toolMode === "build") {
         updatePlacementPreview(placementTarget(currentPoint));
         return;
@@ -1972,6 +2144,16 @@ export function BuilderCanvas({
     ? t("canvas.compatibilityLarge")
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
+    <div ref={rotationAnchorMarkerRef} data-testid="rotation-anchor-marker" aria-hidden="true"
+      style={{
+        position: "absolute", left: 0, top: 0, zIndex: 5, display: "none",
+        width: 20, height: 20, boxSizing: "border-box", borderRadius: "50%",
+        border: "2px solid white", background: "rgba(228, 94, 50, 0.88)",
+        boxShadow: "0 0 0 2px #9f3823", transform: "translate(-50%, -50%)",
+        placeItems: "center", pointerEvents: "none",
+      }}>
+      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "white" }} />
+    </div>
     {toggleToast && <div role="status" className="canvas-toggle-toast" data-testid="construction-toggle-toast">{toggleToast}</div>}
     {showCollisions && showConstructionControls && toolMode !== "view" && <div role="status" className="canvas-collision-status" data-testid="collision-warning">
       {collisionState.pending ? <>

@@ -7,6 +7,7 @@ import { instructionDisplayColor } from "./instruction-focus";
 
 export const SOFTWARE_TRIANGLE_BUDGET = 32_000;
 export const INTERACTIVE_TRIANGLE_BUDGET = 3_000;
+export const SOFTWARE_EDGE_BUDGET = 12_000;
 export interface SoftwareScene {
   positions: Float32Array;
   colors: string[];
@@ -19,6 +20,7 @@ export interface SoftwareScene {
   instanceBounds: Map<string, Box3>;
   model: ImportedModel;
   records: Map<string, SoftwareRecord>;
+  edgeRecords: SoftwareRecord[];
   free: number[];
   perInstance: number;
   updates: number;
@@ -39,6 +41,8 @@ interface SoftwareRecord {
   instance: ImportedInstance;
   slots: number[];
   local: Float32Array;
+  localEdges: Float32Array;
+  currentMatrix: Affine;
   codes: string[];
   localBounds: Box3;
   total: number;
@@ -78,7 +82,24 @@ export async function createSoftwareScene(model: ImportedModel, options: SceneBu
     const total = surfaces.reduce((sum, surface) => sum + surface.positions.length / 9, 0);
     sourceTriangles += total;
     const count = Math.min(perInstance, total, SOFTWARE_TRIANGLE_BUDGET - triangles);
-    const record: SoftwareRecord = { instance, slots: [], local: new Float32Array(count * 9), codes: [], localBounds: box, total };
+    const edgeSegments = surfaces.reduce((sum, surface) => sum + surface.edges.length / 6, 0);
+    const edgeLimit = Math.floor(SOFTWARE_EDGE_BUDGET / Math.max(1, instances.length));
+    const edgeCount = Math.min(edgeSegments, edgeLimit);
+    const localEdges = new Float32Array(edgeCount * 6);
+    let edgeIndex = 0;
+    for (const surface of surfaces) {
+      const segmentCount = surface.edges.length / 6;
+      const take = Math.min(segmentCount, Math.max(0, edgeCount - edgeIndex));
+      for (let sample = 0; sample < take; sample++) {
+        const sourceIndex = Math.floor((sample + 0.5) * segmentCount / Math.max(1, take));
+        localEdges.set(surface.edges.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex++ * 6);
+      }
+      if (edgeIndex >= edgeCount) break;
+    }
+    const record: SoftwareRecord = {
+      instance, slots: [], local: new Float32Array(count * 9), localEdges, currentMatrix: [...instance.matrix],
+      codes: [], localBounds: box, total,
+    };
     records.set(instance.id, record);
     let surfaceIndex = 0, base = 0;
     for (let sample = 0; sample < count && triangles < positions.length / 9; sample++) {
@@ -107,13 +128,15 @@ export async function createSoftwareScene(model: ImportedModel, options: SceneBu
     }
   }
   return { positions, colors, alpha, bounds, sourceTriangles, triangleCount: triangles, triangleIds, instanceBounds,
-    model, records, free: [], perInstance, updates: 0, transformedTriangles: 0 };
+    model, records, edgeRecords: [...records.values()].filter(record => record.localEdges.length > 0),
+    free: [], perInstance, updates: 0, transformedTriangles: 0 };
 }
 
 /** Rewrite only a part's bounded samples, from original local coordinates (no drift). */
 export function previewSoftware(scene: SoftwareScene, id: string, matrix: Affine, code?: string): void {
   const record = scene.records.get(id);
   if (!record) return;
+  record.currentMatrix = [...matrix];
   const transform = worldMatrix(matrix), a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3(), edge = new Vector3();
   const light = new Vector3(-0.4, 0.8, 0.5).normalize();
   record.slots.forEach((slot, sample) => {
@@ -158,7 +181,21 @@ export function updateSoftwareScene(scene: SoftwareScene, next: ImportedModel): 
       const surface = surfaces[surfaceIndex], offset = (index - base) * 9;
       local.set(surface.positions.subarray(offset, offset + 9), sample * 9); codes.push(surface.colorCode);
     }
-    prepared.set(instance.id, { instance, slots: [], local, codes, localBounds, total });
+    const edgeSegments = surfaces.reduce((sum, surface) => sum + surface.edges.length / 6, 0);
+    const edgeLimit = Math.floor(SOFTWARE_EDGE_BUDGET / Math.max(1, next.instances.length));
+    const edgeCount = Math.min(edgeSegments, edgeLimit);
+    const localEdges = new Float32Array(edgeCount * 6);
+    let edgeIndex = 0;
+    for (const surface of surfaces) {
+      const segmentCount = surface.edges.length / 6;
+      const take = Math.min(segmentCount, Math.max(0, edgeCount - edgeIndex));
+      for (let sample = 0; sample < take; sample++) {
+        const sourceIndex = Math.floor((sample + 0.5) * segmentCount / Math.max(1, take));
+        localEdges.set(surface.edges.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex++ * 6);
+      }
+      if (edgeIndex >= edgeCount) break;
+    }
+    prepared.set(instance.id, { instance, slots: [], local, localEdges, currentMatrix: [...instance.matrix], codes, localBounds, total });
   }
   const nextIds = new Set(next.instances.filter(i => i.part.status === "resolved").map(i => i.id));
   for (const [id, record] of scene.records) if (!nextIds.has(id) || prepared.has(id)) {
@@ -195,6 +232,8 @@ export function updateSoftwareScene(scene: SoftwareScene, next: ImportedModel): 
       !record.instance.matrix.every((value, i) => value === instance.matrix[i])) previewSoftware(scene, instance.id, instance.matrix, instance.colorCode);
     record.instance = instance;
   }
-  scene.model = next; scene.updates++;
+  scene.model = next;
+  scene.edgeRecords = [...scene.records.values()].filter(record => record.localEdges.length > 0);
+  scene.updates++;
   return true;
 }

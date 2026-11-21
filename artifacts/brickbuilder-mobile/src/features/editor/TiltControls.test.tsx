@@ -102,6 +102,31 @@ it("keeps the open rotation panel open if releasing the drag lands over its togg
   expect(top + 208).toBeLessThanOrEqual(232);
 });
 
+it("does not reposition or close the panel on a simple grip tap", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const onOpenChange = vi.fn();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls open onOpenChange={onOpenChange} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
+  const panel = host.querySelector<HTMLElement>(".tilt-panel")!;
+  const before = panel.getBoundingClientRect();
+  const handle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const dispatchPointer = (target: EventTarget, type: string) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { pointerId: { value: 1 }, clientX: { value: 30 }, clientY: { value: 30 } });
+    target.dispatchEvent(event);
+  };
+  act(() => {
+    dispatchPointer(handle, "pointerdown");
+    dispatchPointer(window, "pointerup");
+    handle.click();
+  });
+  expect(host.querySelector<HTMLDetailsElement>('[data-testid="tilt-controls-menu"]')?.open).toBe(true);
+  expect(panel.classList.contains("is-positioned")).toBe(false);
+  expect(panel.style.left).toBe("");
+  expect(panel.style.top).toBe("");
+  expect(onOpenChange).not.toHaveBeenCalledWith(false);
+});
+
 it("sends slider changes as whole-degree values", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const onRotate = vi.fn(), onTilt = vi.fn();

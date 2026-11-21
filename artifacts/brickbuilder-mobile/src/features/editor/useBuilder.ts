@@ -87,6 +87,13 @@ export function useBuilder() {
   const [toolMode, setToolModeState] = useState<ToolMode>("view");
   const setToolMode = useCallback((mode: ToolMode) => {
     if (mode === "view") setSelectedId(null);
+    if (mode !== "build") {
+      partControllerRef.current?.abort();
+      placementRef.current = null;
+      setPreparedPart(null);
+      setSelectedInventory(null);
+      setPartLoading(false);
+    }
     setToolModeState(mode);
   }, []);
   const [isReady, setIsReady] = useState(false);

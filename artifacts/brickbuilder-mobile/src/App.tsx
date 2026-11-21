@@ -62,6 +62,12 @@ const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
 
 const BuilderCanvas = lazy(() => import('@/features/engine/BuilderCanvas'));
 const InstructionsPanel = lazy(() => import('@/features/instructions/InstructionsPanel'));
+const THICK_EDGES_STORAGE_KEY = "brickbuilder-thick-edges";
+
+function readThickEdgesPreference(): boolean {
+  try { return window.localStorage.getItem(THICK_EDGES_STORAGE_KEY) === "true"; }
+  catch { return false; }
+}
 
 function App() {
   const { locale, setLocale, t } = useI18n();
@@ -70,6 +76,7 @@ function App() {
   const editor = useBuilder();
   const displayedProjectName = isGeneratedProjectName(editor.projectName) ? t("project.new") : editor.projectName;
   const [theme, setTheme] = useState<ColorTheme>(readColorTheme);
+  const [thickEdges, setThickEdges] = useState(readThickEdgesPreference);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
@@ -370,6 +377,18 @@ function App() {
               <span className="context-divider" />
               <span className="brick-count" data-testid="text-brick-count">{t(editor.brickCount === 1 ? "canvas.partCount.one" : "canvas.partCount", { count: editor.brickCount })}</span>
             </div>
+            <button type="button" className="thick-edges-toggle"
+              aria-pressed={thickEdges}
+              aria-label={t("canvas.thickEdges")}
+              data-testid="button-thick-edges"
+              onClick={() => {
+                const next = !thickEdges;
+                setThickEdges(next);
+                try { window.localStorage.setItem(THICK_EDGES_STORAGE_KEY, String(next)); } catch { /* Keep the session preference if storage is unavailable. */ }
+              }}>
+              <span className="thick-edges-sample" aria-hidden="true" />
+              <span>{t("canvas.thickEdges")}</span>
+            </button>
             <div className="history-controls">
               <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="button-undo">
                 <Undo2 size={17} />
@@ -386,10 +405,12 @@ function App() {
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                 darkMode={theme === 'dark'}
+                thickEdges={thickEdges}
                 bricks={editor.bricks}
                 imported={editor.imported}
                 selectedId={editor.selectedId}
                 selectedIds={rotationTargetIds}
+                selectedRotationAnchor={rotationPivot}
                 selectedType={editor.selectedType}
                 selectedColor={editor.selectedColor}
                  selectedColorCode={editor.selectedColorCode}

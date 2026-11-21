@@ -118,6 +118,52 @@ it("commits inventory snapping once and preserves exact height through manual ed
   expect((await loadProject(editor.document.id))!.imported!.instances.find(instance => instance.id === id)).toEqual(fine);
 });
 
+it("clears pending placement on mode and project changes without changing the document", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const inventory = parseInventory("part_id,color_id,quantity\n3022,5,1", "self-authored.csv");
+  await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
+  const prepared: PreparedPart = { bottom: -0.4, part: {
+    id: "plate", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat",
+  }, model: { version: 1, format: "ldr", sourceName: "placement.ldr", sourceText: "", originalBytes: [],
+    steps: [], instances: [], resources: {}, legalDocuments: [] } };
+  vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
+
+  const beforePlacement = editor.document;
+  const canUndoBeforePlacement = editor.canUndo;
+  await act(async () => {
+    await editor.selectInventoryPart({
+      listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3022", colorCode: "4",
+    });
+  });
+  expect(editor.placementPreview).toBe(prepared);
+  expect(editor.selectedInventory).not.toBeNull();
+  expect(editor.document).toBe(beforePlacement);
+  expect(editor.canUndo).toBe(canUndoBeforePlacement);
+
+  act(() => editor.setToolMode("select"));
+  expect(editor.placementPreview).toBeNull();
+  expect(editor.selectedInventory).toBeNull();
+  expect(editor.document).toBe(beforePlacement);
+  expect(editor.canUndo).toBe(canUndoBeforePlacement);
+  expect(allocatedCounts(editor.document).get(inventory.rows[0].id) ?? 0).toBe(0);
+
+  await act(async () => { await editor.selectLibraryPart(prepared.part); });
+  expect(editor.placementPreview).toBe(prepared);
+  const nextProject = createEmptyDocument();
+  await act(async () => { await editor.importProject(nextProject); });
+  expect(editor.document.id).toBe(nextProject.id);
+  expect(editor.placementPreview).toBeNull();
+  expect(editor.selectedInventory).toBeNull();
+});
+
 it("places a catalog 1x2 plate onto a 2x6 plate through the editor transaction", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
