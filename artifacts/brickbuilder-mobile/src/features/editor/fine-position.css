@@ -1,11 +1,17 @@
 .fine-position { position: relative; color: #365346; font-size: 12px; }
-.fine-position summary {
+.fine-position-toggle {
   display: grid; place-items: center; width: 40px; min-height: 40px; padding: 0;
-  box-sizing: border-box; border-radius: 8px; background: #f0eee4; cursor: pointer; list-style: none;
+  box-sizing: border-box; border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; cursor: pointer;
 }
-.fine-position summary::-webkit-details-marker { display: none; }
-.fine-position summary:focus-visible, .fine-position button:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
+.fine-position-toggle:focus-visible, .fine-position button:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
 .fine-position-panel { display: grid; gap: 8px; padding: 10px; border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; }
+.fine-position-panel[hidden] { display: none; }
+.fine-position-heading { grid-column: 1 / -1; }
+.fine-position-heading strong { min-width: 0; }
+.fine-position-panel.is-positioned {
+  position: fixed; z-index: 120; inset: auto; transform: none; margin: 0; box-sizing: border-box;
+  width: min(260px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow-y: auto;
+}
 .fine-position-panel small { font-size: 10px; line-height: 1.5; }
 .fine-position-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .fine-position-grid button { min-width: 44px; min-height: 44px; border: 0; border-radius: 8px; background: #e8ecdf; color: #365346; font-size: 12px; touch-action: manipulation; cursor: pointer; }
@@ -16,8 +22,10 @@
     transform: translateX(-50%); box-sizing: border-box; width: min(240px, calc(100vw - 16px));
     max-height: calc(100dvh - 150px); overflow-y: auto; box-shadow: 0 4px 14px #27393024;
   }
+  .mobile-selection-actions .fine-position-panel.is-positioned { left: auto; right: auto; bottom: auto; z-index: 120; }
   .mobile-selection-actions .fine-position-grid button { width: 100%; height: auto; min-height: 44px; }
 }
+.dark .fine-position-toggle { background: #26362e; color: #d5e4da; }
 
 @media (orientation: landscape) and (max-height: 560px) {
   .mobile-selection-actions .fine-position-panel { bottom: calc(56px + env(safe-area-inset-bottom)); }

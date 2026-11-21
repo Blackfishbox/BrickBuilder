@@ -435,8 +435,8 @@ it("toggles screen-space edge width without rebuilding imported or local model g
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
-  expect(edgeMaterial.uniforms.lineWidth.value).toBe(6);
-  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.98);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(10);
+  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
   expect(localEdge.visible).toBe(true);
   expect(importedEdge.geometry).toBe(importedGeometry);
   expect(localEdge.geometry).toBe(localGeometry);
@@ -448,7 +448,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(transformRows.array[3]).not.toBe(beforeMove);
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges darkMode />));
   flushFrame();
-  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("e9f5ed");
+  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("ffffff");
 
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
@@ -469,7 +469,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   camera.lookAt(0, 0, 0);
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
-  expect(observedLineWidths).toContain(6);
+  expect(observedLineWidths).toContain(10);
   expect(software.records.size).toBe(1);
 });
 

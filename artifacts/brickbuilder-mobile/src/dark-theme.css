@@ -201,7 +201,7 @@
 .dark .mobile-selection-actions > button:last-child {
   background: hsl(var(--destructive) / .12);
 }
-.dark .fine-position summary {
+.dark .fine-position-toggle {
   border: 1px solid hsl(var(--border));
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
@@ -217,7 +217,7 @@
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
 }
-.dark .fine-position summary:hover,
+.dark .fine-position-toggle:hover,
 .dark .fine-position-grid button:hover {
   background: hsl(var(--accent));
   color: hsl(var(--accent-foreground));

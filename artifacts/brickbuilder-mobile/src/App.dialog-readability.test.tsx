@@ -216,14 +216,50 @@ it("hides the canvas status controls for every open mobile selection menu", asyn
     '.mobile-selection-actions [data-testid="tilt-controls-menu"]',
   ]) {
     const menu = container.querySelector<HTMLElement>(selector)!;
-    const toggle = menu.querySelector<HTMLElement>("summary, [data-testid='button-tilt-controls']")!;
+    const toggle = menu.querySelector<HTMLElement>(
+      ".rotation-selection-toggle, .fine-position-toggle, .tilt-controls-toggle",
+    )!;
     await act(async () => toggle!.click());
-    expect(selector.includes("tilt-controls")
-      ? menu.dataset.open === "true"
-      : menu.matches("details[open]")).toBe(true);
+    expect(menu.dataset.open).toBe("true");
     expect(canvas.dataset.constructionControls).toBe("false");
     await act(async () => toggle!.click());
     expect(canvas.dataset.constructionControls).toBe("true");
+  }
+});
+
+it("keeps all three mobile panels open on a grip tap and moves them only after dragging", async () => {
+  const container = await mount("light", true);
+  const menus = [
+    { selector: '[data-testid="group-selection-menu"]', toggle: "button-group-selection", grip: "button-move-group-panel-mobile", panel: ".rotation-selection-panel" },
+    { selector: '.mobile-selection-actions [data-testid="fine-position-menu"]', toggle: "button-fine-adjustment", grip: "button-move-fine-panel", panel: ".fine-position-panel" },
+    { selector: '.mobile-selection-actions [data-testid="tilt-controls-menu"]', toggle: "button-tilt-controls", grip: "button-move-tilt-panel", panel: ".tilt-panel" },
+  ];
+  for (const item of menus) {
+    const menu = container.querySelector<HTMLElement>(item.selector)!;
+    const toggle = menu.querySelector<HTMLButtonElement>(`[data-testid="${item.toggle}"]`)!;
+    await act(async () => toggle.click());
+    const panel = menu.querySelector<HTMLElement>(item.panel)!;
+    const grip = menu.querySelector<HTMLElement>(`[data-testid="${item.grip}"]`)!;
+    const pointer = (target: EventTarget, type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, { pointerId: { value: 3 }, pointerType: { value: "touch" }, clientX: { value: x }, clientY: { value: y } });
+      target.dispatchEvent(event);
+    };
+    await act(async () => {
+      pointer(grip, "pointerdown", 80, 80);
+      pointer(window, "pointerup", 80, 80);
+      grip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(menu.dataset.open).toBe("true");
+    expect(panel.classList.contains("is-positioned")).toBe(false);
+    await act(async () => {
+      pointer(grip, "pointerdown", 80, 80);
+      pointer(window, "pointermove", 112, 118);
+      pointer(window, "pointerup", 112, 118);
+    });
+    expect(menu.dataset.open).toBe("true");
+    expect(panel.classList.contains("is-positioned")).toBe(true);
+    expect(Number.parseFloat(panel.style.left)).toBeGreaterThan(8);
   }
 });
 

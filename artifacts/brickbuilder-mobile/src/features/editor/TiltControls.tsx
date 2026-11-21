@@ -1,12 +1,11 @@
-import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Grip, Rotate3d } from "lucide-react";
+import { useId, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Rotate3d } from "lucide-react";
 import "./tilt-controls.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { RotationAnchor } from "@/features/connections/rotation-anchors";
+import DraggablePanel from "./DraggablePanel";
 
 type SliderAxis = "y" | "x" | "z";
-type PanelPosition = { left: number; top: number };
-type PanelDrag = { pointerId: number; x: number; y: number; left: number; top: number; moved: boolean };
 type TouchGesture = {
   axis: SliderAxis;
   x: number;
@@ -48,109 +47,13 @@ export default function TiltControls({
   const gesture = useRef<TouchGesture | null>(null);
   const lastTap = useRef<SliderTap | null>(null);
   const lastReset = useRef<{ axis: SliderAxis; at: number } | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const safeAreaRef = useRef<HTMLDivElement>(null);
-  const panelDrag = useRef<PanelDrag | null>(null);
-  const panelDragListeners = useRef<{ move: (event: PointerEvent) => void; end: (event: PointerEvent) => void } | null>(null);
-  const suppressSummaryClick = useRef(false);
-  const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = open ?? internalOpen;
-
-  const clampPanelPosition = (left: number, top: number): PanelPosition => {
-    const panel = panelRef.current;
-    const viewport = window.visualViewport;
-    const rect = panel?.getBoundingClientRect();
-    const width = viewport?.width ?? window.innerWidth;
-    const height = viewport?.height ?? window.innerHeight;
-    const offsetLeft = viewport?.offsetLeft ?? 0;
-    const offsetTop = viewport?.offsetTop ?? 0;
-    const safeArea = safeAreaRef.current ? getComputedStyle(safeAreaRef.current) : null;
-    const safeLeft = Number.parseFloat(safeArea?.paddingLeft ?? "0") || 0;
-    const safeRight = Number.parseFloat(safeArea?.paddingRight ?? "0") || 0;
-    const safeTop = Number.parseFloat(safeArea?.paddingTop ?? "0") || 0;
-    const safeBottom = Number.parseFloat(safeArea?.paddingBottom ?? "0") || 0;
-    const panelWidth = rect?.width ?? 300;
-    const panelHeight = rect?.height ?? 240;
-    const margin = 8;
-    const minLeft = offsetLeft + safeLeft + margin;
-    const minTop = offsetTop + safeTop + margin;
-    return {
-      left: Math.min(Math.max(minLeft, left), Math.max(minLeft, offsetLeft + width - safeRight - panelWidth - margin)),
-      top: Math.min(Math.max(minTop, top), Math.max(minTop, offsetTop + height - safeBottom - panelHeight - margin)),
-    };
-  };
-
-  useEffect(() => {
-    if (!panelPosition) return;
-    const clampAfterResize = () => setPanelPosition(position => position
-      ? clampPanelPosition(position.left, position.top) : position);
-    window.addEventListener("resize", clampAfterResize);
-    window.visualViewport?.addEventListener("resize", clampAfterResize);
-    return () => {
-      window.removeEventListener("resize", clampAfterResize);
-      window.visualViewport?.removeEventListener("resize", clampAfterResize);
-    };
-  }, [panelPosition]);
-
-  const startPanelDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!panelRef.current) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (panelDragListeners.current) {
-      window.removeEventListener("pointermove", panelDragListeners.current.move, true);
-      window.removeEventListener("pointerup", panelDragListeners.current.end, true);
-      window.removeEventListener("pointercancel", panelDragListeners.current.end, true);
-    }
-    const rect = panelRef.current.getBoundingClientRect();
-    const initial = clampPanelPosition(rect.left, rect.top);
-    panelDrag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...initial, moved: false };
-    const move = (pointerEvent: PointerEvent) => {
-      const drag = panelDrag.current;
-      if (!drag || drag.pointerId !== pointerEvent.pointerId) return;
-      pointerEvent.preventDefault();
-      pointerEvent.stopPropagation();
-      if (!drag.moved && Math.hypot(pointerEvent.clientX - drag.x, pointerEvent.clientY - drag.y) <= 6) return;
-      drag.moved = true;
-      suppressSummaryClick.current = true;
-      setPanelPosition(clampPanelPosition(
-        drag.left + pointerEvent.clientX - drag.x,
-        drag.top + pointerEvent.clientY - drag.y,
-      ));
-    };
-    const end = (pointerEvent: PointerEvent) => {
-      if (panelDrag.current?.pointerId !== pointerEvent.pointerId) return;
-      pointerEvent.preventDefault();
-      pointerEvent.stopPropagation();
-      panelDrag.current = null;
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", end, true);
-      window.removeEventListener("pointercancel", end, true);
-      panelDragListeners.current = null;
-      if (suppressSummaryClick.current) {
-        window.setTimeout(() => { suppressSummaryClick.current = false; }, 0);
-      }
-    };
-    panelDragListeners.current = { move, end };
-    // Capture-phase window listeners work even when Android WebView does not
-    // preserve pointer capture on a button through a fixed-panel rerender.
-    window.addEventListener("pointermove", move, { capture: true, passive: false });
-    window.addEventListener("pointerup", end, { capture: true, passive: false });
-    window.addEventListener("pointercancel", end, { capture: true, passive: false });
-  };
 
   const setMenuOpen = (next: boolean) => {
     if (open === undefined) setInternalOpen(next);
     onOpenChange?.(next);
   };
-
-  useEffect(() => () => {
-    const listeners = panelDragListeners.current;
-    if (!listeners) return;
-    window.removeEventListener("pointermove", listeners.move, true);
-    window.removeEventListener("pointerup", listeners.end, true);
-    window.removeEventListener("pointercancel", listeners.end, true);
-  }, []);
 
   const reset = (axis: SliderAxis) => {
     lastReset.current = { axis, at: performance.now() };
@@ -229,31 +132,15 @@ export default function TiltControls({
 
   return (
     <div className="tilt-controls" data-open={isOpen} data-testid="tilt-controls-menu"
-      onClickCapture={event => {
-        if (!suppressSummaryClick.current || !(event.target instanceof Element) ||
-          !event.target.closest(".tilt-controls-toggle")) return;
-        event.preventDefault();
-        event.stopPropagation();
-        suppressSummaryClick.current = false;
-      }}>
+    >
       <button type="button" className="tilt-controls-toggle" aria-label={t("tilt.open")} title={t("tilt.title")}
         aria-expanded={isOpen} aria-controls={`tilt-panel-${controlId}`} data-testid="button-tilt-controls"
         onClick={() => setMenuOpen(!isOpen)}>
         <Rotate3d size={17} aria-hidden="true" />
       </button>
-      <div ref={panelRef} id={`tilt-panel-${controlId}`} hidden={!isOpen}
-        className={`tilt-panel${panelPosition ? " is-positioned" : ""}`}
-        style={panelPosition ? { left: panelPosition.left, top: panelPosition.top } : undefined}
-        role="group" aria-label={t("tilt.axes")}>
-        <div ref={safeAreaRef} className="tilt-safe-area-probe" aria-hidden="true" />
-        <div className="tilt-panel-heading">
-          <strong>{t("tilt.title")}</strong>
-          <button type="button" className="tilt-panel-drag" aria-label={t("tilt.movePanel")} title={t("tilt.movePanel")}
-            onPointerDown={startPanelDrag}
-            data-testid="button-move-tilt-panel">
-            <Grip size={17} aria-hidden="true" />
-          </button>
-        </div>
+      <DraggablePanel className="tilt-panel" panelId={`tilt-panel-${controlId}`}
+        title={t("tilt.title")} headingClassName="tilt-panel-heading"
+        handleTestId="button-move-tilt-panel" hidden={!isOpen}>
         <small>{t("tilt.range")}</small>
         {anchors.length > 0 && <label className="tilt-anchor-control">
           <span>{t("tilt.anchor")}</span>
@@ -310,7 +197,7 @@ export default function TiltControls({
             </div>
           );
         })}
-      </div>
+      </DraggablePanel>
     </div>
   );
 }

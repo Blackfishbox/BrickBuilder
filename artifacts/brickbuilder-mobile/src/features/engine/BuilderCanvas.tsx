@@ -302,7 +302,7 @@ export class FallbackRenderer {
     if (thickEdges) {
       context.beginPath();
       context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
-      context.lineWidth = 6;
+      context.lineWidth = 10;
       const drawSegments = (positions: Float32Array, transform: import("three").Matrix4, yOffset = 0) => {
         const a = new Vector3(), b = new Vector3();
         for (let index = 0; index + 5 < positions.length && remainingEdgeSegments > 0; index += 6) {
@@ -377,7 +377,7 @@ export class FallbackRenderer {
         const edges = localBrickEdges(brick.type);
         context.beginPath();
         context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
-        context.lineWidth = 6;
+        context.lineWidth = 10;
         const point = new Vector3();
         for (let index = 0; index + 5 < edges.length && remainingEdgeSegments > 0; index += 6) {
           remainingEdgeSegments--;
@@ -892,9 +892,9 @@ export function BuilderCanvas({
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
             const enabled = propsRef.current.thickEdges;
-            object.material.uniforms.lineWidth.value = enabled ? 6 : 1;
-            object.material.uniforms.edgeOpacity.value = enabled ? 0.98 : 0.25;
-            object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#e9f5ed" : "#050705");
+            object.material.uniforms.lineWidth.value = enabled ? 10 : 1;
+            object.material.uniforms.edgeOpacity.value = enabled ? 1 : 0.25;
+            object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#ffffff" : "#000000");
             if (object.name.startsWith("brick-edges-")) object.visible = enabled;
             setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
           });

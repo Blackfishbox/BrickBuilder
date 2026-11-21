@@ -9,8 +9,8 @@ it("exposes six touch adjustments of exactly one LDU in world coordinates", asyn
   const container = document.createElement("div"), root = createRoot(container), onNudge = vi.fn();
   try {
     await act(async () => root.render(<FinePositionControls onNudge={onNudge} />));
-    expect(container.querySelector("summary")?.getAttribute("aria-label")).toBe("Feinjustierung öffnen");
-    const buttons = container.querySelectorAll("button");
+    expect(container.querySelector('[data-testid="button-fine-adjustment"]')?.getAttribute("aria-label")).toBe("Feinjustierung öffnen");
+    const buttons = container.querySelectorAll(".fine-position-grid button");
     expect(buttons).toHaveLength(6);
     expect([...buttons].every(button => !button.textContent?.trim() && button.querySelector("svg"))).toBe(true);
     await act(async () => { buttons.forEach(button => button.click()); });
@@ -22,18 +22,20 @@ it("exposes six touch adjustments of exactly one LDU in world coordinates", asyn
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });
 
-it("opens the fine-adjustment panel when its summary is tapped", async () => {
+it("opens and closes the fine-adjustment panel with its explicit toggle", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div"), root = createRoot(container), onOpenChange = vi.fn();
   try {
     await act(async () => root.render(<FinePositionControls onNudge={vi.fn()} onOpenChange={onOpenChange} />));
-    const details = container.querySelector("details");
-    expect(details?.open).toBe(false);
-    await act(async () => container.querySelector("summary")?.click());
-    expect(details?.open).toBe(true);
+    const menu = container.querySelector<HTMLElement>('[data-testid="fine-position-menu"]')!;
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid="button-fine-adjustment"]')!;
+    expect(menu.dataset.open).toBe("false");
+    await act(async () => toggle.click());
+    expect(menu.dataset.open).toBe("true");
     expect(onOpenChange).toHaveBeenLastCalledWith(true);
     expect(container.querySelectorAll(".fine-position-grid button")).toHaveLength(6);
-    await act(async () => container.querySelector("summary")?.click());
+    await act(async () => toggle.click());
+    expect(menu.dataset.open).toBe("false");
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });

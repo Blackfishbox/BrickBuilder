@@ -10,19 +10,20 @@
   border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; box-shadow: 0 4px 14px #27393024;
 }
 .tilt-panel[hidden] { display: none; }
-.tilt-panel-heading {
-  display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 8px;
+.draggable-panel-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   min-height: 36px;
 }
-.tilt-panel-heading strong { min-width: 0; }
+.tilt-panel-heading { grid-column: 1 / -1; }
+.draggable-panel-heading strong { min-width: 0; }
 .tilt-panel small { grid-column: 1 / -1; }
 .tilt-panel small { color: #78867c; font-size: 10px; }
-.tilt-panel-drag {
-  display: grid; place-items: center; flex: none; width: 40px; height: 36px; padding: 0;
+.panel-drag-handle {
+  display: grid; place-items: center; flex: none; width: 40px; height: 36px;
   border: 1px solid #dcded3; border-radius: 8px; background: #f0eee4; color: #536c5f;
-  cursor: grab; touch-action: none;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
 }
-.tilt-panel-drag:active { cursor: grabbing; }
+.panel-drag-handle:active { cursor: grabbing; }
 .tilt-anchor-control {
   display: grid; grid-column: 1 / -1; gap: 6px; color: #536c5f; font-size: 10px; font-weight: 800;
 }
@@ -70,7 +71,7 @@
 .dark .tilt-axis-control label, .dark .tilt-axis-control output { color: #d5e4da; }
 .dark .tilt-axis-control input[type="range"] { accent-color: #9fc9aa; }
 .dark .mobile-selection-actions .tilt-controls-toggle { background: #26362e; color: #d5e4da; }
-.dark .tilt-panel-drag, .dark .tilt-anchor-control select {
+.dark .panel-drag-handle, .dark .tilt-anchor-control select {
   border-color: #46564b; background: #26362e; color: #d5e4da;
 }
 

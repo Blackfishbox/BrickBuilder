@@ -1,3 +1,4 @@
+import { useId, useState } from "react";
 import type { Position3 } from "./model";
 import {
   ArrowDown,
@@ -12,6 +13,7 @@ import {
 import "./fine-position.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { MessageId } from "@/i18n/messages";
+import DraggablePanel from "./DraggablePanel";
 
 const directions: { label: MessageId; axis: keyof Position3; sign: number; Icon: LucideIcon }[] = [
   { label: "fine.left", axis: "x", sign: -1, Icon: ArrowLeft },
@@ -26,12 +28,21 @@ export default function FinePositionControls({ onNudge, onOpenChange }: {
   onOpenChange?(open: boolean): void;
 }) {
   const { t } = useI18n();
-  return <details className="fine-position" data-testid="fine-position-menu" onToggle={event => onOpenChange?.(event.currentTarget.open)}>
-    <summary aria-label={t("fine.open")} title={t("fine.title")} data-testid="button-fine-adjustment">
+  const panelId = `fine-position-panel-${useId().replace(/:/g, "")}`;
+  const [open, setOpen] = useState(false);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    onOpenChange?.(next);
+  };
+  return <div className="fine-position" data-open={open} data-testid="fine-position-menu">
+    <button type="button" className="fine-position-toggle" aria-expanded={open}
+      aria-controls={panelId} aria-label={t("fine.open")} title={t("fine.title")}
+      data-testid="button-fine-adjustment" onClick={toggle}>
       <Move3d size={18} aria-hidden="true" />
-    </summary>
-    <div className="fine-position-panel" role="group" aria-label={t("fine.axes")}>
-      <strong>{t("fine.title")}</strong>
+    </button>
+    <DraggablePanel className="fine-position-panel" panelId={panelId} title={t("fine.axes")}
+      headingClassName="fine-position-heading" handleTestId="button-move-fine-panel" hidden={!open}>
       <small>{t("fine.step")}</small>
       <div className="fine-position-grid">
         {directions.map(({ label, axis, sign, Icon }) => <button key={label} type="button"
@@ -41,6 +52,6 @@ export default function FinePositionControls({ onNudge, onOpenChange }: {
           <Icon size={18} aria-hidden="true" />
         </button>)}
       </div>
-    </div>
-  </details>;
+    </DraggablePanel>
+  </div>;
 }

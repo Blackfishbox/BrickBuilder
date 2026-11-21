@@ -5,6 +5,7 @@ import { useCatalog } from '@/features/catalog/client';
 import { useBuilder } from '@/features/editor/useBuilder';
 import FinePositionControls from '@/features/editor/FinePositionControls';
 import TiltControls from '@/features/editor/TiltControls';
+import DraggablePanel from '@/features/editor/DraggablePanel';
 import {
   BRICK_DEFINITIONS,
   type BrickType,
@@ -127,14 +128,20 @@ function App() {
     ? [editor.selectedId, ...additionalRotationIds.filter(id => id !== editor.selectedId && availableRotationIds.has(id))]
     : [];
   const rotationSelection = (mobile = false) => (
-    <details key={`rotation-selection-${editor.selectedId ?? "none"}-${editor.toolMode}`}
+    <div key={`rotation-selection-${editor.selectedId ?? "none"}-${editor.toolMode}`}
       className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}
-      data-testid={mobile ? "group-selection-menu" : undefined}
-      onToggle={event => setGroupSelectionOpen(event.currentTarget.open)}>
-      <summary aria-label={t("group.open")} title={t("group.title")} data-testid="button-group-selection">
+      data-open={groupSelectionOpen} data-testid={mobile ? "group-selection-menu" : undefined}>
+      <button type="button" className="rotation-selection-toggle" aria-expanded={groupSelectionOpen}
+        aria-controls={`rotation-selection-panel-${mobile ? "mobile" : "desktop"}`}
+        aria-label={t("group.open")} title={t("group.title")} data-testid="button-group-selection"
+        onClick={() => setGroupSelectionOpen(value => !value)}>
         <Group size={17} aria-hidden="true" />
-      </summary>
-      <div className="rotation-selection-panel">
+      </button>
+      <DraggablePanel className="rotation-selection-panel"
+        panelId={`rotation-selection-panel-${mobile ? "mobile" : "desktop"}`}
+        title={t("group.title")} headingClassName="rotation-selection-heading"
+        handleTestId={`button-move-group-panel-${mobile ? "mobile" : "desktop"}`}
+        hidden={!groupSelectionOpen}>
         <label className="rotation-selection-search">
           <span className="sr-only">{t("group.search")}</span>
           <input aria-label={t("group.search")} value={rotationTargetQuery}
@@ -152,8 +159,8 @@ function App() {
             </label>
           ))}
         </div>
-      </div>
-    </details>
+      </DraggablePanel>
+    </div>
   );
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];

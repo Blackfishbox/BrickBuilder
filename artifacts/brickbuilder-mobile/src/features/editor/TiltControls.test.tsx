@@ -76,10 +76,10 @@ it("keeps the open rotation panel open if releasing the drag lands over its togg
   vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
     x: 24, y: 20, left: 24, top: 20, right: 294, bottom: 228, width: 270, height: 208, toJSON: () => ({}),
   });
-  const handle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const handle = host.querySelector<HTMLElement>('[data-testid="button-move-tilt-panel"]')!;
   const onOpenChange = vi.fn();
   act(() => root!.render(<TiltControls open onOpenChange={onOpenChange} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
-  const activeHandle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const activeHandle = host.querySelector<HTMLElement>('[data-testid="button-move-tilt-panel"]')!;
   const toggle = host.querySelector<HTMLButtonElement>('[data-testid="button-tilt-controls"]')!;
   const dispatch = (type: string, x: number, y: number) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
@@ -109,7 +109,7 @@ it("does not reposition or close the panel on a simple grip tap", () => {
   act(() => root!.render(<TiltControls open onOpenChange={onOpenChange} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
   const panel = host.querySelector<HTMLElement>(".tilt-panel")!;
   const before = panel.getBoundingClientRect();
-  const handle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const handle = host.querySelector<HTMLElement>('[data-testid="button-move-tilt-panel"]')!;
   const dispatchPointer = (target: EventTarget, type: string) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
     Object.defineProperties(event, { pointerId: { value: 1 }, clientX: { value: 30 }, clientY: { value: 30 } });
@@ -138,7 +138,7 @@ it("uses an explicit toggle and keeps the panel open through a grip touch", () =
   expect(menu.dataset.open).toBe("true");
   expect(onOpenChange).toHaveBeenLastCalledWith(true);
 
-  const grip = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const grip = host.querySelector<HTMLElement>('[data-testid="button-move-tilt-panel"]')!;
   const pointer = (target: EventTarget, type: string) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
     Object.defineProperties(event, { pointerId: { value: 2 }, clientX: { value: 80 }, clientY: { value: 60 } });

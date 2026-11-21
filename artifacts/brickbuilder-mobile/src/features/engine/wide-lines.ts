@@ -73,7 +73,7 @@ export function wideLineMaterial(): ShaderMaterial {
         vec2 normal = vec2(-direction.y, direction.x);
         vec4 clip = mix(clipA, clipB, lineEndpoint);
         clip.xy += normal * lineSide * lineWidth / resolution * clip.w;
-        clip.z -= 0.0005 * clip.w;
+        clip.z -= 0.001 * clip.w;
         gl_Position = clip;
       }`,
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
