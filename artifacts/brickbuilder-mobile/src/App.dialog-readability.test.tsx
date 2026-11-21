@@ -186,7 +186,7 @@ it("opens the existing rotation controls when the canvas reports a part double t
 
   expect(editor.setToolMode).toHaveBeenCalledWith("select");
   expect(editor.select).toHaveBeenCalledWith("selected-brick");
-  expect(host.querySelector<HTMLDetailsElement>('[data-testid="tilt-controls-menu"]')?.open).toBe(true);
+  expect(host.querySelector<HTMLElement>('[data-testid="tilt-controls-menu"]')?.dataset.open).toBe("true");
 });
 
 it("starts in English and switches the visible app labels to German", async () => {
@@ -216,12 +216,13 @@ it("hides the canvas status controls for every open mobile selection menu", asyn
     '.mobile-selection-actions [data-testid="tilt-controls-menu"]',
   ]) {
     const menu = container.querySelector<HTMLElement>(selector)!;
-    const summary = menu.querySelector("summary")!;
-    expect(summary.textContent?.trim()).toBe("");
-    await act(async () => summary.click());
-    expect(menu.matches("details[open]")).toBe(true);
+    const toggle = menu.querySelector<HTMLElement>("summary, [data-testid='button-tilt-controls']")!;
+    await act(async () => toggle!.click());
+    expect(selector.includes("tilt-controls")
+      ? menu.dataset.open === "true"
+      : menu.matches("details[open]")).toBe(true);
     expect(canvas.dataset.constructionControls).toBe("false");
-    await act(async () => summary.click());
+    await act(async () => toggle!.click());
     expect(canvas.dataset.constructionControls).toBe("true");
   }
 });

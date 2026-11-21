@@ -302,7 +302,7 @@ export class FallbackRenderer {
     if (thickEdges) {
       context.beginPath();
       context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
-      context.lineWidth = 4;
+      context.lineWidth = 6;
       const drawSegments = (positions: Float32Array, transform: import("three").Matrix4, yOffset = 0) => {
         const a = new Vector3(), b = new Vector3();
         for (let index = 0; index + 5 < positions.length && remainingEdgeSegments > 0; index += 6) {
@@ -377,7 +377,7 @@ export class FallbackRenderer {
         const edges = localBrickEdges(brick.type);
         context.beginPath();
         context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
-          context.lineWidth = 4;
+        context.lineWidth = 6;
         const point = new Vector3();
         for (let index = 0; index + 5 < edges.length && remainingEdgeSegments > 0; index += 6) {
           remainingEdgeSegments--;
@@ -534,6 +534,8 @@ export function BuilderCanvas({
   const placementPreviewGeometryRef = useRef<PlacementPreviewGeometry | null>(null);
   const placementPreviewBrickRef = useRef<Brick | null>(null);
   const placementContextRef = useRef({ projectId, preview: placementPreview });
+  const placementTargetRef = useRef<Position3 | null>(null);
+  const placementMatrixRef = useRef<Affine | null>(null);
   const stalePlacementPreviewRef = useRef(false);
   const placementBottomRef = useRef(0);
   const placementSourceMatrixRef = useRef<Affine | null>(null);
@@ -890,9 +892,9 @@ export function BuilderCanvas({
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
             const enabled = propsRef.current.thickEdges;
-            object.material.uniforms.lineWidth.value = enabled ? 4 : 1;
-            object.material.uniforms.edgeOpacity.value = enabled ? 0.9 : 0.25;
-            object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#d5e4da" : "#080b09");
+            object.material.uniforms.lineWidth.value = enabled ? 6 : 1;
+            object.material.uniforms.edgeOpacity.value = enabled ? 0.98 : 0.25;
+            object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#e9f5ed" : "#050705");
             if (object.name.startsWith("brick-edges-")) object.visible = enabled;
             setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
           });
@@ -1070,8 +1072,12 @@ export function BuilderCanvas({
     const previous = placementContextRef.current;
     if (previous.projectId !== projectId) {
       stalePlacementPreviewRef.current = !!placementPreview && placementPreview === previous.preview;
+      placementTargetRef.current = null;
+      placementMatrixRef.current = null;
     } else if (previous.preview !== placementPreview) {
       stalePlacementPreviewRef.current = false;
+      placementTargetRef.current = null;
+      placementMatrixRef.current = null;
     }
     placementContextRef.current = { projectId, preview: placementPreview };
   }, [projectId, placementPreview]);
@@ -1099,7 +1105,8 @@ export function BuilderCanvas({
       invalidatorRef.current?.();
       return;
     }
-    const target = cameraStateRef.current.target;
+    const target = placementTargetRef.current ?? cameraStateRef.current.target;
+    placementTargetRef.current = { ...target };
     if (placementPreview) {
       try {
         const source = placementPreview.model.instances[0];
@@ -1107,10 +1114,14 @@ export function BuilderCanvas({
         const colorCode = appearanceCode(selectedColor, selectedColorCode);
         const instance = { ...source, id: PLACEMENT_PREVIEW_ID, colorCode, color: resolveColor(colorCode) };
         const model: ImportedModel = { ...placementPreview.model, instances: [instance] };
-        const matrix = [...source.matrix] as Affine;
-        matrix[3] = target.x * 20;
-        matrix[7] = placementPreview.bottom * 20;
-        matrix[11] = target.z * 20;
+        const matrix = placementMatrixRef.current
+          ? [...placementMatrixRef.current] as Affine
+          : [...source.matrix] as Affine;
+        if (!placementMatrixRef.current) {
+          matrix[3] = target.x * 20;
+          matrix[7] = (placementPreview.bottom - target.y) * 20;
+          matrix[11] = target.z * 20;
+        }
         placementSourceMatrixRef.current = [...source.matrix] as Affine;
         placementBottomRef.current = placementPreview.bottom;
         placementPreviewGeometryRef.current = {
@@ -1125,7 +1136,7 @@ export function BuilderCanvas({
             if (!(object instanceof Mesh)) return;
             for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
               material.transparent = true;
-              material.opacity = 0.72;
+              material.opacity = (material.opacity ?? 1) * 0.72;
               material.depthWrite = false;
             }
             object.renderOrder = 5;
@@ -1141,7 +1152,7 @@ export function BuilderCanvas({
     } else {
       const brick: Brick = {
         id: "placement-preview-brick", type: selectedType, color: selectedColor,
-        x: target.x, y: 0, z: target.z, rotation: 0,
+        x: target.x, y: target.y, z: target.z, rotation: 0,
       };
       placementPreviewBrickRef.current = brick;
       if (rendererRef.current instanceof WebGLRenderer) {
@@ -1150,7 +1161,7 @@ export function BuilderCanvas({
         });
         const mesh = new Mesh(brickGeometry(selectedType).clone(), material);
         mesh.name = "placement-preview";
-        mesh.position.set(target.x, 0, target.z);
+        mesh.position.set(target.x, target.y, target.z);
         mesh.renderOrder = 5;
         scene.add(mesh);
         placementRootRef.current = mesh;
@@ -1567,6 +1578,7 @@ export function BuilderCanvas({
       if (!destination || propsRef.current.toolMode !== "build") return;
       const x = Math.round(destination.x * 2) / 2;
       const z = Math.round(destination.z * 2) / 2;
+      placementTargetRef.current = { x, y: destination.y, z };
       const brick = placementPreviewBrickRef.current;
       if (brick) {
         const next = { ...brick, x, y: destination.y, z };
@@ -1604,11 +1616,13 @@ export function BuilderCanvas({
           const world = [...matrix] as Affine;
           world[7] -= importedOffsetRef.current * 20;
           preview.matrix = world;
+          placementMatrixRef.current = [...world] as Affine;
           placementIndexRef.current?.preview(PLACEMENT_PREVIEW_ID, world);
           invalidatorRef.current?.();
           return matrix;
         }
         preview.matrix = matrix;
+        placementMatrixRef.current = [...matrix] as Affine;
         placementIndexRef.current?.preview(PLACEMENT_PREVIEW_ID, matrix);
       }
       invalidatorRef.current?.();

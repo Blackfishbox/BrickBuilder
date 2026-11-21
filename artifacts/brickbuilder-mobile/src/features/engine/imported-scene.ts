@@ -5,7 +5,7 @@ import {
 } from "three";
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
-import { compilePart, worldMatrix, type Surface } from "./ldraw-geometry";
+import { compilePart, visibleEdgeLines, worldMatrix, type Surface } from "./ldraw-geometry";
 import { installInstructionFocus, FOCUS_ATTRIBUTE } from "./instruction-focus";
 import { expandWideLines, wideLineMaterial } from "./wide-lines";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
@@ -101,12 +101,10 @@ function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[
 
 /** One instanced line draw per part, never one Object3D per brick. */
 function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[]): void {
-  const length = surfaces.reduce((sum, surface) => sum + surface.edges.length, 0);
+  const source = visibleEdgeLines(surfaces);
+  const length = source.length;
   if (!length) return;
   if (length / 6 > MAX_WIDE_EDGE_SEGMENTS) throw new SceneBudgetExceeded();
-  const source = new Float32Array(length);
-  let offset = 0;
-  for (const surface of surfaces) { source.set(surface.edges, offset); offset += surface.edges.length; }
   const expanded = expandWideLines(source);
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);

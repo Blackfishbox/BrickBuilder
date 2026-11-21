@@ -60,6 +60,19 @@ describe("bounded large-model rendering", () => {
     disposals.forEach(dispose => expect(dispose).toHaveBeenCalledOnce());
     expect(root.children).toHaveLength(0);
   });
+  it("derives visible crease lines for imported parts without authored LDraw edge lines", async () => {
+    const model = fixture();
+    model.resources["parts/test.dat"].content = model.resources["parts/test.dat"].content
+      .replace(/\n2 24[^\n]*$/, "");
+    const root = createImportedGroup(model);
+    const edgeObject = root.getObjectByName("ldraw:instanced-edges") as Mesh;
+    expect(edgeObject).toBeDefined();
+    expect(edgeObject.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
+
+    const software = await createSoftwareScene(model);
+    expect(software.records.get(model.instances[0].id)?.localEdges.length).toBeGreaterThan(0);
+    disposeImportedScene(root);
+  });
   it("aborts partial builds and rejects an over-budget scene before GPU upload", async () => {
     const model = fixture(100);
     await expect(createImportedGroupAsync(model, { maxGeometryBytes: 128 })).rejects.toBeInstanceOf(SceneBudgetExceeded);

@@ -80,7 +80,7 @@ it("keeps the open rotation panel open if releasing the drag lands over its togg
   const onOpenChange = vi.fn();
   act(() => root!.render(<TiltControls open onOpenChange={onOpenChange} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
   const activeHandle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
-  const summary = host.querySelector<HTMLElement>("summary")!;
+  const toggle = host.querySelector<HTMLButtonElement>('[data-testid="button-tilt-controls"]')!;
   const dispatch = (type: string, x: number, y: number) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
     Object.defineProperties(event, { pointerId: { value: 1 }, clientX: { value: x }, clientY: { value: y } });
@@ -90,10 +90,10 @@ it("keeps the open rotation panel open if releasing the drag lands over its togg
     dispatch("pointerdown", 120, 100);
     dispatch("pointermove", 700, 700);
     dispatch("pointerup", 700, 700);
-    summary.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
 
-  expect(host.querySelector<HTMLDetailsElement>('[data-testid="tilt-controls-menu"]')?.open).toBe(true);
+  expect(host.querySelector<HTMLElement>('[data-testid="tilt-controls-menu"]')?.dataset.open).toBe("true");
   expect(onOpenChange).not.toHaveBeenCalledWith(false);
   const left = Number.parseFloat(panel.style.left), top = Number.parseFloat(panel.style.top);
   expect(left).toBeGreaterThanOrEqual(8);
@@ -120,11 +120,41 @@ it("does not reposition or close the panel on a simple grip tap", () => {
     dispatchPointer(window, "pointerup");
     handle.click();
   });
-  expect(host.querySelector<HTMLDetailsElement>('[data-testid="tilt-controls-menu"]')?.open).toBe(true);
+  expect(host.querySelector<HTMLElement>('[data-testid="tilt-controls-menu"]')?.dataset.open).toBe("true");
   expect(panel.classList.contains("is-positioned")).toBe(false);
   expect(panel.style.left).toBe("");
   expect(panel.style.top).toBe("");
   expect(onOpenChange).not.toHaveBeenCalledWith(false);
+});
+
+it("uses an explicit toggle and keeps the panel open through a grip touch", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const onOpenChange = vi.fn();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls onOpenChange={onOpenChange} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
+  const menu = host.querySelector<HTMLElement>('[data-testid="tilt-controls-menu"]')!;
+  const toggle = host.querySelector<HTMLButtonElement>('[data-testid="button-tilt-controls"]')!;
+  act(() => toggle.click());
+  expect(menu.dataset.open).toBe("true");
+  expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+  const grip = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const pointer = (target: EventTarget, type: string) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { pointerId: { value: 2 }, clientX: { value: 80 }, clientY: { value: 60 } });
+    target.dispatchEvent(event);
+  };
+  act(() => {
+    pointer(grip, "pointerdown");
+    pointer(window, "pointerup");
+    grip.click();
+  });
+  expect(menu.dataset.open).toBe("true");
+  expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+  act(() => toggle.click());
+  expect(menu.dataset.open).toBe("false");
+  expect(onOpenChange).toHaveBeenLastCalledWith(false);
 });
 
 it("sends slider changes as whole-degree values", () => {

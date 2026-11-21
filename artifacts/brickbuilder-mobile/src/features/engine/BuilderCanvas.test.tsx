@@ -65,9 +65,17 @@ let root: Root, element: HTMLDivElement, host: HTMLElement;
 let frames: Map<number, FrameRequestCallback>, nextFrame: number;
 let resizeCallbacks: ResizeObserverCallback[], canvasHeight: number;
 let observedLineWidths: number[];
+let observedPaints: { fillStyle: string; globalAlpha: number }[], contextFillStyle: string, contextGlobalAlpha: number;
 const context = new Proxy({}, {
-  get: () => vi.fn(),
-  set: (_target, key, value) => { if (key === "lineWidth") observedLineWidths.push(value as number); return true; },
+  get: (_target, key) => key === "fill"
+    ? vi.fn(() => observedPaints.push({ fillStyle: contextFillStyle, globalAlpha: contextGlobalAlpha }))
+    : vi.fn(),
+  set: (_target, key, value) => {
+    if (key === "lineWidth") observedLineWidths.push(value as number);
+    if (key === "fillStyle") contextFillStyle = value as string;
+    if (key === "globalAlpha") contextGlobalAlpha = value as number;
+    return true;
+  },
 });
 const contact: Contact = {
   id: "moving:socket|target:stud", movingId: "moving", movingConnectorId: "socket", targetId: "target", targetConnectorId: "stud",
@@ -119,6 +127,7 @@ beforeEach(() => {
   observed.camera = undefined; observed.cameraPose = undefined; observed.webglEnabled = false; observed.preparations = 0;
   resizeCallbacks = []; canvasHeight = 600;
   observedLineWidths = [];
+  observedPaints = []; contextFillStyle = ""; contextGlobalAlpha = 1;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   vi.stubGlobal("ResizeObserver", class {
@@ -426,8 +435,8 @@ it("toggles screen-space edge width without rebuilding imported or local model g
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
-  expect(edgeMaterial.uniforms.lineWidth.value).toBe(4);
-  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.9);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(6);
+  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.98);
   expect(localEdge.visible).toBe(true);
   expect(importedEdge.geometry).toBe(importedGeometry);
   expect(localEdge.geometry).toBe(localGeometry);
@@ -439,7 +448,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(transformRows.array[3]).not.toBe(beforeMove);
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges darkMode />));
   flushFrame();
-  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("d5e4da");
+  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("e9f5ed");
 
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
@@ -460,7 +469,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   camera.lookAt(0, 0, 0);
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
-  expect(observedLineWidths).toContain(4);
+  expect(observedLineWidths).toContain(6);
   expect(software.records.size).toBe(1);
 });
 
@@ -976,8 +985,9 @@ describe("frame-coalesced drag transactions", () => {
           category: "Plates", keywords: [], file: "parts/3023b.dat" },
         model, bottom,
       };
+      const committedSnapshot = JSON.stringify(model.instances);
       const onPlace = vi.fn(), props = {
-        projectId: `placement-preview-${webgl}`, bricks: [], imported: undefined, selectedId: null,
+        projectId: `placement-preview-${webgl}`, bricks: [], imported: model, selectedId: null,
         selectedType: "brick-2x4" as const, selectedColor: "#B40000", selectedColorCode: "4",
         placementPreview: prepared, toolMode: "build" as const,
         onMove: vi.fn(), onSelect: vi.fn(), onPlace,
@@ -1003,39 +1013,72 @@ describe("frame-coalesced drag transactions", () => {
         expect(preview.colorCode).toBe("4");
       }
 
-      act(() => root.render(<BuilderCanvas {...props} selectedColor="#F4F4F4" selectedColorCode="15" />));
-      flushFrame();
-      expect(onPlace).not.toHaveBeenCalled();
-      expect(model.instances[0].colorCode).not.toBe("15");
-      if (webgl) {
-        const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
-        const mesh = previewRoot.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
-        const color = new Color();
-        mesh.getColorAt(0, color);
-        expect(color.getHexString()).toBe("f4f4f4");
-        expect(instanceIndex(previewRoot)!.model.instances[0].colorCode).toBe("15");
-      } else {
-        const preview = fallbackRender.mock.lastCall![10] as { surfaces: unknown[]; colorCode: string };
-        expect(preview.colorCode).toBe("15");
-      }
-
       observed.camera!.updateMatrixWorld(true);
       const projected = new Vector3(1, 0, 1).project(observed.camera!);
       const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
       pointer("pointermove", target.x, target.y);
       flushFrame();
-      if (webgl) {
-        const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
-        const previewMesh = previewRoot.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
-        const matrix = new Matrix4();
-        previewMesh.getMatrixAt(0, matrix);
-        expect(matrix.elements[12]).toBeCloseTo(1);
-        expect(matrix.elements[14]).toBeCloseTo(1);
-      } else {
+      const visiblePosition = () => {
+        if (webgl) {
+          const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
+          const mesh = previewRoot.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
+          const matrix = new Matrix4();
+          mesh.getMatrixAt(0, matrix);
+          return [matrix.elements[12], matrix.elements[13], matrix.elements[14]];
+        }
         const preview = fallbackRender.mock.lastCall![10] as { matrix: Affine };
-        expect(preview.matrix[3]).toBeCloseTo(20);
-        expect(preview.matrix[11]).toBeCloseTo(20);
+        return [preview.matrix[3], preview.matrix[7], preview.matrix[11]];
+      };
+      if (webgl) {
+        expect(visiblePosition()[0]).toBeCloseTo(1);
+        expect(visiblePosition()[2]).toBeCloseTo(1);
+      } else {
+        expect(visiblePosition()[0]).toBeCloseTo(20);
+        expect(visiblePosition()[2]).toBeCloseTo(20);
       }
+      const positionBeforeColorChange = visiblePosition();
+
+      const assertPreviewAppearance = (code: string, alpha: number, hex: string) => {
+        expect(model.instances).toHaveLength(1);
+        expect(JSON.stringify(model.instances)).toBe(committedSnapshot);
+        expect(onPlace).not.toHaveBeenCalled();
+        if (webgl) {
+          const previewRoot = observed.scene3d!.getObjectByName("placement-preview") as Group;
+          const index = instanceIndex(previewRoot)!;
+          expect(index.model.instances[0].colorCode).toBe(code);
+          const inheritedFace = index.records.get("placement-preview")!.slots
+            .map(slot => slot.draw)
+            .find(draw => draw instanceof InstancedMesh && draw.userData.inherited) as InstancedMesh | undefined;
+          expect(inheritedFace).toBeDefined();
+          const material = inheritedFace!.material as MeshLambertMaterial;
+          expect(material.opacity).toBeCloseTo(alpha / 255 * 0.72);
+          expect(material.transparent).toBe(true);
+          expect(material.depthWrite).toBe(false);
+          const color = new Color();
+          inheritedFace!.getColorAt(0, color);
+          expect(color.getHexString()).toBe(hex);
+          const committedRoot = observed.scene3d!.children.find(child =>
+            child instanceof Group && child.name !== "placement-preview" && instanceIndex(child),
+          ) as Group | undefined;
+          expect(committedRoot).toBeDefined();
+          expect(JSON.stringify(instanceIndex(committedRoot!)!.model.instances)).toBe(committedSnapshot);
+        } else {
+          const preview = fallbackRender.mock.lastCall![10] as { surfaces: unknown[]; colorCode: string };
+          expect(preview.surfaces.length).toBeGreaterThan(0);
+          expect(preview.colorCode).toBe(code);
+          expect(JSON.stringify(observed.scene!.model.instances)).toBe(committedSnapshot);
+        }
+      };
+
+      act(() => root.render(<BuilderCanvas {...props} selectedColor="#AEE9EF" selectedColorCode="43" />));
+      flushFrame();
+      expect(visiblePosition()).toEqual(positionBeforeColorChange);
+      assertPreviewAppearance("43", 128, "aee9ef");
+
+      act(() => root.render(<BuilderCanvas {...props} selectedColor="#F4F4F4" selectedColorCode="15" />));
+      flushFrame();
+      expect(visiblePosition()).toEqual(positionBeforeColorChange);
+      assertPreviewAppearance("15", 255, "f4f4f4");
 
       pointer("pointerdown", target.x, target.y);
       pointer("pointercancel", target.x, target.y);
@@ -1070,9 +1113,10 @@ describe("frame-coalesced drag transactions", () => {
     it(`updates built-in brick preview color in ${webgl ? "WebGL" : "compatibility"} mode`, () => {
       observed.webglEnabled = webgl;
       const fallbackRender = vi.spyOn(FallbackRenderer.prototype, "render");
+      const onPlace = vi.fn();
       const props = {
         bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#e4b844",
-        toolMode: "build" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(),
+        toolMode: "build" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace,
       };
       act(() => root.render(<BuilderCanvas {...props} />));
       host = element.querySelector("[data-testid='canvas-3d']")!;
@@ -1087,9 +1131,31 @@ describe("frame-coalesced drag transactions", () => {
         expect(brick).toMatchObject({ id: "placement-preview-brick", type: "brick-1x2", color: "#e4b844" });
       }
 
+      observed.camera!.updateMatrixWorld(true);
+      const projected = new Vector3(1, 0, 1).project(observed.camera!);
+      const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
+      pointer("pointermove", target.x, target.y);
+      flushFrame();
+      const visiblePosition = () => {
+        if (webgl) {
+          const preview = observed.scene3d?.getObjectByName("placement-preview") as Mesh;
+          return [preview.position.x, preview.position.y, preview.position.z];
+        }
+        const brick = fallbackRender.mock.lastCall![11] as Brick;
+        return [brick.x, brick.y, brick.z];
+      };
+      if (webgl) {
+        expect(visiblePosition()[0]).toBeCloseTo(1);
+        expect(visiblePosition()[2]).toBeCloseTo(1);
+      } else {
+        expect(visiblePosition()[0]).toBeCloseTo(1);
+        expect(visiblePosition()[2]).toBeCloseTo(1);
+      }
+      const positionBeforeColorChange = visiblePosition();
       act(() => root.render(<BuilderCanvas {...props} selectedColor="#1E5AA8" />));
       flushFrame();
-      expect(props.onPlace).not.toHaveBeenCalled();
+      expect(visiblePosition()).toEqual(positionBeforeColorChange);
+      expect(onPlace).not.toHaveBeenCalled();
       if (webgl) {
         const updatedPreview = observed.scene3d?.getObjectByName("placement-preview") as Mesh;
         expect(updatedPreview).toBeInstanceOf(Mesh);
@@ -1097,22 +1163,60 @@ describe("frame-coalesced drag transactions", () => {
       } else {
         expect(fallbackRender.mock.lastCall![11]).toMatchObject({ color: "#1E5AA8" });
       }
-
-      observed.camera!.updateMatrixWorld(true);
-      const projected = new Vector3(1, 0, 1).project(observed.camera!);
-      const target = { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
-      pointer("pointermove", target.x, target.y);
-      flushFrame();
-      if (webgl) {
-        const currentPreview = observed.scene3d?.getObjectByName("placement-preview") as Mesh;
-        expect(currentPreview.position.x).toBeCloseTo(1);
-        expect(currentPreview.position.z).toBeCloseTo(1);
-      } else {
-        expect(fallbackRender.mock.lastCall![11]).toMatchObject({ x: 1, z: 1 });
-      }
-      expect(props.onPlace).not.toHaveBeenCalled();
+      pointer("pointerdown", target.x, target.y);
+      pointer("pointercancel", target.x, target.y);
+      expect(onPlace).not.toHaveBeenCalled();
+      pointer("pointerdown", target.x, target.y);
+      expect(onPlace).not.toHaveBeenCalled();
+      pointer("pointerup", target.x, target.y);
+      expect(onPlace).toHaveBeenCalledOnce();
     });
   }
+  it("paints selected translucent LDraw colors with their alpha and appearance in compatibility mode", () => {
+    const renderer = new FallbackRenderer();
+    renderer.setSize(600, 600);
+    const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
+    camera.position.set(0, 0, 10);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    const geometry = {
+      surfaces: [{
+        colorCode: "16",
+        positions: new Float32Array([-1, -1, 0, 1, -1, 0, 0, 1, 0]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+        edges: new Float32Array(),
+      }],
+      matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] as Affine,
+      colorCode: "43",
+    } satisfies NonNullable<Parameters<FallbackRenderer["render"]>[10]>;
+
+    renderer.render(camera, new Vector3(), [], null, undefined, 0, false, undefined,
+      constructionArea(new Box3(new Vector3(-2, -2, -2), new Vector3(2, 2, 2))), false, geometry);
+
+    const paint = observedPaints.find(item => Math.abs(item.globalAlpha - 128 / 255 * 0.72) < 1e-6);
+    expect(paint).toBeDefined();
+    expect(paint!.fillStyle).toMatch(/^rgb\(/);
+    const channels = paint!.fillStyle.match(/\d+/g)!.map(Number);
+    expect(channels[0]).toBeGreaterThanOrEqual(97);
+    expect(channels[0]).toBeLessThanOrEqual(174);
+    expect(channels[1]).toBeGreaterThanOrEqual(135);
+    expect(channels[1]).toBeLessThanOrEqual(233);
+    expect(channels[2]).toBeGreaterThanOrEqual(138);
+    expect(channels[2]).toBeLessThanOrEqual(239);
+
+    observedPaints.length = 0;
+    renderer.render(camera, new Vector3(), [], null, undefined, 0, false, undefined,
+      constructionArea(new Box3(new Vector3(-2, -2, -2), new Vector3(2, 2, 2))), false,
+      { ...geometry, colorCode: "15" });
+    const opaquePaint = observedPaints.find(item => Math.abs(item.globalAlpha - 0.72) < 1e-6);
+    expect(opaquePaint).toBeDefined();
+    expect(opaquePaint!.fillStyle).toMatch(/^rgb\(/);
+    const opaqueChannels = opaquePaint!.fillStyle.match(/\d+/g)!.map(Number);
+    for (const channel of opaqueChannels) {
+      expect(channel).toBeGreaterThanOrEqual(198);
+      expect(channel).toBeLessThanOrEqual(244);
+    }
+  });
   it("drags real catalog plate geometry onto both rows with live contacts and identical committed rendering", async () => {
     const snapshot = JSON.parse(new TextDecoder().decode(gunzipSync(readFileSync(resolve("public/parts/import-geometry-2026-10-31.bin")))));
     const sourceText = "1 4 0 -8 0 1 0 0 0 1 0 0 0 1 3795.dat\n1 7 80 -8 0 1 0 0 0 1 0 0 0 1 3023b.dat";

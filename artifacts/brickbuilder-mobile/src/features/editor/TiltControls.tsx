@@ -54,6 +54,8 @@ export default function TiltControls({
   const panelDragListeners = useRef<{ move: (event: PointerEvent) => void; end: (event: PointerEvent) => void } | null>(null);
   const suppressSummaryClick = useRef(false);
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
 
   const clampPanelPosition = (left: number, top: number): PanelPosition => {
     const panel = panelRef.current;
@@ -137,14 +139,9 @@ export default function TiltControls({
     window.addEventListener("pointercancel", end, { capture: true, passive: false });
   };
 
-  const keepPanelOpen = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const details = panelRef.current?.closest("details");
-    if (details && !details.open) {
-      details.open = true;
-      onOpenChange?.(true);
-    }
+  const setMenuOpen = (next: boolean) => {
+    if (open === undefined) setInternalOpen(next);
+    onOpenChange?.(next);
   };
 
   useEffect(() => () => {
@@ -195,7 +192,7 @@ export default function TiltControls({
 
   const endTouchSequence = () => { gesture.current = null; lastTap.current = null; };
 
-  const doubleClick = (axis: SliderAxis, event: React.MouseEvent<HTMLInputElement>) => {
+  const doubleClick = (axis: SliderAxis, event: ReactMouseEvent<HTMLInputElement>) => {
     const previousReset = lastReset.current;
     if (previousReset?.axis === axis && performance.now() - previousReset.at < 500) return;
     event.preventDefault();
@@ -226,24 +223,26 @@ export default function TiltControls({
       endTouchSequence();
       if (axis === "y") onRotateEnd?.();
     },
-    onDoubleClick: (event: React.MouseEvent<HTMLInputElement>) => doubleClick(axis, event),
+    onDoubleClick: (event: ReactMouseEvent<HTMLInputElement>) => doubleClick(axis, event),
     title: t("tilt.reset"),
   });
 
   return (
-    <details className="tilt-controls" data-testid="tilt-controls-menu" open={open}
-      onToggle={event => onOpenChange?.(event.currentTarget.open)}
+    <div className="tilt-controls" data-open={isOpen} data-testid="tilt-controls-menu"
       onClickCapture={event => {
         if (!suppressSummaryClick.current || !(event.target instanceof Element) ||
-          !event.target.closest("summary")) return;
+          !event.target.closest(".tilt-controls-toggle")) return;
         event.preventDefault();
         event.stopPropagation();
         suppressSummaryClick.current = false;
       }}>
-      <summary aria-label={t("tilt.open")} title={t("tilt.title")} data-testid="button-tilt-controls">
+      <button type="button" className="tilt-controls-toggle" aria-label={t("tilt.open")} title={t("tilt.title")}
+        aria-expanded={isOpen} aria-controls={`tilt-panel-${controlId}`} data-testid="button-tilt-controls"
+        onClick={() => setMenuOpen(!isOpen)}>
         <Rotate3d size={17} aria-hidden="true" />
-      </summary>
-      <div ref={panelRef} className={`tilt-panel${panelPosition ? " is-positioned" : ""}`}
+      </button>
+      <div ref={panelRef} id={`tilt-panel-${controlId}`} hidden={!isOpen}
+        className={`tilt-panel${panelPosition ? " is-positioned" : ""}`}
         style={panelPosition ? { left: panelPosition.left, top: panelPosition.top } : undefined}
         role="group" aria-label={t("tilt.axes")}>
         <div ref={safeAreaRef} className="tilt-safe-area-probe" aria-hidden="true" />
@@ -251,7 +250,6 @@ export default function TiltControls({
           <strong>{t("tilt.title")}</strong>
           <button type="button" className="tilt-panel-drag" aria-label={t("tilt.movePanel")} title={t("tilt.movePanel")}
             onPointerDown={startPanelDrag}
-            onClick={keepPanelOpen}
             data-testid="button-move-tilt-panel">
             <Grip size={17} aria-hidden="true" />
           </button>
@@ -313,6 +311,6 @@ export default function TiltControls({
           );
         })}
       </div>
-    </details>
+    </div>
   );
 }

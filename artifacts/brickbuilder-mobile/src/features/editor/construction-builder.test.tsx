@@ -164,6 +164,140 @@ it("clears pending placement on mode and project changes without changing the do
   expect(editor.selectedInventory).toBeNull();
 });
 
+it("does not restore delayed catalog or inventory previews after cancellation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const inventory = parseInventory("part_id,color_id,quantity\n3022,5,1", "self-authored.csv");
+  const choice = { listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3022", colorCode: "4" };
+  const part: PreparedPart = { bottom: -0.4, part: {
+    id: "plate", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat",
+  }, model: { version: 1, format: "ldr", sourceName: "placement.ldr", sourceText: "", originalBytes: [],
+    steps: [], instances: [], resources: {}, legalDocuments: [] } };
+  const scenarios = [
+    { lookup: "catalog", change: "mode" },
+    { lookup: "inventory", change: "mode" },
+    { lookup: "catalog", change: "project" },
+    { lookup: "inventory", change: "project" },
+  ] as const;
+
+  for (const { lookup, change } of scenarios) {
+    await act(async () => editor.importProject(createEmptyDocument()));
+    await act(async () => editor.setToolMode("view"));
+    if (lookup === "inventory") {
+      await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
+    }
+    const before = editor.document;
+    const canUndoBefore = editor.canUndo;
+    let resolveGeometry!: (prepared: PreparedPart) => void;
+    const delayedGeometry = new Promise<PreparedPart>(resolve => { resolveGeometry = resolve; });
+    vi.mocked(prepareLibraryPart).mockImplementationOnce(() => delayedGeometry);
+
+    let pending!: Promise<boolean>;
+    await act(async () => {
+      pending = lookup === "catalog"
+        ? editor.selectLibraryPart(part.part)
+        : editor.selectInventoryPart(choice);
+    });
+    expect(editor.partLoading).toBe(true);
+
+    let nextProject: ReturnType<typeof createEmptyDocument> | undefined;
+    if (change === "mode") {
+      act(() => editor.setToolMode("select"));
+      expect(editor.document).toBe(before);
+      expect(editor.canUndo).toBe(canUndoBefore);
+    } else {
+      nextProject = createEmptyDocument();
+      await act(async () => editor.importProject(nextProject!));
+      expect(editor.document.id).toBe(nextProject.id);
+      expect(editor.canUndo).toBe(false);
+    }
+    expect(editor.placementPreview).toBeNull();
+    expect(editor.selectedInventory).toBeNull();
+    expect(editor.partLoading).toBe(false);
+
+    let result: boolean | undefined;
+    await act(async () => {
+      resolveGeometry(part);
+      result = await pending;
+    });
+    expect(result).toBe(false);
+    expect(editor.placementPreview).toBeNull();
+    expect(editor.selectedInventory).toBeNull();
+    expect(editor.partLoading).toBe(false);
+    if (change === "mode") {
+      expect(editor.document).toBe(before);
+      expect(editor.canUndo).toBe(canUndoBefore);
+      expect(allocatedCounts(editor.document).get(inventory.rows[0].id) ?? 0).toBe(0);
+    } else {
+      expect(editor.document.id).toBe(nextProject!.id);
+      expect(editor.canUndo).toBe(false);
+      const savedPrevious = await loadProject(before.id);
+      expect(savedPrevious?.inventory).toEqual(before.inventory);
+      expect(allocatedCounts(savedPrevious!).get(inventory.rows[0].id) ?? 0).toBe(0);
+    }
+  }
+});
+
+it("keeps the newer catalog part selected when an older lookup resolves last", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root!.render(<Harness />));
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const older: PreparedPart = {
+    bottom: -0.4,
+    part: { id: "older", packageId: "test", ldrawId: "3001", name: "Brick 2 x 4", category: "", keywords: [], file: "parts/3001.dat" },
+    model: { version: 1, format: "ldr", sourceName: "older.ldr", sourceText: "", originalBytes: [],
+      steps: [], instances: [], resources: {}, legalDocuments: [] },
+  };
+  const newer: PreparedPart = {
+    bottom: -0.4,
+    part: { id: "newer", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat" },
+    model: { version: 1, format: "ldr", sourceName: "newer.ldr", sourceText: "", originalBytes: [],
+      steps: [], instances: [], resources: {}, legalDocuments: [] },
+  };
+  let resolveOlder!: (prepared: PreparedPart) => void;
+  let resolveNewer!: (prepared: PreparedPart) => void;
+  vi.mocked(prepareLibraryPart)
+    .mockImplementationOnce(() => new Promise(resolve => { resolveOlder = resolve; }))
+    .mockImplementationOnce(() => new Promise(resolve => { resolveNewer = resolve; }));
+
+  let olderPending!: Promise<boolean>;
+  let newerPending!: Promise<boolean>;
+  await act(async () => { olderPending = editor.selectLibraryPart(older.part); });
+  await act(async () => { newerPending = editor.selectLibraryPart(newer.part); });
+  expect(editor.partLoading).toBe(true);
+
+  let newerResult: boolean | undefined;
+  await act(async () => {
+    resolveNewer(newer);
+    newerResult = await newerPending;
+  });
+  expect(newerResult).toBe(true);
+  expect(editor.placementPreview).toBe(newer);
+
+  let olderResult: boolean | undefined;
+  await act(async () => {
+    resolveOlder(older);
+    olderResult = await olderPending;
+  });
+  expect(olderResult).toBe(false);
+  expect(editor.placementPreview).toBe(newer);
+  expect(editor.placementPreview?.part.id).toBe("newer");
+  expect(editor.partLoading).toBe(false);
+});
+
 it("places a catalog 1x2 plate onto a 2x6 plate through the editor transaction", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });

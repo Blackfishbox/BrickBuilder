@@ -1,15 +1,15 @@
 .tilt-controls { position: relative; color: #365346; font-size: 11px; }
-.tilt-controls summary {
+.tilt-controls-toggle {
   display: grid; place-items: center; width: 40px; min-height: 40px; padding: 0;
   border: 1px solid #dcded3; border-radius: 9px; background: #f8f7ef; color: #536c5f;
   cursor: pointer; list-style: none; touch-action: manipulation;
 }
-.tilt-controls summary::-webkit-details-marker { display: none; }
-.tilt-controls summary:focus-visible, .tilt-panel input:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
+.tilt-controls-toggle:focus-visible, .tilt-panel input:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
 .tilt-panel {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 200px; padding: 10px;
   border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; box-shadow: 0 4px 14px #27393024;
 }
+.tilt-panel[hidden] { display: none; }
 .tilt-panel-heading {
   display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 8px;
   min-height: 36px;
@@ -43,7 +43,7 @@
 .tilt-axis-control output { color: #30463d; font-variant-numeric: tabular-nums; text-align: right; }
 @media (max-width: 900px) {
   .mobile-selection-actions .tilt-controls { position: relative; flex: 0 0 auto; }
-  .mobile-selection-actions .tilt-controls summary {
+  .mobile-selection-actions .tilt-controls-toggle {
     width: 40px; min-width: 40px; min-height: 40px; padding: 0;
     border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; font-size: 9px;
   }
@@ -59,17 +59,17 @@
 }
 
 .dark .tilt-controls { color: #d5e4da; }
-.dark .tilt-controls summary, .dark .tilt-panel {
+.dark .tilt-controls-toggle, .dark .tilt-panel {
   border-color: #3a4d43; background: #1b2822; color: #d5e4da;
 }
-.dark .tilt-controls summary:hover { background: #30443a; color: #f0f7f1; }
-.dark .tilt-controls summary:focus-visible, .dark .tilt-panel input:focus-visible {
+.dark .tilt-controls-toggle:hover { background: #30443a; color: #f0f7f1; }
+.dark .tilt-controls-toggle:focus-visible, .dark .tilt-panel input:focus-visible {
   outline-color: #a8d8b2;
 }
 .dark .tilt-panel small { color: #9fb3a5; }
 .dark .tilt-axis-control label, .dark .tilt-axis-control output { color: #d5e4da; }
 .dark .tilt-axis-control input[type="range"] { accent-color: #9fc9aa; }
-.dark .mobile-selection-actions .tilt-controls summary { background: #26362e; color: #d5e4da; }
+.dark .mobile-selection-actions .tilt-controls-toggle { background: #26362e; color: #d5e4da; }
 .dark .tilt-panel-drag, .dark .tilt-anchor-control select {
   border-color: #46564b; background: #26362e; color: #d5e4da;
 }

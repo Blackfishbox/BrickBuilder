@@ -287,15 +287,19 @@ export function useBuilder() {
     setPartLoading(true); setPartError(null);
     try {
       const prepared = await prepareLibraryPart(part, controller.signal);
-      if (controller.signal.aborted) return false;
+      if (partControllerRef.current !== controller || controller.signal.aborted) return false;
       setPreparedPart(prepared);
       placementRef.current = { prepared };
       setSelectedId(null); setToolMode("build");
       return true;
     } catch (error) {
-      if (!controller.signal.aborted) setPartError(error instanceof Error ? error.message : String(error));
+      if (partControllerRef.current === controller && !controller.signal.aborted) {
+        setPartError(error instanceof Error ? error.message : String(error));
+      }
       return false;
-    } finally { if (!controller.signal.aborted) setPartLoading(false); }
+    } finally {
+      if (partControllerRef.current === controller && !controller.signal.aborted) setPartLoading(false);
+    }
   }, []);
   const selectInventoryPart = useCallback(async (choice: InventoryChoice) => {
     partControllerRef.current?.abort();
@@ -307,7 +311,7 @@ export function useBuilder() {
     try {
       const row = requireAvailable(documentRef.current, choice);
       const preview = await resolveStoredInventory(documentRef.current.inventory!);
-      controller.signal.throwIfAborted();
+      if (partControllerRef.current !== controller || controller.signal.aborted) return false;
       const resolution = preview.resolutions[row.id];
       const candidate = resolution?.parts.find(part => part.ldrawId === choice.ldrawId);
       if (!candidate || !resolution.colors.some(color => color.ldrawCode === choice.colorCode)) {
@@ -318,7 +322,7 @@ export function useBuilder() {
         ldrawId: candidate.ldrawId, brickLinkId: row.partId, name: candidate.name,
         category: "Teileliste", keywords: [], file: `parts/${candidate.ldrawId}.dat`,
       }, controller.signal);
-      controller.signal.throwIfAborted();
+      if (partControllerRef.current !== controller || controller.signal.aborted) return false;
       if (documentRef.current.id !== projectId) return false;
       requireAvailable(documentRef.current, choice);
       const color = resolveColor(choice.colorCode);
@@ -329,9 +333,13 @@ export function useBuilder() {
       setSelectedId(null); setToolMode("build");
       return true;
     } catch (error) {
-      if (!controller.signal.aborted) setPartError(error instanceof Error ? error.message : String(error));
+      if (partControllerRef.current === controller && !controller.signal.aborted) {
+        setPartError(error instanceof Error ? error.message : String(error));
+      }
       return false;
-    } finally { if (!controller.signal.aborted) setPartLoading(false); }
+    } finally {
+      if (partControllerRef.current === controller && !controller.signal.aborted) setPartLoading(false);
+    }
   }, [t]);
   const replacePartsInventory = useCallback((inventory: Inventory, expectedProjectId: string) => {
     updateDocument(document => {

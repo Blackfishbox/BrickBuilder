@@ -1,4 +1,4 @@
-import { Matrix4 } from "three";
+import { BufferAttribute, BufferGeometry, EdgesGeometry, Matrix4 } from "three";
 import type { Affine, ImportedModel } from "../formats/types";
 import { IDENTITY, multiply, referenceLine } from "../formats/ldraw/parser";
 import { candidates, normalizeReference } from "@workspace/ldraw-source";
@@ -12,6 +12,41 @@ export interface Surface {
 interface PendingSurface { colorCode: string; positions: number[]; edges: number[] }
 const cache = new WeakMap<ImportedModel, Map<string, Surface[]>>();
 const MAX_VERTICES = 1_500_000;
+const MAX_DERIVED_EDGE_TRIANGLES = 20_000;
+const MAX_RENDER_EDGE_SEGMENTS = 100_000;
+
+/** Uses authored LDraw edge lines, or derives visible creases when a part has none. */
+export function visibleEdgeLines(surfaces: readonly Surface[]): Float32Array {
+  const chunks: Float32Array[] = [];
+  let totalSegments = 0;
+  for (const surface of surfaces) {
+    let edges = surface.edges;
+    if (!edges.length && surface.positions.length &&
+      surface.positions.length / 9 <= MAX_DERIVED_EDGE_TRIANGLES) {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute("position", new BufferAttribute(surface.positions, 3));
+      const creaseGeometry = new EdgesGeometry(geometry, 18);
+      geometry.dispose();
+      edges = creaseGeometry.getAttribute("position").array as Float32Array;
+      creaseGeometry.dispose();
+    }
+    if (!edges.length) continue;
+    chunks.push(edges);
+    totalSegments += Math.floor(edges.length / 6);
+  }
+  if (!totalSegments) return new Float32Array();
+
+  const stride = Math.max(1, Math.ceil(totalSegments / MAX_RENDER_EDGE_SEGMENTS));
+  const edges = new Float32Array(Math.ceil(totalSegments / stride) * 6);
+  let sourceSegment = 0, outputSegment = 0;
+  for (const chunk of chunks) {
+    for (let offset = 0; offset + 5 < chunk.length; offset += 6, sourceSegment++) {
+      if (sourceSegment % stride !== 0) continue;
+      edges.set(chunk.subarray(offset, offset + 6), outputSegment++ * 6);
+    }
+  }
+  return outputSegment === edges.length / 6 ? edges : edges.slice(0, outputSegment * 6);
+}
 /** Undo may remove newly acquired but now unused files without invalidating live parts. */
 export function sameSceneSources(previous: ImportedModel, next: ImportedModel): boolean {
   if (previous.originalBytes !== next.originalBytes || previous.sourceText !== next.sourceText || previous.root !== next.root) return false;
