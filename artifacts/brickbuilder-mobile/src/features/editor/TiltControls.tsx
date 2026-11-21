@@ -51,6 +51,7 @@ export default function TiltControls({
   const safeAreaRef = useRef<HTMLDivElement>(null);
   const panelDrag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const panelDragListeners = useRef<{ move: (event: PointerEvent) => void; end: (event: PointerEvent) => void } | null>(null);
+  const suppressSummaryClick = useRef(false);
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
 
   const clampPanelPosition = (left: number, top: number): PanelPosition => {
@@ -107,6 +108,9 @@ export default function TiltControls({
       if (!drag || drag.pointerId !== pointerEvent.pointerId) return;
       pointerEvent.preventDefault();
       pointerEvent.stopPropagation();
+      if (Math.hypot(pointerEvent.clientX - drag.x, pointerEvent.clientY - drag.y) > 4) {
+        suppressSummaryClick.current = true;
+      }
       setPanelPosition(clampPanelPosition(
         drag.left + pointerEvent.clientX - drag.x,
         drag.top + pointerEvent.clientY - drag.y,
@@ -121,6 +125,9 @@ export default function TiltControls({
       window.removeEventListener("pointerup", end, true);
       window.removeEventListener("pointercancel", end, true);
       panelDragListeners.current = null;
+      if (suppressSummaryClick.current) {
+        window.setTimeout(() => { suppressSummaryClick.current = false; }, 0);
+      }
     };
     panelDragListeners.current = { move, end };
     // Capture-phase window listeners work even when Android WebView does not
@@ -215,7 +222,14 @@ export default function TiltControls({
 
   return (
     <details className="tilt-controls" data-testid="tilt-controls-menu" open={open}
-      onToggle={event => onOpenChange?.(event.currentTarget.open)}>
+      onToggle={event => onOpenChange?.(event.currentTarget.open)}
+      onClickCapture={event => {
+        if (!suppressSummaryClick.current || !(event.target instanceof Element) ||
+          !event.target.closest("summary")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressSummaryClick.current = false;
+      }}>
       <summary aria-label={t("tilt.open")} title={t("tilt.title")} data-testid="button-tilt-controls">
         <Rotate3d size={17} aria-hidden="true" />
       </summary>
@@ -226,7 +240,9 @@ export default function TiltControls({
         <div className="tilt-panel-heading">
           <strong>{t("tilt.title")}</strong>
           <button type="button" className="tilt-panel-drag" aria-label={t("tilt.movePanel")} title={t("tilt.movePanel")}
-            onPointerDown={startPanelDrag} data-testid="button-move-tilt-panel">
+            onPointerDown={startPanelDrag}
+            onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+            data-testid="button-move-tilt-panel">
             <Grip size={17} aria-hidden="true" />
           </button>
         </div>

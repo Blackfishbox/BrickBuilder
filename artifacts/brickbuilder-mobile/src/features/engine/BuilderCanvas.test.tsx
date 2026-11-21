@@ -1376,6 +1376,24 @@ describe("frame-coalesced drag transactions", () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
     expect(props.onPlace).not.toHaveBeenCalled();
   });
+  it("opens the rotation controls for a mobile double tap with a slower second tap", async () => {
+    const { props, point, model } = await mount("build");
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    await new Promise(resolve => setTimeout(resolve, 430));
+    pointer("pointerdown", point.x + 3, point.y + 2);
+    pointer("pointerup", point.x + 3, point.y + 2);
+    expect(props.onOpenRotationControls).toHaveBeenCalledWith(model.instances[0].id);
+    expect(props.onPlace).not.toHaveBeenCalled();
+  });
+  it("opens rotation controls from a native desktop double-click", async () => {
+    const { props, point, model } = await mount("select");
+    act(() => host.dispatchEvent(new MouseEvent("dblclick", {
+      bubbles: true, cancelable: true, clientX: point.x, clientY: point.y,
+    })));
+    expect(props.onOpenRotationControls).toHaveBeenCalledWith(model.instances[0].id);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
   it("keeps long presses in view mode while allowing camera orbit", async () => {
     const { props, point } = await mount("view");
     const cameraBefore = observed.camera!.position.clone();

@@ -355,8 +355,8 @@ export class FallbackRenderer {
 
 const geometryCache = new Map<BrickType, BufferGeometry>();
 const VIEW_TAP_MAX_DURATION_MS = 400;
-const PART_DOUBLE_TAP_INTERVAL_MS = 360;
-const PART_TAP_ACTION_DELAY_MS = 380;
+const PART_DOUBLE_TAP_INTERVAL_MS = 500;
+const PART_TAP_ACTION_DELAY_MS = 520;
 
 function polygonPath(context: CanvasRenderingContext2D, points: ProjectedPoint[]): void {
   if (!points.length) return;
@@ -631,6 +631,7 @@ export function BuilderCanvas({
     null,
   );
   const previousPartTapRef = useRef<{ id: string; x: number; y: number; at: number } | null>(null);
+  const lastRotationOpenRef = useRef<{ id: string; at: number } | null>(null);
   const pendingTapActionRef = useRef<{ timer: number; projectId?: string; action: () => void } | null>(null);
   const cameraStateRef = useRef({
     theta: DEFAULT_INSTRUCTION_THETA,
@@ -1586,6 +1587,26 @@ export function BuilderCanvas({
       pendingTapActionRef.current = null;
       if (propsRef.current.projectId === pending.projectId) pending.action();
     };
+    const openRotationControls = (id: string) => {
+      const now = performance.now();
+      const previous = lastRotationOpenRef.current;
+      if (previous?.id === id && now - previous.at < 800) return;
+      lastRotationOpenRef.current = { id, at: now };
+      if (propsRef.current.onOpenRotationControls) propsRef.current.onOpenRotationControls(id);
+      else propsRef.current.onSelect(id);
+    };
+    const onDoubleClick = (event: MouseEvent) => {
+      const hit = findBrick({ x: event.clientX, y: event.clientY });
+      if (!hit) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
+      pendingTapActionRef.current = null;
+      previousPartTapRef.current = null;
+      rollback();
+      dragRef.current = null;
+      openRotationControls(hit.id);
+    };
 
     const startGesture = () => {
       const ids = [...pointersRef.current.keys()];
@@ -1697,21 +1718,22 @@ export function BuilderCanvas({
       }
       // A remaining finger must not resume the part action or orbit after takeover.
       if (cameraOnlyRef.current) return;
-      // A single finger belongs exclusively to the part in build mode.
-      // Camera navigation remains available through two-finger gestures.
+      const click = clickRef.current;
+      if (
+        click?.id === event.pointerId &&
+        Math.hypot(event.clientX - click.start.x, event.clientY - click.start.y) > 10
+      ) {
+        click.moved = true;
+      }
+      // In build mode a one-finger drag moves the uncommitted preview; it does
+      // not orbit the camera. Mark it as a drag so the release places it rather
+      // than being treated as a tap on the part underneath.
       if (propsRef.current.toolMode === "build") {
         updatePlacementPreview(placementTarget(currentPoint));
         return;
       }
 
       const start = dragRef.current;
-      const click = clickRef.current;
-      if (
-        click?.id === event.pointerId &&
-        Math.hypot(event.clientX - click.start.x, event.clientY - click.start.y) > 5
-      ) {
-        click.moved = true;
-      }
       if (
         start &&
         start.pointerId === event.pointerId &&
@@ -1771,7 +1793,7 @@ export function BuilderCanvas({
         const now = performance.now();
         const isDoubleTap = previousTap?.id === tapHit.id &&
           now - previousTap.at <= PART_DOUBLE_TAP_INTERVAL_MS &&
-          Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 32;
+          Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 48;
         if (isDoubleTap) {
           if (pendingTapActionRef.current) {
             window.clearTimeout(pendingTapActionRef.current.timer);
@@ -1780,8 +1802,7 @@ export function BuilderCanvas({
           previousPartTapRef.current = null;
           rollback();
           dragRef.current = null;
-          if (current.onOpenRotationControls) current.onOpenRotationControls(tapHit.id);
-          else current.onSelect(tapHit.id);
+          openRotationControls(tapHit.id);
           suppressTapAction = true;
         } else {
           flushPendingTap();
@@ -1922,6 +1943,7 @@ export function BuilderCanvas({
     host.addEventListener("pointerup", onPointerUp, { passive: false });
     host.addEventListener("pointercancel", onPointerCancel, { passive: false });
     host.addEventListener("lostpointercapture", onPointerCancel);
+    host.addEventListener("dblclick", onDoubleClick);
     const onBlur = () => {
       rollback(); pointersRef.current.clear(); pointerLastRef.current.clear();
       gestureStartRef.current = null; gesturePairRef.current = null; cameraOnlyRef.current = false;
@@ -1937,6 +1959,7 @@ export function BuilderCanvas({
       host.removeEventListener("pointerup", onPointerUp);
       host.removeEventListener("pointercancel", onPointerCancel);
       host.removeEventListener("lostpointercapture", onPointerCancel);
+      host.removeEventListener("dblclick", onDoubleClick);
       window.removeEventListener("blur", onBlur);
       if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
       pendingTapActionRef.current = null;

@@ -66,7 +66,7 @@ it("uses only supplied anchors and reports an explicit origin fallback", () => {
   expect(onPivotChange).toHaveBeenCalledWith(anchor.position);
 });
 
-it("keeps the open rotation panel inside the viewport while dragging its handle", () => {
+it("keeps the open rotation panel open if releasing the drag lands over its toggle", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("innerWidth", 320);
   vi.stubGlobal("innerHeight", 240);
@@ -77,17 +77,24 @@ it("keeps the open rotation panel inside the viewport while dragging its handle"
     x: 24, y: 20, left: 24, top: 20, right: 294, bottom: 228, width: 270, height: 208, toJSON: () => ({}),
   });
   const handle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const onOpenChange = vi.fn();
+  act(() => root!.render(<TiltControls open onOpenChange={onOpenChange} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
+  const activeHandle = host.querySelector<HTMLButtonElement>('[data-testid="button-move-tilt-panel"]')!;
+  const summary = host.querySelector<HTMLElement>("summary")!;
   const dispatch = (type: string, x: number, y: number) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
     Object.defineProperties(event, { pointerId: { value: 1 }, clientX: { value: x }, clientY: { value: y } });
-    (type === "pointerdown" ? handle : window).dispatchEvent(event);
+    (type === "pointerdown" ? activeHandle : window).dispatchEvent(event);
   };
   act(() => {
     dispatch("pointerdown", 120, 100);
     dispatch("pointermove", 700, 700);
     dispatch("pointerup", 700, 700);
+    summary.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
 
+  expect(host.querySelector<HTMLDetailsElement>('[data-testid="tilt-controls-menu"]')?.open).toBe(true);
+  expect(onOpenChange).not.toHaveBeenCalledWith(false);
   const left = Number.parseFloat(panel.style.left), top = Number.parseFloat(panel.style.top);
   expect(left).toBeGreaterThanOrEqual(8);
   expect(left + 270).toBeLessThanOrEqual(312);
