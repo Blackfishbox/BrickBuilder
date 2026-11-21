@@ -126,6 +126,49 @@ test("reads first-parent messages since the last release, including merge notes 
   assert.deepEqual(calls[0], ["log", "--first-parent", "--reverse", "--format=%H%x00%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
 });
 
+test("uses a complete summary when a history rewrite removed the previous release SHA", () => {
+  const base = "a".repeat(40);
+  const latest = `${"b".repeat(40)}\0Rewrite-safe release\n\nRelease-Notes-DE-Complete: Der aktuelle Stand ist vollständig zusammengefasst.\nRelease-Notes-EN-Complete: The current release changes are fully summarized.\0`;
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = message => warnings.push(message);
+  try {
+    const git = (...args) => {
+      if (args[0] === "log" && args.includes(`${base}..HEAD`)) {
+        const error = new Error(`fatal: Invalid revision range ${base}..HEAD`);
+        error.stderr = error.message;
+        throw error;
+      }
+      if (args[0] === "log" && args.includes("-1")) return latest;
+      throw new Error(`Unexpected git command: ${args.join(" ")}`);
+    };
+    assert.equal(releaseNotesSince(base, git, "de"), "Der aktuelle Stand ist vollständig zusammengefasst.");
+    assert.equal(releaseNotesSince(base, git, "en"), "The current release changes are fully summarized.");
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnings.length, 2);
+});
+
+test("reports a missing rewritten baseline when the latest commit has no complete summary", () => {
+  const base = "a".repeat(40);
+  const git = (...args) => {
+    if (args[0] === "log" && args.includes(`${base}..HEAD`)) {
+      const error = new Error(`fatal: Invalid revision range ${base}..HEAD`);
+      error.stderr = error.message;
+      throw error;
+    }
+    if (args[0] === "log" && args.includes("-1")) {
+      return `${"b".repeat(40)}\0Recent change\n\nRelease-Notes-DE: A short note.\0`;
+    }
+    throw new Error(`Unexpected git command: ${args.join(" ")}`);
+  };
+  assert.throws(
+    () => releaseNotesSince(base, git, "de"),
+    /Previous release commit .* is missing.*Add one Release-Notes-DE-Complete/,
+  );
+});
+
 test("requires both locales for commits unless a complete localized batch note is supplied", () => {
   assert.throws(() => summarizeCommitMessages([
     "A user-visible change\n\nRelease-Notes-DE: Importhinweis ergänzt.",

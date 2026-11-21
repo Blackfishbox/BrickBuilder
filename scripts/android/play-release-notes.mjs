@@ -132,9 +132,31 @@ export function releaseNotesSince(base, git = (...args) => execFileSync("git", a
   // imported main changes; traversing its second parent would replay the entire
   // unrelated main history, including commits predating Android releases.
   // Failed Android builds remain on this first-parent path and must be included.
-  const output = base
-    ? git("log", "--first-parent", "--reverse", "--format=%H%x00%B%x00", `${base}..HEAD`, "--")
-    : git("log", "--first-parent", "-1", "--format=%H%x00%B%x00", "HEAD", "--");
+  let output;
+  if (!base) {
+    output = git("log", "--first-parent", "-1", "--format=%H%x00%B%x00", "HEAD", "--");
+  } else {
+    try {
+      output = git("log", "--first-parent", "--reverse", "--format=%H%x00%B%x00", `${base}..HEAD`, "--");
+    } catch (error) {
+      const failure = `${error?.stderr ?? ""}\n${error?.message ?? error}`;
+      if (!/invalid revision range|unknown revision|bad revision/i.test(failure)) throw error;
+      const latest = git("log", "-1", "--format=%H%x00%B%x00", "HEAD", "--");
+      const fields = latest.split("\0");
+      const latestMessage = fields[1]?.trim() ?? "";
+      const completeTrailer = new RegExp(`^${locale.completeTrailer}:\\s*\\S`, "im");
+      if (!completeTrailer.test(latestMessage)) {
+        throw new Error(
+          `Previous release commit ${base} is missing from this history. ` +
+          `Add one ${locale.completeTrailer} trailer to the latest commit to summarize changes after a history rewrite.`,
+        );
+      }
+      console.warn(
+        `Previous release commit ${base} is no longer in this history; using the latest ${locale.completeTrailer} summary.`,
+      );
+      output = latest;
+    }
+  }
   const fields = output.split("\0");
   const messages = [];
   for (let index = 0; index + 1 < fields.length; index += 2) {

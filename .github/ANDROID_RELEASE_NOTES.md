@@ -28,3 +28,8 @@ later failed release attempt also has a complete note, the newest one takes
 precedence; ordinary notes on commits after it are appended. Each commit may
 contain at most one complete note per language. Manual workflow runs can instead
 provide separate German and English notes.
+
+After an authorized history rewrite, a previous successful release's commit SHA
+may no longer exist in the branch. In that case, the latest commit must include
+one complete note for each locale; the workflow uses those notes as the new
+baseline and fails clearly if either is missing.
