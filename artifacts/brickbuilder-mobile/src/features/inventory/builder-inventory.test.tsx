@@ -80,12 +80,18 @@ it("handles loading, editable inventory colors, fast taps, stock, catalog exit a
   vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
   await act(async () => { expect(await editor.selectInventoryPart(choice)).toBe(true); });
   await act(async () => editor.setSelectedColor("#1E5AA8", "1"));
-  await act(async () => { for (let i = 0; i < 10; i++) editor.place({ x: i, y: 0, z: 0 }); });
+  await act(async () => editor.place({ x: 0, y: 0, z: 0 }));
   expect(editor.brickCount).toBe(1);
+  expect(editor.toolMode).toBe("select");
+  expect(editor.selectedId).toBe(editor.imported!.instances[0].id);
   expect(editor.imported!.instances[0].colorCode).toBe("1");
   expect(allocatedCounts(editor.document).get(choice.rowId)).toBe(1);
   expect(visibleRow()).toBeNull();
   expect(container.textContent).toContain("Alle Teile dieser Liste sind verbaut");
+  await act(async () => {
+    editor.setToolMode("build");
+    expect(await editor.selectInventoryPart(choice)).toBe(false);
+  });
   expect(editor.partError).toContain("aufgebraucht");
   await act(async () => editor.setSelectedColor("#FAC80A", "14"));
   expect(editor.imported!.instances[0].colorCode).toBe("14");
