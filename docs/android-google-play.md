@@ -22,8 +22,10 @@ The ordinary web/PWA build remains unchanged.
 
 The Android-branch release workflow retains only the signed AAB and matching
 ProGuard/R8 `mapping.txt` as downloadable GitHub artifacts, and uploads both to
-Google Play with short German release notes. The one-time emulator screen-measurement and screenshot
-workflow has been removed; signing, privacy and ordinary regression checks remain.
+Google Play with German and English release notes. It also adds the versioned
+English store listing without replacing the existing German listing. The
+one-time emulator screen-measurement and screenshot workflow has been removed;
+signing, privacy and ordinary regression checks remain.
 
 Native status/navigation bar, display-cutout and keyboard bounds are handled
 by the activity's content container, verified by one-time emulator checks. See
@@ -154,9 +156,11 @@ Workflow: `.github/workflows/android-google-play.yml`.
    project containing your service account.
 2. In Play Console, invite the service account's email under **Users and
    permissions**. Grant access to `brickbuilder.blackfishbox.de`, permission to
-   view app information and **release apps to testing tracks**. Do not grant
-   production-release permissions for this workflow. Ensure the closed track's
-   exact API identifier is `alpha`, with its testers/countries configured.
+   view app information, **Release apps to testing tracks**, and **Manage store
+   presence**. The latter is required to commit the English listing together
+   with the AAB. Do not grant production-release permissions for this workflow.
+   Ensure the closed track's exact API identifier is `alpha`, with its
+   testers/countries configured.
 3. The app listing must already exist. If no binary has ever been uploaded,
    perform the first signed AAB upload manually in Play Console; the API cannot
    create the initial app listing. Complete required declarations, Play App
@@ -190,20 +194,33 @@ Workflow: `.github/workflows/android-google-play.yml`.
    for 14 days, even if the later Play upload fails. No emulator screenshots
    or measurement reports are produced.
 3. A separate publish job downloads those exact artifacts and generates German
-   release notes (locale `de-DE`, maximum 500 characters). It compares files
-   against the last successful automated release, so intervening failed runs
-   are included. Before the first successful automated release, it summarizes
-   the current push's changes; manual runs use the latest commit.
-4. The pinned upload action sends the AAB, R8 mapping and notes to app
-   `brickbuilder.blackfishbox.de`, track **`alpha`**, with release status
-   **`completed`** and `changesNotSentForReview: false`.
+   (`de-DE`) and English (`en-US`) release notes, each limited to 500 characters.
+   It compares commits against the last successful automated release, so
+   intervening failed runs are included. Before the first successful automated
+   release, it summarizes the current push's changes; manual runs use the latest
+   commit unless localized notes are supplied.
+4. The workflow prepares the English (`en-US`) title and descriptions from
+   `play-store-listing/en-US/` in the same Google Play edit as the release. The
+   existing German listing is not replaced.
+5. The pinned upload action sends the AAB, R8 mapping, both sets of notes and the
+   English listing to app `brickbuilder.blackfishbox.de`, track **`alpha`**, with
+   release status **`completed`** and `changesNotSentForReview: false`. The
+   account must be authorized to manage the app's store listing as well as
+   release to testing tracks. A permission failure stops the edit before the
+   bundle or listing is committed; an unused edit is discarded.
 
-The notes are deterministic, short German summaries of the changed functional
-areas, not an AI translation or a claim that every changed area contains a
-verified bug fix. They require no paid API. For precise hand-written notes, use
-**Run workflow**, select `android/google-play`, and fill in `release_notes_de`.
-The optional `version_name` input overrides the displayed version for that run.
-The GitHub Actions step summary also shows the actual German notes.
+The notes are precise, hand-written German and English commit trailers, not an AI
+translation or a claim that every changed area contains a verified bug fix.
+They require no paid API. Every app-change commit needs both
+`Release-Notes-DE` and `Release-Notes-EN`; complete-batch trailers can cover
+older commits during a localization rollout. For manual notes, use **Run
+workflow**, select `android/google-play`, and fill in `release_notes_de` and/or
+`release_notes_en`. The optional `version_name` input overrides the displayed
+version. The GitHub Actions step summary shows both localized notes.
+
+The English listing source is in `play-store-listing/en-US/`. Its title, short
+description and full description are checked against Google Play's current
+character limits before making the API request.
 
 `completed` requests rollout to all eligible testers of this closed track.
 Google review, managed publishing, incomplete declarations or account

@@ -1,0 +1,23 @@
+Design and build brick-built models in a touch-first 3D workspace on your Android phone.
+
+BUILD IN 3D
+• Place, move, rotate, tilt, recolor and delete individual parts.
+• Snap standard bricks and plates to a stud grid.
+• Select and edit parts in imported models.
+• Choose from the LDraw parts and colors available on your device.
+
+IMPORT AND EXPORT
+• Import LDraw LDR and MPD files, BrickLink Studio IO models, and BrickBuilder project backups.
+• IO compatibility varies by file; some metadata may remain uneditable.
+• Import a BrickLink XML parts list and build using its listed quantities.
+• Review and edit imported building steps when supported by the source file.
+• Export LDraw files, BrickLink parts lists, and project backups.
+• Create PDF building instructions.
+• Render the current view as a transparent 4K PNG or vector SVG. Very complex SVG exports may be limited by device resources.
+
+WORK OFFLINE
+• Projects and autosaves are stored locally on your device.
+• Installed part geometry remains available offline.
+• Optional online downloads can retrieve missing LDraw geometry and are disabled by default. An imported model can be incomplete if its required geometry is unavailable.
+
+BrickBuilder Mobile is an independent project and is not affiliated with or endorsed by LEGO®, BrickLink, BrickLink Studio, or Rebrickable. Third-party LDraw files and other resources retain their own licenses and attribution.

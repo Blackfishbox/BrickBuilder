@@ -5,65 +5,73 @@ import { pathToFileURL } from "node:url";
 const workflowName = "Build and publish closed Google Play test";
 const outputDirectory = "generated-artifacts/google-play/whatsnew";
 
-const RELEASE_NOTE_TRAILER = "Release-Notes-DE";
-const COMPLETE_RELEASE_NOTE_TRAILER = "Release-Notes-DE-Complete";
+const LANGUAGES = {
+  de: { locale: "de-DE", label: "German", trailer: "Release-Notes-DE", completeTrailer: "Release-Notes-DE-Complete" },
+  en: { locale: "en-US", label: "English", trailer: "Release-Notes-EN", completeTrailer: "Release-Notes-EN-Complete" },
+};
 const RELEASE_AUTOMATION_FILES = new Set([
   ".github/workflows/android-google-play.yml",
   "artifacts/brickbuilder-mobile/android/build.gradle",
   "artifacts/brickbuilder-mobile/android/variables.gradle",
   "scripts/android/play-release-notes.mjs",
   "scripts/android/play-release-notes.test.mjs",
+  "scripts/android/play-store-listing.mjs",
+  "scripts/android/play-store-listing.test.mjs",
 ]);
 
 /** Every non-merge commit since the previous successful Play release must state its actual user-visible change. */
-export function summarizeCommitMessages(messages) {
+export function summarizeCommitMessages(messages, language = "de") {
+  const locale = LANGUAGES[language];
+  if (!locale) throw new Error(`Unsupported release-note language: ${language}`);
   if (!messages.length) {
-    throw new Error("No commits found for this release. Add German release notes or provide them manually.");
+    throw new Error(`No commits found for this release. Add ${locale.label} release notes or provide them manually.`);
   }
   const completeNotes = messages.flatMap(message =>
-    [...message.matchAll(/^Release-Notes-DE-Complete:\s*(.*?)\s*$/gim)].map(match => match[1].trim()),
+    [...message.matchAll(new RegExp(`^${locale.completeTrailer}:\\s*(.*?)\\s*$`, "gim"))].map(match => match[1].trim()),
   );
   if (completeNotes.length > 0) {
     if (completeNotes.length !== 1 || !completeNotes[0]) {
-      throw new Error("A release batch must contain exactly one non-empty Release-Notes-DE-Complete trailer.");
+      throw new Error(`A release batch must contain exactly one non-empty ${locale.completeTrailer} trailer.`);
     }
-    return validateNotes(completeNotes[0]);
+    return validateNotes(completeNotes[0], language);
   }
   const notes = [], seen = new Set();
   for (const message of messages) {
     const subject = message.split(/\r?\n/, 1)[0].trim() || "(commit without subject)";
-    const trailers = [...message.matchAll(/^Release-Notes-DE:\s*(.*?)\s*$/gim)];
+    const trailers = [...message.matchAll(new RegExp(`^${locale.trailer}:\\s*(.*?)\\s*$`, "gim"))];
     // Replit task merges can add generated metadata-only commits without user-written trailers.
     if (trailers.length === 0 && /^Replit-Task-Id:\s*\S+/im.test(message) &&
         /^Replit-Merge-Attempt:\s*\S+/im.test(message)) continue;
     if (trailers.length !== 1 || !trailers[0][1].trim()) {
       throw new Error(
-        `Commit "${subject}" must contain exactly one "${RELEASE_NOTE_TRAILER}: <konkrete deutsche Änderung>" trailer. ` +
+        `Commit "${subject}" must contain exactly one "${locale.trailer}: <concrete ${locale.label.toLowerCase()} change>" trailer. ` +
         "Do not substitute a generic summary based only on changed file paths.",
       );
     }
-    const note = validateNotes(trailers[0][1]);
+    const note = validateNotes(trailers[0][1], language);
     if (note.includes("\n")) {
       throw new Error(`Release note for "${subject}" must fit on one line.`);
     }
-    const key = note.replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+    const key = note.replace(/\s+/g, " ").toLocaleLowerCase(locale.locale);
     if (!seen.has(key)) { seen.add(key); notes.push(note); }
   }
-  if (notes.length === 0) throw new Error("No concrete German release notes found. Add a Release-Notes-DE trailer.");
+  if (notes.length === 0) throw new Error(`No concrete ${locale.label} release notes found. Add a ${locale.trailer} trailer.`);
   const result = notes.map(note => `• ${note}`).join("\n");
   if ([...result].length > 500) {
     throw new Error(
-      `Combined German release notes are ${[...result].length} characters; Google Play allows 500. ` +
-      "Shorten or deduplicate the commit trailers.",
+      `Combined ${locale.label} release notes are ${[...result].length} characters; Google Play allows 500. ` +
+      `Shorten or deduplicate the ${locale.trailer} trailers.`,
     );
   }
-  return validateNotes(result);
+  return validateNotes(result, language);
 }
 
-export function validateNotes(text) {
+export function validateNotes(text, language = "de") {
+  const locale = LANGUAGES[language];
+  if (!locale) throw new Error(`Unsupported release-note language: ${language}`);
   const trimmed = text.trim();
   if (!trimmed || [...trimmed].length > 500) {
-    throw new Error("German release notes must contain 1–500 characters.");
+    throw new Error(`${locale.label} release notes must contain 1–500 characters.`);
   }
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(trimmed)) {
     throw new Error("Release notes contain unsupported control characters.");
@@ -106,7 +114,9 @@ export async function previousPublishedCommit(env, fetchImpl = fetch) {
   throw new Error("Previous published release not found within 1,000 successful runs. Review the release baseline.");
 }
 
-export function releaseNotesSince(base, git = (...args) => execFileSync("git", args, { encoding: "utf8" })) {
+export function releaseNotesSince(base, git = (...args) => execFileSync("git", args, { encoding: "utf8" }), language = "de") {
+  const locale = LANGUAGES[language];
+  if (!locale) throw new Error(`Unsupported release-note language: ${language}`);
   // Follow the Android branch's first-parent history. A merge trailer summarizes
   // imported main changes; traversing its second parent would replay the entire
   // unrelated main history, including commits predating Android releases.
@@ -122,7 +132,7 @@ export function releaseNotesSince(base, git = (...args) => execFileSync("git", a
     if (!sha || !message) continue;
 
     const hasReleaseNote = new RegExp(
-      `^(?:${RELEASE_NOTE_TRAILER}|${COMPLETE_RELEASE_NOTE_TRAILER}):\\s*\\S`, "im",
+      `^(?:${locale.trailer}|${locale.completeTrailer}):\\s*\\S`, "im",
     ).test(message);
     if (!hasReleaseNote) {
       const files = git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r", sha, "--")
@@ -133,7 +143,7 @@ export function releaseNotesSince(base, git = (...args) => execFileSync("git", a
     }
     messages.push(message);
   }
-  return summarizeCommitMessages(messages);
+  return summarizeCommitMessages(messages, language);
 }
 
 async function main() {
@@ -144,14 +154,23 @@ async function main() {
     if (/^[0-9a-f]{40}$/.test(event.before || "") && !/^0+$/.test(event.before)) base = event.before;
     console.log("No earlier automated Play release: using this push's first commit as the note baseline.");
   }
-  const notes = process.env.PLAY_RELEASE_NOTES_DE?.trim()
-    ? validateNotes(process.env.PLAY_RELEASE_NOTES_DE)
-    : releaseNotesSince(base);
+  const notes = {
+    de: process.env.PLAY_RELEASE_NOTES_DE?.trim()
+      ? validateNotes(process.env.PLAY_RELEASE_NOTES_DE, "de")
+      : releaseNotesSince(base, undefined, "de"),
+    en: process.env.PLAY_RELEASE_NOTES_EN?.trim()
+      ? validateNotes(process.env.PLAY_RELEASE_NOTES_EN, "en")
+      : releaseNotesSince(base, undefined, "en"),
+  };
   mkdirSync(outputDirectory, { recursive: true });
-  writeFileSync(`${outputDirectory}/whatsnew-de-DE`, `${notes}\n`);
-  console.log(`German release notes:\n${notes}`);
+  writeFileSync(`${outputDirectory}/whatsnew-de-DE`, `${notes.de}\n`);
+  writeFileSync(`${outputDirectory}/whatsnew-en-US`, `${notes.en}\n`);
+  console.log(`German release notes:\n${notes.de}\nEnglish release notes:\n${notes.en}`);
   if (process.env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Versionshinweise · Geschlossener Test (alpha)\n\n${notes}\n`);
+    appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `## Google Play release notes · Closed test (alpha)\n\n### German · de-DE\n\n${notes.de}\n\n### English · en-US\n\n${notes.en}\n`,
+    );
   }
 }
 

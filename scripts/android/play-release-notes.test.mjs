@@ -11,6 +11,17 @@ test("uses concrete German commit trailers in history order", () => {
   ]), "• Bereits verbaute Anleitungsteile erscheinen jetzt mit fast unveränderten Farben.\n• Der Boden wächst jetzt mit dem Modell, wenn es über den bisherigen Rand hinausragt.");
 });
 
+test("aggregates German and English release notes independently", () => {
+  const messages = [
+    "Warn before offline imports\n\nRelease-Notes-DE: Android warnt beim Import, wenn Online-Nachladen deaktiviert ist.\nRelease-Notes-EN: Android warns during import when online geometry loading is disabled.",
+    "Add an English Play listing\n\nRelease-Notes-DE: Eine englische Play-Store-Beschreibung und zweisprachige Versionshinweise werden ergänzt.\nRelease-Notes-EN: Added an English Play Store listing and bilingual release notes.",
+  ];
+  assert.equal(summarizeCommitMessages(messages, "de"),
+    "• Android warnt beim Import, wenn Online-Nachladen deaktiviert ist.\n• Eine englische Play-Store-Beschreibung und zweisprachige Versionshinweise werden ergänzt.");
+  assert.equal(summarizeCommitMessages(messages, "en"),
+    "• Android warns during import when online geometry loading is disabled.\n• Added an English Play Store listing and bilingual release notes.");
+});
+
 test("deduplicates identical notes from multiple commits without inventing summaries", () => {
   assert.equal(summarizeCommitMessages([
     "First commit\n\nRelease-Notes-DE: Teilefarben bleiben besser erkennbar.",
@@ -29,6 +40,10 @@ test("a complete release note summarizes a batch with missing or oversized histo
     "First summary\n\nRelease-Notes-DE-Complete: Zusammenfassung eins.",
     "Second summary\n\nRelease-Notes-DE-Complete: Zusammenfassung zwei.",
   ]), /exactly one/);
+  assert.equal(summarizeCommitMessages([
+    "Older commit without English notes",
+    "Localization rollout\n\nRelease-Notes-EN-Complete: Added an English store listing and bilingual change notes.",
+  ], "en"), "Added an English store listing and bilingual change notes.");
 });
 
 test("requires a precise note in every included commit", () => {
@@ -58,6 +73,7 @@ test("enforces the 500-character limit instead of truncating release notes", () 
 
 test("custom notes are bounded, trimmed and reject controls", () => {
   assert.equal(validateNotes("  Bessere Teileauswahl. \n"), "Bessere Teileauswahl.");
+  assert.equal(validateNotes("  Better part selection. \n", "en"), "Better part selection.");
   assert.throws(() => validateNotes(" "), /1–500/);
   assert.throws(() => validateNotes("a".repeat(501)), /1–500/);
   assert.throws(() => validateNotes("a\u0000b"), /control/);
@@ -104,6 +120,18 @@ test("reads first-parent messages since the last release, including merge notes 
     return "";
   }), "• Importierte Anleitungen zeigen Drehungen und Callouts.");
   assert.deepEqual(calls[0], ["log", "--first-parent", "--reverse", "--format=%H%x00%B%x00", `${"a".repeat(40)}..HEAD`, "--"]);
+});
+
+test("requires both locales for commits unless a complete localized batch note is supplied", () => {
+  assert.throws(() => summarizeCommitMessages([
+    "A user-visible change\n\nRelease-Notes-DE: Importhinweis ergänzt.",
+  ], "en"), /Release-Notes-EN/);
+  assert.equal(releaseNotesSince("a".repeat(40), (...args) => {
+    if (args[0] === "log") {
+      return `${"b".repeat(40)}\0Localized change\n\nRelease-Notes-DE: Warnung ergänzt.\nRelease-Notes-EN: Added a warning.\0`;
+    }
+    return "";
+  }, "en"), "• Added a warning.");
 });
 
 test("skips only unannotated release-pipeline changes, not app changes", () => {
