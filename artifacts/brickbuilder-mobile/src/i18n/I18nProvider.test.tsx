@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { useI18n, I18nProvider, LANGUAGE_STORAGE_KEY } from "./I18nProvider";
+import { translate } from "./messages";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
 
@@ -55,4 +56,9 @@ it("restores a previously selected German language", async () => {
   await act(async () => root!.render(<I18nProvider><LanguageProbe /></I18nProvider>));
   expect(host.querySelector('[data-testid="view-label"]')?.textContent).toBe("Ansicht");
   expect(document.documentElement.lang).toBe("de");
+});
+
+it("uses the accurate stud-connection label in both menu languages", () => {
+  expect(translate("de", "tilt.anchor.cylinder")).toBe("Noppenverbindung");
+  expect(translate("en", "tilt.anchor.cylinder")).toBe("Stud connection");
 });
