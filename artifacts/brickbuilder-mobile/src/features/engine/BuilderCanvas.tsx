@@ -605,8 +605,8 @@ export function BuilderCanvas({
   const [autoSelectOnTap, setAutoSelectOnTap] = useState(true);
   const autoSelectOnTapRef = useRef(true);
   autoSelectOnTapRef.current = autoSelectOnTap;
-  const [autoSelectAfterPlacement, setAutoSelectAfterPlacement] = useState(true);
-  const autoSelectAfterPlacementRef = useRef(true);
+  const [autoSelectAfterPlacement, setAutoSelectAfterPlacement] = useState(false);
+  const autoSelectAfterPlacementRef = useRef(false);
   autoSelectAfterPlacementRef.current = autoSelectAfterPlacement;
   useEffect(() => {
     if (!toggleToast) return;

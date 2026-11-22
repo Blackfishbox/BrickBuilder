@@ -31,7 +31,18 @@ const noop = () => undefined;
 
 export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF }: Props) {
   const { t } = useI18n();
-  const plan = useMemo(() => effectiveInstructions(document), [document]);
+  const plan = useMemo(() => {
+    const source = effectiveInstructions(document);
+    return {
+      ...source,
+      steps: source.steps.map((step, index) => {
+        const number = index + 1;
+        const defaultTitle = step.title === "" ||
+          step.title === `Schritt ${number}` || step.title === `Step ${number}`;
+        return defaultTitle ? { ...step, title: t("instruction.stepNumber", { number }) } : step;
+      }),
+    };
+  }, [document, t]);
   const planRef = useRef(plan);
   planRef.current = plan;
   const [index, setIndex] = useState(0);
@@ -222,7 +233,12 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       <header className="ins-head">
         <div className="ins-head-title">
           <small>{t("instruction.title")}</small>
-          <strong data-testid="text-instructions-summary">{t("instruction.summary", { steps: plan.steps.length, parts: total })}</strong>
+          <strong data-testid="text-instructions-summary">{t("instruction.summary", {
+            steps: plan.steps.length,
+            stepUnit: t(plan.steps.length === 1 ? "instruction.stepUnit" : "instruction.stepsUnit"),
+            parts: total,
+            partUnit: t(total === 1 ? "instruction.partUnit" : "instruction.partsUnit"),
+          })}</strong>
         </div>
         <button className="ins-primary" onClick={exportPdf} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
           <FileDown size={16} /> PDF

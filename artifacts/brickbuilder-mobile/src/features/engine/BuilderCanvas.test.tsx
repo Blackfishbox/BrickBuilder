@@ -1697,10 +1697,10 @@ describe("frame-coalesced drag transactions", () => {
     const distance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
     expect(distance).toBeCloseTo(initialDistance, 2);
   });
-  it("uses the default active mode-switch toggle after double-tap placement", async () => {
+  it("keeps Build mode by default after double-tap placement", async () => {
     const { props } = await mount("build");
     const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-auto-select-after-placement']")!;
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     const empty = { x: 8, y: 8 };
     pointer("pointerdown", empty.x, empty.y);
     pointer("pointerup", empty.x, empty.y);
@@ -1710,22 +1710,22 @@ describe("frame-coalesced drag transactions", () => {
     pointer("pointerup", empty.x, empty.y);
 
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
     expect(props.onPlace).toHaveBeenCalledOnce();
   });
-  it("can stay in build mode after a double-tap placement", async () => {
+  it("can switch to Select after double-tap placement when the toggle is enabled", async () => {
     const { props } = await mount("build");
     const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-auto-select-after-placement']")!;
     act(() => toggle.click());
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     const empty = { x: 8, y: 8 };
     pointer("pointerdown", empty.x, empty.y);
     pointer("pointerup", empty.x, empty.y);
     pointer("pointerdown", empty.x, empty.y);
     pointer("pointerup", empty.x, empty.y);
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
+    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
   });
   it("keeps a single empty-space tap in build mode as the normal placement action", async () => {
     const { props } = await mount("build");
@@ -1737,7 +1737,7 @@ describe("frame-coalesced drag transactions", () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
 
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
   });
   it("treats a build-mode part double tap as one normal placement", async () => {
     const { props, point } = await mount("build");
@@ -1749,7 +1749,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onMove).not.toHaveBeenCalled();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
   });
   it("opens rotation controls on a double tap only in selection mode", async () => {
     const { props, point, model } = await mount("select");

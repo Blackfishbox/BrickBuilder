@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { PerspectiveCamera, Vector3 } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
+import { LANGUAGE_STORAGE_KEY } from "../../i18n/I18nProvider";
 import InstructionsPanel from "./InstructionsPanel";
 import { updateInstructions } from "./model";
 import {
@@ -22,7 +23,18 @@ let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement;
 afterEach(() => {
   if (root) act(() => root!.unmount());
-  host?.remove(); vi.unstubAllGlobals(); vi.clearAllMocks();
+  host?.remove(); localStorage.removeItem(LANGUAGE_STORAGE_KEY); vi.unstubAllGlobals(); vi.clearAllMocks();
+});
+
+it("uses English default step names and singular instruction summary", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "one", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} />));
+  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-step-title"]')!.value).toBe("Step 1");
+  expect(host.querySelector('[data-testid="text-instructions-summary"]')!.textContent).toBe("1 step · 1 part");
 });
 
 it("persists manual preview camera changes independently for each step", () => {
