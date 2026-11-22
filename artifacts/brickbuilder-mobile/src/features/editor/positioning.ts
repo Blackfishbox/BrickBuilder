@@ -19,6 +19,10 @@ export function groundedTransform(model: ImportedModel, id: string, position: Po
   if (!transform) {
     matrix[3] = position.x * 20; matrix[7] = -position.y * 20; matrix[11] = position.z * 20;
   }
+  // Imported IO may keep a valid placement and connector description while
+  // its visible LDraw mesh is unavailable. Do not discard the user's move (or
+  // a magnetic snap) merely because a precise mesh-based floor test is absent.
+  if (instance.part.status !== "resolved") return matrix;
   const box = localPartBounds(model, instance.reference).clone().applyMatrix4(worldMatrix(matrix));
   if (box.isEmpty()) throw new Error("Die Unterkante dieses Teils kann ohne Geometrie nicht bestimmt werden.");
   if (box.min.y < floor) matrix[7] -= (floor - box.min.y) * 20;

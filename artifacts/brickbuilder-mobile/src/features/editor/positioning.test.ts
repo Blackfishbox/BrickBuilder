@@ -48,3 +48,13 @@ it("preserves negative imported origins using the original visible floor", () =>
   expect(matrix[7]).toBeCloseTo(0);
   expect(model.instances[0].matrix).toEqual(original);
 });
+it("preserves moves and connector snaps when the imported render mesh is missing", () => {
+  const model = fixture(), instance = model.instances[0];
+  instance.part.status = "missing";
+  delete model.resources["parts/test.dat"];
+  const snapped = [...instance.matrix] as Affine;
+  snapped[3] = 20;
+  snapped[7] = -24;
+  snapped[11] = 40;
+  expect(groundedTransform(model, instance.id, { x: 1, y: 1.2, z: 2 }, 0, snapped)).toEqual(snapped);
+});

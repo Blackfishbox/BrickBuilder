@@ -148,6 +148,35 @@ describe("oriented connection transactions", () => {
     expect(next.imported!.originalBytes).toBe(model.originalBytes);
     expect(activeConnections(model, id)).toHaveLength(0);
   });
+  it("keeps verified contacts through Studio float rounding", () => {
+    const model = connectionFixture([
+      partLine("3001", 0, -24),
+      partLine("3003", 0.001, -48.001, -0.001),
+    ].join("\n"));
+    expect(activeConnections(model, model.instances[1].id).length).toBeGreaterThan(0);
+  });
+  it("magnetically reconnects parts when their render meshes are not installed", () => {
+    const model = connectionFixture([partLine("3001"), partLine("3003", 160)].join("\n"));
+    model.resources = { ...model.resources };
+    for (const instance of model.instances) {
+      instance.part.status = "missing";
+      delete model.resources[`parts/${instance.reference.toLowerCase()}`];
+    }
+    const id = model.instances[1].id;
+    expect(activeConnections(model, id)).toHaveLength(0);
+
+    const away = constructionTransform(model, id, { x: 10, y: 0, z: 0 });
+    expect(away.contacts).toHaveLength(0);
+    const separated = moveImported({ ...createEmptyDocument(), imported: model }, id,
+      { x: away.matrix[3] / 20, y: -away.matrix[7] / 20, z: away.matrix[11] / 20 }, false, away.matrix);
+    expect(activeConnections(separated.imported!, id)).toHaveLength(0);
+
+    const back = constructionTransform(separated.imported!, id, { x: 0.02, y: 1.2, z: 0.02 });
+    expect(back.contacts.length).toBeGreaterThan(0);
+    const reconnected = moveImported(separated, id,
+      { x: back.matrix[3] / 20, y: -back.matrix[7] / 20, z: back.matrix[11] / 20 }, false, back.matrix);
+    expect(activeConnections(reconnected.imported!, id).length).toBeGreaterThan(0);
+  });
   it("finds oriented pin insertion without rejecting the whole-part bounding overlap", () => {
     const model = connectionFixture([partLine("3700"), partLine("2780", 160, 10, 0)].join("\n"));
     const id = model.instances[1].id;

@@ -21,6 +21,9 @@ interface Index { entries: Map<string, Entry>; cells: Map<string, Set<Entry>>; w
 const indexes = new WeakMap<ImportedModel, Index>();
 const selectedCache = new WeakMap<ImportedModel, Map<string, Contact[]>>();
 const lduPoint = (p: Vector3): [number, number, number] => [p.x / 20, -p.y / 20, p.z / 20];
+// Studio stores transforms as rounded decimal floats. A few thousandths of an
+// LDU are serialization noise, not a physically meaningful connector gap.
+const CONTACT_POSITION_TOLERANCE = 0.05;
 function buckets(box: Box3, visit: (key: string) => void): void {
   for (let x = Math.floor(box.min.x / CELL); x <= Math.floor(box.max.x / CELL); x++)
     for (let y = Math.floor(box.min.y / CELL); y <= Math.floor(box.max.y / CELL); y++)
@@ -30,8 +33,11 @@ function indexFor(model: ImportedModel): Index {
   const cached = indexes.get(model); if (cached) return cached;
   const index: Index = { entries: new Map(), cells: new Map(), wide: [] };
   for (const instance of model.instances) {
-    const connectors = instance.part.status === "resolved" ? describeConnections(instance.reference, model).connectors
-      .map(c => transformConnector(c, instance.matrix)).filter((c): c is Connector => !!c) : [];
+    // Connector descriptions can come from the pinned LDraw/Shadow data even
+    // when the visible part mesh is not installed. Keep those independent:
+    // missing render geometry must not erase verified IO connections.
+    const connectors = describeConnections(instance.reference, model).connectors
+      .map(c => transformConnector(c, instance.matrix)).filter((c): c is Connector => !!c);
     const box = new Box3();
     for (const c of connectors) {
       const { position, y } = axes(c);
@@ -61,10 +67,10 @@ function contact(a: Connector, b: Connector, movingId: string, targetId: string,
   const aa = axes(a), bb = axes(b), delta = aa.position.clone().sub(bb.position);
   const offset = delta.dot(bb.y), direction = aa.y.dot(bb.y);
   if (a.family === "generic" && a.placement === "free" && b.placement === "free") {
-    if (delta.length() > EPS) return null;
+    if (delta.length() > CONTACT_POSITION_TOLERANCE) return null;
   } else {
-    if (Math.abs(direction) < 1 - EPS || delta.addScaledVector(bb.y, -offset).length() > EPS ||
-      !profileOverlap(a, b, offset, direction > 0 ? 1 : -1, aa.x.dot(bb.x))) return null;
+    if (Math.abs(direction) < 1 - EPS || delta.addScaledVector(bb.y, -offset).length() > CONTACT_POSITION_TOLERANCE ||
+      !profileOverlap(a, b, offset, direction > 0 ? 1 : -1, aa.x.dot(bb.x), CONTACT_POSITION_TOLERANCE)) return null;
     if (a.family === "generic" && aa.x.dot(bb.x) < 1 - EPS) return null;
   }
   const ai = intervals(a), bi = intervals(b);
@@ -214,7 +220,7 @@ export function activeConnections(model: ImportedModel, id: string): Contact[] {
   const cache = selectedCache.get(model) ?? new Map<string, Contact[]>(); selectedCache.set(model, cache);
   const old = cache.get(id); if (old) return old;
   const index = indexFor(model), entry = index.entries.get(id);
-  if (!entry || entry.box.isEmpty()) return [];
+  if (!entry || !entry.connectors.length) return [];
   const near = neighbours(index, entry.box.clone().expandByScalar(REACH), id);
   const matched = allContacts(entry.connectors, near, id, "verified");
   const result = matched.filter(c => {
@@ -223,11 +229,15 @@ export function activeConnections(model: ImportedModel, id: string): Contact[] {
     return !occupied(index, target, c.targetId, id, source);
   });
   const instance = entry.instance;
-  if (instance && result.length && obstructed(model, id, instance.matrix, result, entry.connectors, near)) result.length = 0;
+  // A missing source mesh cannot prove body clearance. The connector pairs
+  // still establish a real connection; run the additional obstruction check
+  // only when the moving part has usable source bounds.
+  if (instance && result.length && stackingBounds(model).has(id) &&
+    obstructed(model, id, instance.matrix, result, entry.connectors, near)) result.length = 0;
   cache.set(id, result); return result;
 }
 export function hasUsableConnections(model: ImportedModel, id: string): boolean {
-  return !!indexFor(model).entries.get(id)?.connectors.length && stackingBounds(model).has(id);
+  return !!indexFor(model).entries.get(id)?.connectors.length;
 }
 
 /** Nearby compatible contacts are display-only suggestions; they never move
@@ -291,9 +301,18 @@ export function snapConnection(model: ImportedModel, id: string, desired: Positi
   const desiredMatrix = [...instance.matrix] as Affine;
   desiredMatrix[3] = desired.x * 20; desiredMatrix[7] = -desired.y * 20; desiredMatrix[11] = desired.z * 20;
   const local = describeConnections(instance.reference, model).connectors;
-  let floor: number;
-  try { floor = Math.min(boundsIndex(model).floor, localPartBounds(model, instance.reference).clone().applyMatrix4(worldMatrix(desiredMatrix)).min.y); }
-  catch { return null; } // Import diagnostics own missing/invalid source geometry.
+  let floor = -Infinity, hasMovingGeometry = false;
+  try {
+    const bounds = localPartBounds(model, instance.reference);
+    if (!bounds.isEmpty()) {
+      hasMovingGeometry = true;
+      floor = Math.min(boundsIndex(model).floor, bounds.clone().applyMatrix4(worldMatrix(desiredMatrix)).min.y);
+    }
+  } catch {
+    // LDraw connection evidence remains useful when a project has not loaded
+    // the display mesh. In that case we magnetically align connectors and
+    // skip only the body-level obstruction test that requires triangles.
+  }
   const moving = local.map(c => transformConnector(c, desiredMatrix)).filter((c): c is Connector => !!c);
   const shift = new Vector3(desiredMatrix[3] - instance.matrix[3], desiredMatrix[7] - instance.matrix[7], desiredMatrix[11] - instance.matrix[11]);
   const query = original.box.clone().translate(shift).expandByScalar(REACH);
@@ -369,7 +388,7 @@ export function snapConnection(model: ImportedModel, id: string, desired: Positi
           const target = near.find(e => e.id === c.targetId)!.connectors.find(v => v.id === c.targetConnectorId)!;
           const source = transformed.find(v => v.id === c.movingConnectorId)!;
           return occupied(index, target, c.targetId, id, source);
-        }) || obstructed(model, id, matrix, contacts, transformed, near, floor)) continue;
+        }) || hasMovingGeometry && obstructed(model, id, matrix, contacts, transformed, near, floor)) continue;
         const cost = horizontal + Math.abs(matrix[7] + raised.y * 20) * 0.05 +
           (1 - Math.abs(aa.y.dot(bb.y))) * 0.5 - contacts.length * 0.002;
         if (cost < score) { score = cost; best = { matrix, contacts, status: "candidate" }; }

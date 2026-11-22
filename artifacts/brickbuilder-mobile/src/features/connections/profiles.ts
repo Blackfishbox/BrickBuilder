@@ -38,9 +38,11 @@ function capped(c: Connector, end: "A" | "B"): boolean {
 /** Validate the actual overlapping cross-sections, not just matching radii.
  * Coordinates are in B's local Y; offset is A's origin in that frame.
  */
-export function profileOverlap(a: Connector, b: Connector, offset: number, direction: number, rollDot = 1): boolean {
+export function profileOverlap(
+  a: Connector, b: Connector, offset: number, direction: number, rollDot = 1, positionTolerance = EPS,
+): boolean {
   if (!potentialPair(a, b)) return false;
-  if (a.family === "generic") return Math.abs(offset) < EPS;
+  if (a.family === "generic") return Math.abs(offset) < positionTolerance;
   const ai = intervals(a).map(s => ({ ...s, lo: Math.min(s.lo * direction, s.hi * direction) + offset,
     hi: Math.max(s.lo * direction, s.hi * direction) + offset }));
   const bi = intervals(b);
@@ -76,14 +78,14 @@ export function profileOverlap(a: Connector, b: Connector, offset: number, direc
   const clip = a.family === "clip" || b.family === "clip";
   if (!clip && !a.slide && !b.slide && direction > 0) {
     const male = a.gender === "M" ? a : b, female = a.gender === "F" ? a : b;
-    if (capped(male, "A") && capped(female, "B") && Math.abs(ahi - bhi) > EPS) return false;
+    if (capped(male, "A") && capped(female, "B") && Math.abs(ahi - bhi) > positionTolerance) return false;
   }
   if (!clip) {
     // A = positive-Y (bottom) end, B = negative-Y (top) end. A cap forbids the
     // counterpart's solid profile from continuing through that end.
-    if (alo < blo - EPS && capped(b, "B") || ahi > bhi + EPS && capped(b, "A")) return false;
+    if (alo < blo - positionTolerance && capped(b, "B") || ahi > bhi + positionTolerance && capped(b, "A")) return false;
     const aNeg = direction > 0 ? "B" : "A", aPos = direction > 0 ? "A" : "B";
-    if (blo < alo - EPS && capped(a, aNeg) || bhi > ahi + EPS && capped(a, aPos)) return false;
+    if (blo < alo - positionTolerance && capped(a, aNeg) || bhi > ahi + positionTolerance && capped(a, aPos)) return false;
   }
   return true;
 }
