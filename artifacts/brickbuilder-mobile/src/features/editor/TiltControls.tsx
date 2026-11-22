@@ -135,7 +135,7 @@ export default function TiltControls({
   return (
     <div className="tilt-controls" data-open={isOpen} data-testid="tilt-controls-menu"
     >
-      <button type="button" className="tilt-controls-toggle" aria-label={t("tilt.open")} title={t("tilt.title")}
+      <button type="button" className={`tilt-controls-toggle${isOpen ? " is-open" : ""}`} aria-label={t("tilt.open")} title={t("tilt.title")}
         aria-expanded={isOpen} aria-controls={`tilt-panel-${controlId}`} data-testid="button-tilt-controls"
         onClick={() => setMenuOpen(!isOpen)}>
         <Rotate3d size={17} aria-hidden="true" />

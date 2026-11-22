@@ -115,6 +115,24 @@ function App() {
   useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { setAdditionalRotationIds([]); setRotationTargetQuery(""); }, [editor.selectedId, editor.document.id]);
   useEffect(() => { applyColorTheme(theme); }, [theme]);
+  useEffect(() => {
+    if (!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen) return;
+    const closeMenusOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const target = event.target;
+      if (finePositionOpen && !target.closest(".fine-position-toggle, .fine-position-panel")) {
+        setFinePositionOpen(false);
+      }
+      if (groupSelectionOpen && !target.closest(".rotation-selection-toggle, .rotation-selection-panel")) {
+        setGroupSelectionOpen(false);
+      }
+      if (tiltControlsOpen && !target.closest(".tilt-controls-toggle, .tilt-panel")) {
+        setTiltControlsOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeMenusOutside, true);
+    return () => document.removeEventListener("pointerdown", closeMenusOutside, true);
+  }, [finePositionOpen, groupSelectionOpen, tiltControlsOpen]);
   const availableRotationTargets = [
     ...editor.document.bricks.map((brick, index) => ({
       id: brick.id, label: `#${index + 1} · ${t(brick.type === "brick-2x4" ? "brick.classic" :
@@ -132,7 +150,7 @@ function App() {
     <div key={`rotation-selection-${editor.selectedId ?? "none"}-${editor.toolMode}`}
       className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}
       data-open={groupSelectionOpen} data-testid={mobile ? "group-selection-menu" : undefined}>
-      <button type="button" className="rotation-selection-toggle" aria-expanded={groupSelectionOpen}
+      <button type="button" className={`rotation-selection-toggle${groupSelectionOpen ? " is-open" : ""}`} aria-expanded={groupSelectionOpen}
         aria-controls={`rotation-selection-panel-${mobile ? "mobile" : "desktop"}`}
         aria-label={t("group.open")} title={t("group.title")} data-testid="button-group-selection"
         onClick={() => setGroupSelectionOpen(value => !value)}>
@@ -474,7 +492,8 @@ function App() {
               <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? t("editor.stone")}</span>
               <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")} title={t("editor.placeHigher")}>↑</button>
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")} title={t("editor.placeLower")}>↓</button>
-              <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} portalOnMobile />
+              <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected}
+                onOpenChange={setFinePositionOpen} open={finePositionOpen} portalOnMobile />
               {rotationSelection(true)}
               <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={tiltXControlValue}
                 tiltZ={tiltZControlValue}
@@ -549,7 +568,8 @@ function App() {
                   onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                   open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
                   anchors={availableRotationAnchors} rotationPivot={rotationPivot} onPivotChange={setRotationPivot} />
-                <FinePositionControls key={`desktop-fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} />
+                <FinePositionControls key={`desktop-fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected}
+                  onOpenChange={setFinePositionOpen} open={finePositionOpen} />
               </>
             ) : (
               <div className="selection-empty" data-testid="status-no-selection">

@@ -700,6 +700,7 @@ export function BuilderCanvas({
     null,
   );
   const previousPartTapRef = useRef<{ id: string; x: number; y: number; at: number } | null>(null);
+  const previousEmptyTapRef = useRef<{ x: number; y: number; at: number; projectId?: string } | null>(null);
   const lastRotationOpenRef = useRef<{ id: string; at: number } | null>(null);
   const pendingTapActionRef = useRef<{ timer: number; projectId?: string; action: () => void } | null>(null);
   const cameraStateRef = useRef({
@@ -1815,6 +1816,7 @@ export function BuilderCanvas({
       rollback();
       clickRef.current = null;
       previousPartTapRef.current = null;
+      previousEmptyTapRef.current = null;
       flushPendingTap();
     };
 
@@ -1973,10 +1975,32 @@ export function BuilderCanvas({
       const click = clickRef.current;
       const stationaryTap = pointersRef.current.size === 1 && !cameraOnlyRef.current &&
         !!click && !click.moved && performance.now() - click.startedAt < VIEW_TAP_MAX_DURATION_MS;
+      const physicalTapHit = stationaryTap ? findBrick(point) : null;
       const tapHit = stationaryTap && (current.toolMode !== "view" || autoSelectOnTapRef.current)
-        ? findBrick(point) : null;
+        ? physicalTapHit : null;
       let suppressTapAction = false;
-      if (tapHit && stationaryTap) {
+      if (current.toolMode === "view" && stationaryTap && !physicalTapHit) {
+        const now = performance.now();
+        const previousTap = previousEmptyTapRef.current;
+        const sameProject = !!previousTap && previousTap.projectId === current.projectId;
+        const isDoubleTap = sameProject && now - previousTap.at <= PART_DOUBLE_TAP_INTERVAL_MS &&
+          Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 48;
+        previousPartTapRef.current = null;
+        if (isDoubleTap) {
+          previousEmptyTapRef.current = null;
+          const state = cameraStateRef.current;
+          updateCamera(state.theta, state.phi, state.distance / 2);
+          current.onViewCameraChange?.({
+            theta: state.theta, phi: state.phi, distance: state.distance, target: state.target.toArray(),
+            referenceDistance: cameraReferenceRef.current.distance,
+            referenceTarget: cameraReferenceRef.current.target.toArray(),
+          });
+          suppressTapAction = true;
+        } else {
+          previousEmptyTapRef.current = { x: point.x, y: point.y, at: now, projectId: current.projectId };
+        }
+      } else if (tapHit && stationaryTap) {
+        previousEmptyTapRef.current = null;
         const previousTap = previousPartTapRef.current;
         const now = performance.now();
         const isDoubleTap = previousTap?.id === tapHit.id &&
@@ -2021,9 +2045,12 @@ export function BuilderCanvas({
             }
           }
         }
-      } else if (previousPartTapRef.current) {
-        previousPartTapRef.current = null;
-        flushPendingTap();
+      } else {
+        previousEmptyTapRef.current = null;
+        if (previousPartTapRef.current) {
+          previousPartTapRef.current = null;
+          flushPendingTap();
+        }
       }
       if (current.onViewCameraChange && cameraInteractionStartRef.current && (click?.moved || cameraOnlyRef.current)) {
         const state = cameraStateRef.current, reference = cameraReferenceRef.current;
@@ -2117,6 +2144,7 @@ export function BuilderCanvas({
       cameraInteractionStartRef.current = null;
       rollback();
       previousPartTapRef.current = null;
+      previousEmptyTapRef.current = null;
       if (pendingTapActionRef.current) {
         window.clearTimeout(pendingTapActionRef.current.timer);
         pendingTapActionRef.current = null;
@@ -2137,6 +2165,7 @@ export function BuilderCanvas({
       gestureStartRef.current = null; gesturePairRef.current = null; cameraOnlyRef.current = false;
       cameraInteractionStartRef.current = null;
       previousPartTapRef.current = null;
+      previousEmptyTapRef.current = null;
       if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
       pendingTapActionRef.current = null;
     };

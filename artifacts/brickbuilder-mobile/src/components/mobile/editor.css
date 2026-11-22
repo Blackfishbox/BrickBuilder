@@ -190,6 +190,9 @@
   border-radius: 9px; background: #f8f7ef; color: #536c5f; cursor: pointer;
 }
 .rotation-selection-toggle:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
+.rotation-selection-toggle.is-open {
+  border-color: #d75b3f; box-shadow: inset 0 0 0 1px #d75b3f, 0 0 0 2px rgba(215,91,63,.16);
+}
 .rotation-selection-panel {
   display: flex; flex-direction: column; gap: 8px; margin-top: 7px; padding: 10px;
   border: 1px solid #dcded3; border-radius: 10px; background: #faf9f3;
@@ -352,6 +355,9 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
 .dark .rotation-selection-panel p { color: #aab8ae; }
 .dark .rotation-selection-search input { border-color: #46564b; background: #1f2b24; color: #e3ece5; }
 .dark .mobile-selection-actions .rotation-selection-mobile > .rotation-selection-toggle { background: #26362e; color: #d5e4da; }
+.dark .rotation-selection-toggle.is-open {
+  border-color: #f08a70; color: #ffab94; box-shadow: inset 0 0 0 1px #f08a70, 0 0 0 2px rgba(240,138,112,.2);
+}
 
 @media (orientation: landscape) and (max-height: 560px) {
   .editor-shell { grid-template-rows: 50px minmax(0,1fr); }

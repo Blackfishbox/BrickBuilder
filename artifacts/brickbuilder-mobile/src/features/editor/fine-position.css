@@ -1,8 +1,9 @@
 .fine-position { position: relative; color: #365346; font-size: 12px; }
 .fine-position-toggle {
   display: grid; place-items: center; width: 40px; min-height: 40px; padding: 0;
-  box-sizing: border-box; border: 0; border-radius: 8px; background: #f0eee4; color: #5a7263; cursor: pointer;
+  box-sizing: border-box; border: 1px solid transparent; border-radius: 8px; background: #f0eee4; color: #5a7263; cursor: pointer;
 }
+.fine-position-toggle.is-open { border: 2px solid #d75b3f; color: #b84e37; box-shadow: 0 0 0 2px rgba(215,91,63,.16); }
 .fine-position-toggle:focus-visible, .fine-position button:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
 .fine-position-panel { display: grid; gap: 8px; padding: 10px; border: 1px solid #e1ddd0; border-radius: 10px; background: #faf8f0; }
 .fine-position-panel[hidden] { display: none; }
@@ -26,6 +27,7 @@
   .mobile-selection-actions .fine-position-grid button { width: 100%; height: auto; min-height: 44px; }
 }
 .dark .fine-position-toggle { background: #26362e; color: #d5e4da; }
+.dark .fine-position-toggle.is-open { border-color: #f08a70; color: #ffab94; box-shadow: 0 0 0 2px rgba(240,138,112,.2); }
 
 @media (orientation: landscape) and (max-height: 560px) {
   .mobile-selection-actions .fine-position-panel { bottom: calc(56px + env(safe-area-inset-bottom)); }

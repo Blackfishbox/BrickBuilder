@@ -23,28 +23,30 @@ const directions: { label: MessageId; axis: keyof Position3; sign: number; Icon:
   { label: "fine.up", axis: "y", sign: 1, Icon: ArrowUpFromLine },
   { label: "fine.down", axis: "y", sign: -1, Icon: ArrowDownFromLine },
 ];
-export default function FinePositionControls({ onNudge, onOpenChange, portalOnMobile = false }: {
+export default function FinePositionControls({ onNudge, onOpenChange, portalOnMobile = false, open }: {
   onNudge(delta: Position3): void;
   onOpenChange?(open: boolean): void;
   portalOnMobile?: boolean;
+  open?: boolean;
 }) {
   const { t } = useI18n();
   const panelId = `fine-position-panel-${useId().replace(/:/g, "")}`;
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
   const toggle = () => {
-    const next = !open;
-    setOpen(next);
+    const next = !isOpen;
+    if (open === undefined) setInternalOpen(next);
     onOpenChange?.(next);
   };
-  return <div className="fine-position" data-open={open} data-testid="fine-position-menu">
-    <button type="button" className="fine-position-toggle" aria-expanded={open}
+  return <div className="fine-position" data-open={isOpen} data-testid="fine-position-menu">
+    <button type="button" className={`fine-position-toggle${isOpen ? " is-open" : ""}`} aria-expanded={isOpen}
       aria-controls={panelId} aria-label={t("fine.open")} title={t("fine.title")}
       data-testid="button-fine-adjustment" onClick={toggle}>
       <Move3d size={18} aria-hidden="true" />
     </button>
     <DraggablePanel className="fine-position-panel" panelId={panelId} title={t("fine.axes")}
       headingClassName="fine-position-heading" handleTestId="button-move-fine-panel"
-      portalOnMobile={portalOnMobile} hidden={!open}>
+      portalOnMobile={portalOnMobile} hidden={!isOpen}>
       <small>{t("fine.step")}</small>
       <div className="fine-position-grid">
         {directions.map(({ label, axis, sign, Icon }) => <button key={label} type="button"

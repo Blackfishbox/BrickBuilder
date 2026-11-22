@@ -248,6 +248,30 @@ it("hides the canvas status controls for every open mobile selection menu", asyn
   }
 });
 
+it("marks open mobile control menus and closes each one on an outside tap", async () => {
+  const container = await mount("light", true);
+  const menus = [
+    { selector: '[data-testid="group-selection-menu"]', toggle: "button-group-selection" },
+    { selector: '.mobile-selection-actions [data-testid="fine-position-menu"]', toggle: "button-fine-adjustment" },
+    { selector: '.mobile-selection-actions [data-testid="tilt-controls-menu"]', toggle: "button-tilt-controls" },
+  ];
+  const outside = container.querySelector<HTMLElement>('[data-testid="mock-canvas"]')!;
+
+  for (const item of menus) {
+    const menu = container.querySelector<HTMLElement>(item.selector)!;
+    const toggle = menu.querySelector<HTMLButtonElement>(`[data-testid="${item.toggle}"]`)!;
+    await act(async () => toggle.click());
+    expect(menu.dataset.open).toBe("true");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.classList.contains("is-open")).toBe(true);
+
+    await act(async () => outside.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    expect(menu.dataset.open).toBe("false");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.classList.contains("is-open")).toBe(false);
+  }
+});
+
 it("keeps all three mobile panels open on a grip tap and moves them only after dragging", async () => {
   const container = await mount("light", true);
   const menus = [

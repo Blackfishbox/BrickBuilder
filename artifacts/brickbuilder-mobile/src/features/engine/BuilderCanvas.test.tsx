@@ -1648,6 +1648,21 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(props.onMove).not.toHaveBeenCalled();
   });
+  it("zooms in by two on a double tap on empty space in view mode", async () => {
+    await mount("view");
+    flushFrame();
+    const target = new Vector3(...observed.cameraPose!.target);
+    const initialDistance = observed.camera!.position.distanceTo(target);
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    flushFrame();
+
+    const zoomedDistance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
+    expect(zoomedDistance).toBeCloseTo(initialDistance / 2, 2);
+  });
   it("opens rotation controls on a deliberate double tap without placing the part", async () => {
     const { props, point, model } = await mount("build");
     pointer("pointerdown", point.x, point.y);
