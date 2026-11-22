@@ -158,13 +158,12 @@ it("switches to selection mode and selects a tapped part from the view canvas", 
   expect(editor.select).toHaveBeenCalledWith("imported-part-17");
 });
 
-it("keeps the thicker-edge view off by default and remembers its toggle", async () => {
+it("keeps the thicker-edge control hidden without clearing its saved preference", async () => {
+  localStorage.setItem("brickbuilder-thick-edges", "true");
   const container = await mount("light");
   const toggle = container.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')!;
-  expect(toggle.getAttribute("aria-pressed")).toBe("false");
-  expect(canvasProps.current.thickEdges).toBe(false);
-
-  act(() => toggle.click());
+  expect(toggle).not.toBeNull();
+  expect(toggle.hidden).toBe(true);
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
   expect(canvasProps.current.thickEdges).toBe(true);
   expect(localStorage.getItem("brickbuilder-thick-edges")).toBe("true");
@@ -174,7 +173,7 @@ it("keeps the thicker-edge view off by default and remembers its toggle", async 
   host?.remove();
   host = undefined;
   const reopened = await mount("dark");
-  expect(reopened.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')?.getAttribute("aria-pressed")).toBe("true");
+  expect(reopened.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')?.hidden).toBe(true);
   expect(canvasProps.current.thickEdges).toBe(true);
 });
 

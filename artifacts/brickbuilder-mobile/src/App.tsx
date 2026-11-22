@@ -424,7 +424,8 @@ function App() {
               <span className="context-divider" />
               <span className="brick-count" data-testid="text-brick-count">{t(editor.brickCount === 1 ? "canvas.partCount.one" : "canvas.partCount", { count: editor.brickCount })}</span>
             </div>
-            <button type="button" className="thick-edges-toggle"
+            {/* Keep the control and implementation available for later restoration. */}
+            <button type="button" className="thick-edges-toggle" hidden
               aria-pressed={thickEdges}
               aria-label={t("canvas.thickEdges")}
               data-testid="button-thick-edges"
