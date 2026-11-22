@@ -33,7 +33,8 @@ vi.mock("@/features/catalog/client", () => ({
 vi.mock("@/features/engine/BuilderCanvas", () => ({
   default: (props: { showConstructionControls?: boolean; [key: string]: any }) => {
     canvasProps.current = props;
-    return <div data-testid="mock-canvas" data-construction-controls={String(props.showConstructionControls)} />;
+    return <div data-testid="mock-canvas" data-construction-controls={String(props.showConstructionControls)}
+      onPointerDown={() => props.onSelect?.(null)} />;
   },
 }));
 vi.mock("@/features/parts/PartsLibrary", () => ({ default: () => <div>Teilekatalog</div> }));
@@ -270,6 +271,24 @@ it("marks open mobile control menus and closes each one on an outside tap", asyn
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.classList.contains("is-open")).toBe(false);
   }
+});
+
+it("preserves part selection on the tap that closes a menu and allows selection on the next tap", async () => {
+  const container = await mount("light", true);
+  const menu = container.querySelector<HTMLElement>('[data-testid="group-selection-menu"]')!;
+  const toggle = menu.querySelector<HTMLButtonElement>('[data-testid="button-group-selection"]')!;
+  const canvas = container.querySelector<HTMLElement>('[data-testid="mock-canvas"]')!;
+  await act(async () => toggle.click());
+  editor.select.mockClear();
+
+  await act(async () => canvas.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+
+  expect(menu.dataset.open).toBe("false");
+  expect(editor.select).not.toHaveBeenCalled();
+
+  await act(async () => canvas.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(editor.select).toHaveBeenCalledOnce();
+  expect(editor.select).toHaveBeenCalledWith(null);
 });
 
 it("keeps all three mobile panels open on a grip tap and moves them only after dragging", async () => {

@@ -120,15 +120,22 @@ function App() {
     const closeMenusOutside = (event: PointerEvent) => {
       if (!(event.target instanceof Element)) return;
       const target = event.target;
+      let dismissedMenu = false;
       if (finePositionOpen && !target.closest(".fine-position-toggle, .fine-position-panel")) {
         setFinePositionOpen(false);
+        dismissedMenu = true;
       }
       if (groupSelectionOpen && !target.closest(".rotation-selection-toggle, .rotation-selection-panel")) {
         setGroupSelectionOpen(false);
+        dismissedMenu = true;
       }
       if (tiltControlsOpen && !target.closest(".tilt-controls-toggle, .tilt-panel")) {
         setTiltControlsOpen(false);
+        dismissedMenu = true;
       }
+      // The first outside tap only dismisses the panel. Do not let the same
+      // pointerdown reach the 3D canvas and change its selected part.
+      if (dismissedMenu) event.stopPropagation();
     };
     document.addEventListener("pointerdown", closeMenusOutside, true);
     return () => document.removeEventListener("pointerdown", closeMenusOutside, true);
