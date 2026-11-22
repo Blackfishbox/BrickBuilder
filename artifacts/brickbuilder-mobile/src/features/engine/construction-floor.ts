@@ -4,6 +4,7 @@ import { brickBounds } from "../editor/brick-transform";
 
 export const MAX_STUD_GRID_LINES = 201;
 export const CONSTRUCTION_FLOOR_MARGIN = 3;
+export const MIN_CONSTRUCTION_FLOOR_SIZE = 32;
 const EMPTY_HALF_EXTENT = 17;
 
 export interface ConstructionArea {
@@ -22,7 +23,7 @@ export function brickConstructionBounds(brick: Brick): Box3 {
   return brickBounds(brick);
 }
 
-/** Keep the empty workspace familiar; grow populated workspaces in whole studs. */
+/** Keep the empty workspace familiar and never shrink below a 32-stud square. */
 export function constructionArea(bounds: Box3): ConstructionArea {
   let minX: number, maxX: number, minZ: number, maxZ: number;
   if (bounds.isEmpty()) {
@@ -35,6 +36,16 @@ export function constructionArea(bounds: Box3): ConstructionArea {
     maxX = Math.ceil(bounds.max.x + CONSTRUCTION_FLOOR_MARGIN);
     minZ = Math.floor(bounds.min.z - CONSTRUCTION_FLOOR_MARGIN);
     maxZ = Math.ceil(bounds.max.z + CONSTRUCTION_FLOOR_MARGIN);
+  }
+  if (maxX - minX < MIN_CONSTRUCTION_FLOOR_SIZE) {
+    const center = (minX + maxX) / 2;
+    minX = Math.floor(center - MIN_CONSTRUCTION_FLOOR_SIZE / 2);
+    maxX = minX + MIN_CONSTRUCTION_FLOOR_SIZE;
+  }
+  if (maxZ - minZ < MIN_CONSTRUCTION_FLOOR_SIZE) {
+    const center = (minZ + maxZ) / 2;
+    minZ = Math.floor(center - MIN_CONSTRUCTION_FLOOR_SIZE / 2);
+    maxZ = minZ + MIN_CONSTRUCTION_FLOOR_SIZE;
   }
   const width = maxX - minX;
   const depth = maxZ - minZ;

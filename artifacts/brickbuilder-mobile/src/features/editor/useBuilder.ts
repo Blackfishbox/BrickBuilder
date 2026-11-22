@@ -31,7 +31,10 @@ import { constructionTransform } from "../connections/engine";
 import type { Affine, ImportedModel } from "../formats/types";
 import { groundedTransform, modelGround } from "./positioning";
 import type { Inventory, InventoryChoice } from "../inventory/types";
-import { MAX_INVENTORY_SPREAD_UNITS, replaceInventory, requireAvailable, type InventorySpreadRequest, type InventorySpreadResult } from "../inventory/accounting";
+import {
+  allocatedCounts, inventorySpreadCandidates, MAX_INVENTORY_SPREAD_UNITS,
+  replaceInventory, requireAvailable, type InventorySpreadRequest, type InventorySpreadResult,
+} from "../inventory/accounting";
 import {
   listProjectSummaries,
   type ProjectSummary,
@@ -51,6 +54,14 @@ export interface ModelAnalysis {
 
 interface AnalysisResponse extends ModelAnalysis {
   requestId: number;
+}
+
+interface LastPlacedPart {
+  prepared: PreparedPart;
+  inventory?: InventoryChoice;
+  color: string;
+  colorCode?: string;
+  projectId: string;
 }
 
 export function useBuilder() {
@@ -76,6 +87,9 @@ export function useBuilder() {
   const [preparedPart, setPreparedPart] = useState<PreparedPart | null>(null);
   const [selectedInventory, setSelectedInventory] = useState<InventoryChoice | null>(null);
   const placementRef = useRef<{ prepared: PreparedPart; inventory?: InventoryChoice } | null>(null);
+  const lastPlacedPartRef = useRef<LastPlacedPart | null>(null);
+  const resumeBuildRef = useRef<(() => boolean) | null>(null);
+  const resumeBuildRequestRef = useRef(0);
   const [partLoading, setPartLoading] = useState(false);
   const [partError, setPartError] = useState<string | null>(null);
   const partControllerRef = useRef<AbortController | null>(null);
@@ -86,6 +100,8 @@ export function useBuilder() {
   }, []);
   const [toolMode, setToolModeState] = useState<ToolMode>("view");
   const setToolMode = useCallback((mode: ToolMode) => {
+    if (mode === "build" && resumeBuildRef.current?.()) return;
+    resumeBuildRequestRef.current++;
     if (mode === "view") setSelectedId(null);
     if (mode !== "build") {
       partControllerRef.current?.abort();
@@ -129,6 +145,8 @@ export function useBuilder() {
 
   const replaceDocument = useCallback((document: BuilderDocument, alreadySaved = false) => {
     const opened = normalizeDocument(document);
+    resumeBuildRequestRef.current++;
+    lastPlacedPartRef.current = null;
     partControllerRef.current?.abort();
     spreadControllerRef.current?.abort();
     rotationEditRef.current = null;
@@ -280,6 +298,7 @@ export function useBuilder() {
   );
 
   const selectLibraryPart = useCallback(async (part: LibraryPart) => {
+    resumeBuildRequestRef.current++;
     partControllerRef.current?.abort();
     placementRef.current = null; setPreparedPart(null); setSelectedInventory(null);
     const controller = new AbortController();
@@ -301,7 +320,11 @@ export function useBuilder() {
       if (partControllerRef.current === controller && !controller.signal.aborted) setPartLoading(false);
     }
   }, []);
-  const selectInventoryPart = useCallback(async (choice: InventoryChoice) => {
+  const selectInventoryPart = useCallback(async (
+    choice: InventoryChoice,
+    colorOverride?: { hex: string; code?: string },
+  ) => {
+    resumeBuildRequestRef.current++;
     partControllerRef.current?.abort();
     const controller = new AbortController();
     partControllerRef.current = controller;
@@ -329,7 +352,8 @@ export function useBuilder() {
       if (!color) throw new Error(t("inventory.colorUnavailable", { color: row.colorId }));
       placementRef.current = { prepared, inventory: { ...choice } };
       setPreparedPart(prepared); setSelectedInventory({ ...choice });
-      setSelectedColorValue(color.hex); setSelectedColorCode(choice.colorCode);
+      setSelectedColorValue(colorOverride?.hex ?? color.hex);
+      setSelectedColorCode(colorOverride?.code ?? choice.colorCode);
       setSelectedId(null); setToolMode("build");
       return true;
     } catch (error) {
@@ -342,13 +366,94 @@ export function useBuilder() {
     }
   }, [t]);
   const replacePartsInventory = useCallback((inventory: Inventory, expectedProjectId: string) => {
+    resumeBuildRequestRef.current++;
     updateDocument(document => {
       if (document.id !== expectedProjectId) throw new Error(t("project.changed"));
       return replaceInventory(document, inventory);
     });
+    lastPlacedPartRef.current = null;
     partControllerRef.current?.abort();
     placementRef.current = null; setPreparedPart(null); setSelectedInventory(null); setPartLoading(false);
   }, [t, updateDocument]);
+  resumeBuildRef.current = () => {
+    const last = lastPlacedPartRef.current;
+    if (!last || placementRef.current) return false;
+    if (documentRef.current.id !== last.projectId) {
+      lastPlacedPartRef.current = null;
+      return false;
+    }
+
+    if (!last.inventory) {
+      placementRef.current = { prepared: last.prepared };
+      setPreparedPart(last.prepared);
+      setSelectedInventory(null);
+      setSelectedColorValue(last.color);
+      setSelectedColorCode(last.colorCode);
+      setSelectedId(null);
+      setPartError(null);
+      setToolModeState("build");
+      return true;
+    }
+
+    const document = documentRef.current;
+    const inventory = document.inventory;
+    if (!inventory || inventory.id !== last.inventory.listId) {
+      lastPlacedPartRef.current = null;
+      return false;
+    }
+    const row = inventory.rows.find(value => value.id === last.inventory!.rowId);
+    const used = allocatedCounts(document).get(last.inventory.rowId) ?? 0;
+    if (row?.itemType === "P" && used < row.quantity) {
+      void selectInventoryPart(last.inventory, { hex: last.color, code: last.colorCode });
+      return true;
+    }
+
+    const request = ++resumeBuildRequestRef.current;
+    const controller = new AbortController();
+    partControllerRef.current?.abort();
+    partControllerRef.current = controller;
+    setPartLoading(true);
+    setPartError(null);
+    const projectId = document.id;
+    void (async () => {
+      try {
+        const resolved = await resolveStoredInventory(inventory);
+        const current = documentRef.current;
+        if (
+          partControllerRef.current !== controller ||
+          controller.signal.aborted ||
+          request !== resumeBuildRequestRef.current ||
+          current.id !== projectId ||
+          current.inventory?.id !== inventory.id
+        ) return;
+
+        const candidates = inventorySpreadCandidates(current, resolved.resolutions, {});
+        const rows = inventory.rows;
+        const previousIndex = rows.findIndex(value => value.id === last.inventory!.rowId);
+        const mapped = candidates.filter(candidate => candidate.choice);
+        const next = mapped.find(candidate =>
+          rows.findIndex(value => value.id === candidate.rowId) > previousIndex,
+        ) ?? mapped[0];
+        if (!next?.choice) {
+          setPartError(candidates.length ? t("inventory.noMappedAvailable") : t("inventory.noAvailableParts"));
+          partControllerRef.current = null;
+          setPartLoading(false);
+          return;
+        }
+
+        controller.abort();
+        partControllerRef.current = null;
+        await selectInventoryPart(next.choice);
+      } catch (error) {
+        if (partControllerRef.current === controller && !controller.signal.aborted) {
+          setPartError(error instanceof Error ? error.message : String(error));
+          partControllerRef.current = null;
+          setPartLoading(false);
+        }
+      }
+    })();
+    return true;
+  };
   const cancelPartPreparation = useCallback(() => {
     partControllerRef.current?.abort();
     setPartLoading(false);
@@ -484,6 +589,13 @@ export function useBuilder() {
            next = moveImported(next, id, { x: matrix[3] / 20, y: -matrix[7] / 20, z: matrix[11] / 20 }, false, matrix);
           return next;
         });
+        lastPlacedPartRef.current = {
+          prepared: selection.prepared,
+          inventory: selection.inventory ? { ...selection.inventory } : undefined,
+          color: selectedColor,
+          colorCode: selectedColorCode,
+          projectId: documentRef.current.id,
+        };
         setSelectedId(id);
         setPartError(null);
         setToolMode("select");

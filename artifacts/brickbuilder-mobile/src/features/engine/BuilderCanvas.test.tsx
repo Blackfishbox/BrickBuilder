@@ -1563,7 +1563,7 @@ describe("frame-coalesced drag transactions", () => {
         return { x: (projected.x + 1) * 300, y: (1 - projected.y) * 300 };
       };
       const start = screenPoint(0, 1.11, 0);
-      const end = screenPoint(-20, original.y, 0);
+      const end = screenPoint(-50, original.y, 0);
       const pointOnGround = (point: { x: number; y: number }) => {
         const raycaster = new Raycaster();
         raycaster.setFromCamera(new Vector2((point.x - 300) / 300, (300 - point.y) / 300), observed.camera!);

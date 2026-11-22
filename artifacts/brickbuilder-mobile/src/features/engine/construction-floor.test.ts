@@ -1,6 +1,6 @@
 import { Box3, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import { brickConstructionBounds, CONSTRUCTION_FLOOR_MARGIN, constructionArea, createStudGridGeometry, MAX_STUD_GRID_LINES } from "./construction-floor";
+import { brickConstructionBounds, CONSTRUCTION_FLOOR_MARGIN, constructionArea, createStudGridGeometry, MAX_STUD_GRID_LINES, MIN_CONSTRUCTION_FLOOR_SIZE } from "./construction-floor";
 
 describe("dynamic construction floor", () => {
   it("keeps the familiar empty floor and adds a margin around negative coordinates", () => {
@@ -14,6 +14,16 @@ describe("dynamic construction floor", () => {
     expect(area.minZ).toBeLessThanOrEqual(bounds.min.z - CONSTRUCTION_FLOOR_MARGIN);
     expect(area.maxZ).toBeGreaterThanOrEqual(bounds.max.z + CONSTRUCTION_FLOOR_MARGIN);
     expect(area.centerX).toBeLessThan(0);
+  });
+
+  it("keeps a minimum 32 by 32 stud floor even for tiny models", () => {
+    const area = constructionArea(new Box3(new Vector3(4.2, 0, -1.1), new Vector3(7.8, 3, 2.3)));
+    expect(area.width).toBeGreaterThanOrEqual(MIN_CONSTRUCTION_FLOOR_SIZE);
+    expect(area.depth).toBeGreaterThanOrEqual(MIN_CONSTRUCTION_FLOOR_SIZE);
+    expect(area.minX).toBeLessThanOrEqual(4.2 - CONSTRUCTION_FLOOR_MARGIN);
+    expect(area.maxX).toBeGreaterThanOrEqual(7.8 + CONSTRUCTION_FLOOR_MARGIN);
+    expect(area.minZ).toBeLessThanOrEqual(-1.1 - CONSTRUCTION_FLOOR_MARGIN);
+    expect(area.maxZ).toBeGreaterThanOrEqual(2.3 + CONSTRUCTION_FLOOR_MARGIN);
   });
 
   it("covers a far-offset import with a bounded stud-aligned grid", () => {

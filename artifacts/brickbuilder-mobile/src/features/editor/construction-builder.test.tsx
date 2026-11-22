@@ -121,6 +121,92 @@ it("commits inventory snapping once and preserves exact height through manual ed
   expect((await loadProject(editor.document.id))!.imported!.instances.find(instance => instance.id === id)).toEqual(fine);
 });
 
+it("reuses the last placed LDraw part when returning to build mode", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => { root!.render(<Harness />); });
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const resources = Object.fromEntries(["bricks", "plates"].flatMap(group =>
+    JSON.parse(readFileSync(resolve(`public/parts/ldraw-${group}-2026-10-31.json`), "utf8")).files,
+  ).map(file => [file.path, file])) as ImportedModel["resources"];
+  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3022.dat";
+  const model: ImportedModel = { version: 1, format: "ldr", sourceName: "placement.ldr", sourceText,
+    originalBytes: Array.from(new TextEncoder().encode(sourceText)), ...parseLDraw(sourceText), resources, legalDocuments: [] };
+  model.instances.forEach(instance => { instance.part.status = "resolved"; });
+  const prepared: PreparedPart = { bottom: -0.4, part: {
+    id: "plate", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat",
+  }, model };
+  vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
+
+  await act(async () => { await editor.selectLibraryPart(prepared.part); });
+  await act(async () => editor.place({ x: 0, y: 0, z: 0 }));
+  expect(editor.toolMode).toBe("select");
+  expect(editor.selectedId).not.toBeNull();
+  expect(editor.placementPreview).toBeNull();
+
+  act(() => editor.setToolMode("build"));
+  expect(editor.toolMode).toBe("build");
+  expect(editor.selectedId).toBeNull();
+  expect(editor.placementPreview).toBe(prepared);
+  expect(editor.selectedPart).toBe(prepared.part);
+  expect(prepareLibraryPart).toHaveBeenCalledTimes(1);
+});
+
+it("repeats available list stock then automatically selects the next available row", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => { root!.render(<Harness />); });
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+
+  const resources = Object.fromEntries(["bricks", "plates"].flatMap(group =>
+    JSON.parse(readFileSync(resolve(`public/parts/ldraw-${group}-2026-10-31.json`), "utf8")).files,
+  ).map(file => [file.path, file])) as ImportedModel["resources"];
+  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3022.dat";
+  const model: ImportedModel = { version: 1, format: "ldr", sourceName: "placement.ldr", sourceText,
+    originalBytes: Array.from(new TextEncoder().encode(sourceText)), ...parseLDraw(sourceText), resources, legalDocuments: [] };
+  model.instances.forEach(instance => { instance.part.status = "resolved"; });
+  const prepared: PreparedPart = { bottom: -0.4, part: {
+    id: "plate", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat",
+  }, model };
+  vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
+  const inventory = parseInventory("part_id,color_id,quantity\n3022,5,2\n3001,5,1", "self-authored.csv");
+  await act(async () => editor.replacePartsInventory(inventory, editor.document.id));
+  const firstChoice = { listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3022", colorCode: "4" };
+  await act(async () => { await editor.selectInventoryPart(firstChoice); });
+
+  await act(async () => editor.place({ x: 0, y: 0, z: 0 }));
+  expect(editor.toolMode).toBe("select");
+  expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(1);
+
+  await act(async () => {
+    editor.setToolMode("build");
+    await new Promise(resolve => setTimeout(resolve, 20));
+  });
+  expect(editor.selectedInventory?.rowId).toBe(inventory.rows[0].id);
+  expect(editor.placementPreview).toBe(prepared);
+  await act(async () => editor.place({ x: 4, y: 0, z: 0 }));
+  expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(2);
+
+  await act(async () => {
+    editor.setToolMode("build");
+    await new Promise(resolve => setTimeout(resolve, 20));
+  });
+  expect(editor.selectedInventory?.rowId).toBe(inventory.rows[1].id);
+  expect(editor.toolMode).toBe("build");
+  expect(editor.placementPreview).toBe(prepared);
+  expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(2);
+  expect(allocatedCounts(editor.document).get(inventory.rows[1].id) ?? 0).toBe(0);
+});
+
 it("clears pending placement on mode and project changes without changing the document", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
