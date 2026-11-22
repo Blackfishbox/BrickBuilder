@@ -8,4 +8,8 @@ LDraw.org contributors: authors and original per-file license declarations are
 retained in the separately compressed reference graph. Changes: reference-only
 extraction; no source geometry is redistributed in this connection dataset.
 See careadme.txt and calicense4.txt. CC0 files retain their CC0 declaration.
+
+Reviewed connection supplement: 5844.dat by Rene Rechthaler [Blechtaler],
+CC BY 4.0, https://library.ldraw.org/library/unofficial/parts/5844.dat.
+Only hash-guarded connection metadata is added; no source geometry is copied.
 The application source code is separate from these licensed datasets.

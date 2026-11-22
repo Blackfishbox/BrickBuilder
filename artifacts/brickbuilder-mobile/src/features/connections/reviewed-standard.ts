@@ -8,6 +8,21 @@ import type { ImportedModel } from "../formats/types";
  * Full source/attribution and review boundaries are in fixtures/README.md.
  */
 export function reviewedStandardMeta(path: string, model?: ImportedModel): { text: string; sha256: string } | undefined {
+  if (path === "parts/5844.dat" && model) {
+    const file = model.resources[path];
+    // The pinned Shadow Library has no entry for this unofficial part. This
+    // metadata is reviewed against its exact credited LDraw source revision;
+    // changed or Studio-authored replacements deliberately fail closed.
+    if (file?.sha256 !== "fff4b7dfa90dd38fef81efe381be295a7d8442f5c3b181c45b95495e5400b73d" ||
+      file.author !== "Rene Rechthaler [Blechtaler]" || file.license !== "CC-BY-4.0") return;
+    return {
+      text: [
+        "0 !LDCAD SNAP_CYL [gender=F] [caps=one] [secs=S 6 4] [pos=0 56 -60]",
+        "0 !LDCAD SNAP_CYL [gender=F] [caps=one] [secs=S 6 4] [pos=0 56 0]",
+      ].join("\n"),
+      sha256: file.sha256,
+    };
+  }
   if (path !== "parts/3023a.dat" || !model) return;
   const content = model.resources[path]?.content;
   if (content?.replace(/\r\n/g, "\n").trimEnd() !== flatPinPlate.trimEnd()) return;

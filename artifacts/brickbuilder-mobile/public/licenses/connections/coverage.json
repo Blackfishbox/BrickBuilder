@@ -4,17 +4,17 @@
   "sourceRecords": 4285,
   "hierarchyRecords": 37150,
   "expandedPartRecords": 25024,
-  "partsWithParsedConnectors": 19063,
-  "expandedConnectorDescriptions": 346323,
+  "partsWithParsedConnectors": 19067,
+  "expandedConnectorDescriptions": 346340,
   "familyParts": {
     "cylinder": 18477,
-    "clip": 1593,
+    "clip": 1594,
     "generic": 1264,
-    "fingers": 894
+    "fingers": 898
   },
   "uniqueDiagnostics": {
     "transform-policy": 2424,
-    "unsupported-meta": 54,
+    "unsupported-meta": 50,
     "missing-reference": 2
   },
   "meaning": "Parsed connectors are not certified part-pair connections. Geometry must be installed, transforms and profile constraints must match, contacts must be free and obstruction checks must pass.",
@@ -457,12 +457,6 @@
       "line": 8
     },
     {
-      "path": "parts/2348a.dat",
-      "code": "unsupported-meta",
-      "detail": "Error: Unsupported parameters: gender",
-      "line": 9
-    },
-    {
       "path": "parts/4287a.dat",
       "code": "transform-policy",
       "detail": "p/stud2a.dat:11:0",
@@ -575,12 +569,6 @@
       "code": "transform-policy",
       "detail": "parts/s/2546s01.dat:8:0",
       "line": 3
-    },
-    {
-      "path": "parts/2551.dat",
-      "code": "unsupported-meta",
-      "detail": "Error: Unsupported parameters: gender",
-      "line": 12
     },
     {
       "path": "parts/s/2557s01.dat",
@@ -2819,18 +2807,6 @@
       "code": "transform-policy",
       "detail": "parts/s/2739as01.dat:8:0",
       "line": 2
-    },
-    {
-      "path": "parts/45411.dat",
-      "code": "unsupported-meta",
-      "detail": "Error: Unsupported parameters: slide",
-      "line": 11
-    },
-    {
-      "path": "parts/45411.dat",
-      "code": "unsupported-meta",
-      "detail": "Error: Unsupported parameters: slide",
-      "line": 12
     },
     {
       "path": "parts/45695.dat",
@@ -36710,19 +36686,25 @@
       "diagnostics": 0
     },
     "parts/2348.dat": {
-      "connectors": 0,
-      "families": [],
-      "diagnostics": 1
+      "connectors": 1,
+      "families": [
+        "fingers"
+      ],
+      "diagnostics": 0
     },
     "parts/2348a.dat": {
-      "connectors": 0,
-      "families": [],
-      "diagnostics": 1
+      "connectors": 1,
+      "families": [
+        "fingers"
+      ],
+      "diagnostics": 0
     },
     "parts/2348b.dat": {
-      "connectors": 0,
-      "families": [],
-      "diagnostics": 1
+      "connectors": 1,
+      "families": [
+        "fingers"
+      ],
+      "diagnostics": 0
     },
     "parts/2349.dat": {
       "connectors": 11,
@@ -42533,11 +42515,12 @@
       "diagnostics": 4
     },
     "parts/2551.dat": {
-      "connectors": 76,
+      "connectors": 77,
       "families": [
+        "clip",
         "cylinder"
       ],
-      "diagnostics": 1
+      "diagnostics": 0
     },
     "parts/25516.dat": {
       "connectors": 1,
@@ -101996,11 +101979,11 @@
       "diagnostics": 0
     },
     "parts/45411.dat": {
-      "connectors": 73,
+      "connectors": 79,
       "families": [
         "cylinder"
       ],
-      "diagnostics": 2
+      "diagnostics": 0
     },
     "parts/45411p01.dat": {
       "connectors": 46,
@@ -113418,11 +113401,11 @@
       "diagnostics": 0
     },
     "parts/56204.dat": {
-      "connectors": 73,
+      "connectors": 79,
       "families": [
         "cylinder"
       ],
-      "diagnostics": 2
+      "diagnostics": 0
     },
     "parts/56206.dat": {
       "connectors": 0,
@@ -149100,9 +149083,11 @@
       "diagnostics": 0
     },
     "parts/808.dat": {
-      "connectors": 0,
-      "families": [],
-      "diagnostics": 1
+      "connectors": 1,
+      "families": [
+        "fingers"
+      ],
+      "diagnostics": 0
     },
     "parts/80834.dat": {
       "connectors": 1,

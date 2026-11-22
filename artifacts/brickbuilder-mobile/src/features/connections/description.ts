@@ -142,9 +142,9 @@ export function describeConnections(reference: string, model?: ImportedModel): D
         }
         const common = ["id", "pos", "ori", "grid", "scale", "mirror"];
         const allowed: Record<string, string[]> = {
-          SNAP_INCL: ["ref"], SNAP_CYL: ["gender", "group", "secs", "caps", "center", "slide"],
-          SNAP_CLP: ["radius", "length", "center", "slide", "group"],
-          SNAP_FGR: ["genderofs", "seq", "radius", "group", "center"],
+          SNAP_INCL: ["ref", "slide"], SNAP_CYL: ["gender", "group", "secs", "caps", "center", "slide"],
+          SNAP_CLP: ["radius", "length", "center", "slide", "group", "gender"],
+          SNAP_FGR: ["genderofs", "seq", "radius", "group", "center", "gender"],
           SNAP_GEN: ["gender", "group", "bounding", "match", "placement"],
         };
         if (!allowed[type]) throw new Error(`Unsupported construct ${type}`);
@@ -152,11 +152,16 @@ export function describeConnections(reference: string, model?: ImportedModel): D
         if (unknown.length) throw new Error(`Unsupported parameters: ${unknown.join(", ")}`);
         const frames = placements(options);
         if (type === "SNAP_INCL") {
+          if (options.slide && options.slide !== "true") throw new Error("Only a redundant [slide=true] include flag is supported");
           const child = resolve(options.ref ?? "");
           if (!child || !shadows[child]) throw new Error(`Missing include ${options.ref}`);
           const scaling = options.scale ? numberList(options.scale) : [1, 1, 1];
           if (scaling.length !== 3 || scaling.some(n => !Number.isFinite(n))) throw new Error("Invalid include scale");
-          for (const [g, frame] of frames.entries()) for (const c of visit(child, [...stack, path], true)) {
+          const included = visit(child, [...stack, path], true);
+          if (options.slide === "true" && included.some(c => !c.slide)) {
+            throw new Error("Included connectors do not already declare [slide=true]");
+          }
+          for (const [g, frame] of frames.entries()) for (const c of included) {
             const transform = matrix4(frame).scale(new Vector3(...scaling as [number, number, number]));
             const transformed = transformConnector(c, affine(transform));
             if (transformed) {
@@ -197,6 +202,10 @@ export function describeConnections(reference: string, model?: ImportedModel): D
         // these from the older web table's cylinder defaults.
         const radius = Number(options.radius ?? (family === "clip" ? 4 : family === "fingers" ? 6 : 0));
         const gender = options.gender ?? options.genderofs ?? "M";
+        if (family === "clip" && options.gender && options.gender !== "F") throw new Error("Clips are always female");
+        if (family === "fingers" && options.gender && options.gender !== (options.genderofs ?? "M")) {
+          throw new Error("[gender] must repeat [genderofs] when supplied on a finger connector");
+        }
         const scale = options.scale ?? "none", mirror = options.mirror ?? (family === "cylinder" ? "cor" : "none");
         if (!["M", "F"].includes(gender) || !["none", "YOnly", "ROnly", "YandR"].includes(scale) ||
           !["none", "cor", "corZ"].includes(mirror) || !Number.isFinite(radius) || radius < 0 ||

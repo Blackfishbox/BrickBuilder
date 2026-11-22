@@ -105,6 +105,18 @@ manifest = {
     },
     "specification": "https://www.melkert.net/LDCad/tech/meta",
     "notice": "Source presence is not evidence of usable connectors. Runtime expansion and matching report rejections separately.",
+    "reviewedSupplements": [{
+        "reference": "parts/5844.dat",
+        "author": "Rene Rechthaler [Blechtaler]",
+        "license": "CC-BY-4.0",
+        "sourceUrl": "https://library.ldraw.org/library/unofficial/parts/5844.dat",
+        "sourceSha256": "fff4b7dfa90dd38fef81efe381be295a7d8442f5c3b181c45b95495e5400b73d",
+        "connections": [
+            {"kind": "female-cylinder", "positionLdu": [0, 56, -60], "studInsertionLdu": 4},
+            {"kind": "female-cylinder", "positionLdu": [0, 56, 0], "studInsertionLdu": 4},
+        ],
+        "notice": "First-party metadata only; enabled for this exact credited source hash after mesh-clearance and mating tests.",
+    }],
 }
 (legal / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 (legal / "ATTRIBUTION.txt").write_text(
@@ -117,6 +129,9 @@ manifest = {
     "retained in the separately compressed reference graph. Changes: reference-only\n"
     "extraction; no source geometry is redistributed in this connection dataset.\n"
     "See careadme.txt and calicense4.txt. CC0 files retain their CC0 declaration.\n"
+    "\nReviewed connection supplement: 5844.dat by Rene Rechthaler [Blechtaler],\n"
+    "CC BY 4.0, https://library.ldraw.org/library/unofficial/parts/5844.dat.\n"
+    "Only hash-guarded connection metadata is added; no source geometry is copied.\n"
     "The application source code is separate from these licensed datasets.\n")
 
 # Genuine geometry fixtures used for enabled-family tests. Keep original

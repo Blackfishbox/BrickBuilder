@@ -10,6 +10,8 @@ The shadow data remains separate from first-party application code. Original
 author/history/license lines are preserved, and every original record has a
 SHA-256 hash. Adaptations of that dataset remain subject to its attribution
 and share-alike terms; this does not relicense the whole application.
+The checked upstream `main` ref resolves to this same revision as of
+2026-11-22; no newer Shadow Library records were available.
 
 The separately compressed LDraw reference graph retains original authors,
 per-file CC BY 4.0 or CC0 declarations, original file hashes and type-1
@@ -19,6 +21,13 @@ This graph is an explicitly documented reference-only extraction, not a
 replacement geometry library. Real source geometry must already be installed
 or acquired through the existing audited geometry workflow. No Studio assets
 are used.
+
+The upstream shadow library has no entry for unofficial part `5844.dat`.
+Its exact credited LDraw source (`Rene Rechthaler [Blechtaler]`, CC BY 4.0)
+does expose two hollow feet at `[0,56,-60]` and `[0,56,0]`. A first-party
+supplement defines only those two female stud sockets and is enabled only when
+the imported source hash exactly matches the reviewed file. It does not guess
+connections for changed or Studio-authored variants.
 
 Attribution, complete upstream legal texts, integrity manifest and machine
 readable coverage are shipped under `public/licenses/connections/` and linked
@@ -37,8 +46,8 @@ git -C generated-artifacts/ldcad-shadow checkout 9b1131fb1991f8c0bfc072325e4e12f
 python3 scripts/build-connection-snapshot.py \
   --shadow generated-artifacts/ldcad-shadow \
   --ldraw-archive generated-artifacts/complete.zip
-pnpm --filter @workspace/scripts exec tsx \
-  ../artifacts/brickbuilder-mobile/src/features/connections/audit.ts
+cd artifacts/brickbuilder-mobile
+node scripts/audit-connections.mjs
 ```
 
 The builder requires the pinned shadow revision and checks every redistributed
@@ -53,12 +62,12 @@ The reproducible coverage report records:
 | Original shadow `.dat` records | 4,285 |
 | Audited LDraw hierarchy records | 37,150 |
 | Examined top-level part references | 25,024 |
-| Parts with parsed connector descriptions | 19,063 |
-| Expanded, deduplicated connector descriptions | 346,323 |
+| Parts with parsed connector descriptions | 19,067 |
+| Expanded, deduplicated connector descriptions | 346,340 |
 | Parts containing cylinders | 18,477 |
-| Parts containing clips | 1,593 |
+| Parts containing clips | 1,594 |
 | Parts containing generic connections | 1,264 |
-| Parts containing finger connections | 894 |
+| Parts containing finger connections | 898 |
 
 Families overlap: these columns must not be added to obtain a part total.
 **None of these counts certifies that every part pair works.** A working
@@ -68,7 +77,7 @@ checks. The report includes per-part counts and all distinct expansion
 diagnostics, rather than labeling a downloaded record as supported.
 
 The snapshot currently reports 2,424 distinct transform-policy rejections,
-54 unsupported/incomplete metadata records and two missing geometry references
+50 unsupported/incomplete metadata records and two missing geometry references
 (`6177973fc01.dat`, `6177973hc01.dat`). These are not fabricated into ports.
 Remaining rejected metadata includes ambiguous generic records without a
 matching group/explicit size policy, unsupported extra parameters, and invalid
@@ -92,6 +101,10 @@ frames. See `coverage.json` for exact source paths and lines.
 - Apply scale policies in the connector's axes; reject meaningful shear and
   disallowed scaling. Respect `mirror=none`, `cor` and `corZ`. Normalize rounded
   rotation coefficients within 0.001, without rescaling the source model.
+- Accept `SNAP_CLP [gender=F]` only as a redundant assertion (clips are always
+  female), and `SNAP_FGR [gender=...]` only when it repeats `genderofs`.
+  `SNAP_INCL [slide=true]` is accepted only if every included connector already
+  declares sliding; it never overrides the referenced metadata.
 - The older online metadata table predates some snapshot conventions. The
   audited finger data uses a centered default and radius 6 (explicit
   `center=false` records and `h1`/`h2`/`clh*` source geometry distinguish this
@@ -188,6 +201,9 @@ Standard plate regressions explicitly cover 3023/3023b on 3795 (1 x 2 on
 drag heights and a rotated off-grid support. Other bundled standard plates
 are checked against the same support. The expected result is the complete
 matrix and actual socket contact count, not merely a non-null candidate.
+The 5844 supplement checks its two socket mouths against the source triangles
+and verifies a two-stud magnetic placement onto real 3001 geometry. Altered or
+unidentified source hashes receive no added sockets.
 
 Some older installed or embedded geometries inline references that the pinned
 LDraw hierarchy moved into subparts or stud groups. Such a version mismatch

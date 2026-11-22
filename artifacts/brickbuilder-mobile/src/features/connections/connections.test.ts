@@ -31,6 +31,21 @@ describe("pinned source expansion", () => {
     expect(result.diagnostics.some(d => d.code === "unsupported-meta")).toBe(true);
     expect(result.connectors).toHaveLength(0);
   });
+  it("keeps documented snap data when the source repeats implicit connector flags", () => {
+    const finger = describeConnections("2348a.dat");
+    expect(finger.diagnostics.some(d => d.code === "unsupported-meta")).toBe(false);
+    expect(finger.connectors.some(connector => connector.family === "fingers")).toBe(true);
+
+    const clip = describeConnections("2551.dat");
+    expect(clip.diagnostics.some(d => d.code === "unsupported-meta")).toBe(false);
+    expect(clip.connectors.some(connector => connector.family === "clip")).toBe(true);
+
+    const beam = describeConnections("45411.dat");
+    const includedHoles = beam.connectors.filter(connector => connector.evidence.path === "p/connhole.dat");
+    expect(beam.diagnostics.some(d => d.code === "unsupported-meta")).toBe(false);
+    expect(includedHoles).toHaveLength(6);
+    expect(includedHoles.every(connector => connector.slide)).toBe(true);
+  });
   it("honors inherited Y-only scale and mirror correction, but rejects shear", () => {
     const axle = describeConnections("3705.dat").connectors[0];
     const mirrored = transformConnector(axle, [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
