@@ -39,7 +39,7 @@ export const GESTURE_GUIDE_SECTIONS: readonly GestureGuideSection[] = [
       { title: "gesture.view.tap.title", description: "gesture.view.tap.description" },
       { title: "gesture.view.orbit.title", description: "gesture.view.orbit.description" },
       { title: "gesture.view.zoom.title", description: "gesture.view.zoom.description" },
-      { title: "gesture.view.rotate.title", description: "gesture.view.rotate.description" },
+      { title: "gesture.view.doubleTapPart.title", description: "gesture.view.doubleTapPart.description" },
     ],
   },
   {
@@ -58,14 +58,15 @@ export const GESTURE_GUIDE_SECTIONS: readonly GestureGuideSection[] = [
       { title: "gesture.build.tap.title", description: "gesture.build.tap.description" },
       { title: "gesture.build.drag.title", description: "gesture.build.drag.description" },
       { title: "gesture.build.doubleTap.title", description: "gesture.build.doubleTap.description" },
-      { title: "gesture.build.rotate.title", description: "gesture.build.rotate.description" },
+      { title: "gesture.build.toggle.title", description: "gesture.build.toggle.description" },
+      { title: "gesture.build.doubleTapPart.title", description: "gesture.build.doubleTapPart.description" },
     ],
   },
   {
     title: "gesture.section.delete",
     gestures: [
       { title: "gesture.delete.tap.title", description: "gesture.delete.tap.description" },
-      { title: "gesture.delete.rotate.title", description: "gesture.delete.rotate.description" },
+      { title: "gesture.delete.doubleTap.title", description: "gesture.delete.doubleTap.description" },
       { title: "gesture.delete.camera.title", description: "gesture.delete.camera.description" },
     ],
   },

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useBuilder } from "./useBuilder";
 import { createEmptyDocument } from "./model";
 import { prepareLibraryPart, type PreparedPart } from "./ldraw-editing";
@@ -17,6 +17,8 @@ import { stackingBounds } from "../engine/stacking";
 import { localPartBounds } from "../engine/stacking";
 import { worldMatrix } from "../engine/ldraw-geometry";
 import { activeConnections } from "../connections/engine";
+import { installPackage, searchLocalParts } from "../parts/library";
+import type { LibraryPart } from "../parts/types";
 
 vi.mock("../catalog/client", () => ({
   useCatalog: () => ({ status: "ready" }),
@@ -31,10 +33,44 @@ vi.mock("../catalog/client", () => ({
 vi.mock("./ldraw-editing", async original => ({
   ...await original<typeof import("./ldraw-editing")>(), prepareLibraryPart: vi.fn(),
 }));
+vi.mock("../parts/library", () => ({
+  installPackage: vi.fn(),
+  searchLocalParts: vi.fn(),
+}));
+const defaultLibraryPart: LibraryPart = {
+  id: "ldraw-bricks:3001", packageId: "ldraw-bricks", ldrawId: "3001",
+  name: "Brick 2 x 4", category: "Steine", keywords: [], file: "parts/3001.dat",
+};
 let root: ReturnType<typeof createRoot> | undefined;
+beforeEach(() => {
+  vi.mocked(installPackage).mockReset().mockResolvedValue(undefined);
+  vi.mocked(searchLocalParts).mockReset().mockResolvedValue([defaultLibraryPart]);
+  vi.mocked(prepareLibraryPart).mockReset().mockImplementation(async part => ({
+    part, bottom: 0, model: {} as ImportedModel,
+  }));
+});
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = undefined; await builderDatabase.delete(); vi.unstubAllGlobals(); vi.clearAllMocks();
+});
+
+it("starts new projects in Build with the LDraw 3001 part selected by default", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  vi.mocked(searchLocalParts).mockResolvedValueOnce([]).mockResolvedValueOnce([defaultLibraryPart]);
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => { root!.render(<Harness />); });
+  await act(async () => {
+    await vi.waitFor(() => expect(editor.isReady).toBe(true));
+    await vi.waitFor(() => expect(editor.selectedPart?.ldrawId).toBe("3001"));
+  });
+  expect(editor.toolMode).toBe("build");
+  expect(editor.placementPreview?.part).toEqual(defaultLibraryPart);
+  expect(installPackage).toHaveBeenCalledWith("ldraw-bricks", expect.any(AbortSignal));
+  expect(searchLocalParts).toHaveBeenCalledWith("3001");
 });
 
 it("commits inventory snapping once and preserves exact height through manual edits, undo and local save", async () => {
@@ -45,7 +81,10 @@ it("commits inventory snapping once and preserves exact height through manual ed
   function Harness() { editor = useBuilder(); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => { root!.render(<Harness />); });
-  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+  await act(async () => {
+    await vi.waitFor(() => expect(editor.isReady).toBe(true));
+    await vi.waitFor(() => expect(editor.selectedPart?.ldrawId).toBe("3001"));
+  });
   const resources = Object.fromEntries(["bricks", "plates"].flatMap(group =>
     JSON.parse(readFileSync(resolve(`public/parts/ldraw-${group}-2026-10-31.json`), "utf8")).files,
   ).map(file => [file.path, file])) as ImportedModel["resources"];
@@ -129,7 +168,10 @@ it("reuses the last placed LDraw part when returning to build mode", async () =>
   function Harness() { editor = useBuilder(); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => { root!.render(<Harness />); });
-  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+  await act(async () => {
+    await vi.waitFor(() => expect(editor.isReady).toBe(true));
+    await vi.waitFor(() => expect(editor.selectedPart?.ldrawId).toBe("3001"));
+  });
 
   const resources = Object.fromEntries(["bricks", "plates"].flatMap(group =>
     JSON.parse(readFileSync(resolve(`public/parts/ldraw-${group}-2026-10-31.json`), "utf8")).files,
@@ -141,6 +183,7 @@ it("reuses the last placed LDraw part when returning to build mode", async () =>
   const prepared: PreparedPart = { bottom: -0.4, part: {
     id: "plate", packageId: "test", ldrawId: "3022", name: "Plate 2 x 2", category: "", keywords: [], file: "parts/3022.dat",
   }, model };
+  vi.mocked(prepareLibraryPart).mockClear();
   vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
 
   await act(async () => { await editor.selectLibraryPart(prepared.part); });

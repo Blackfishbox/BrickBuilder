@@ -1697,8 +1697,10 @@ describe("frame-coalesced drag transactions", () => {
     const distance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
     expect(distance).toBeCloseTo(initialDistance, 2);
   });
-  it("double-tapping empty space in build places once and stays in build mode", async () => {
+  it("uses the default active mode-switch toggle after double-tap placement", async () => {
     const { props } = await mount("build");
+    const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-auto-select-after-placement']")!;
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     const empty = { x: 8, y: 8 };
     pointer("pointerdown", empty.x, empty.y);
     pointer("pointerup", empty.x, empty.y);
@@ -1708,9 +1710,22 @@ describe("frame-coalesced drag transactions", () => {
     pointer("pointerup", empty.x, empty.y);
 
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
+    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
     expect(props.onPlace).toHaveBeenCalledOnce();
+  });
+  it("can stay in build mode after a double-tap placement", async () => {
+    const { props } = await mount("build");
+    const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-auto-select-after-placement']")!;
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    expect(props.onPlace).toHaveBeenCalledOnce();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
   });
   it("keeps a single empty-space tap in build mode as the normal placement action", async () => {
     const { props } = await mount("build");
@@ -1724,35 +1739,62 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onPlace).toHaveBeenCalledOnce();
     expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
   });
-  it("opens rotation controls on a deliberate double tap without placing the part", async () => {
-    const { props, point, model } = await mount("build");
+  it("treats a build-mode part double tap as one normal placement", async () => {
+    const { props, point } = await mount("build");
     pointer("pointerdown", point.x, point.y);
     pointer("pointerup", point.x, point.y);
     pointer("pointerdown", point.x, point.y);
     pointer("pointerup", point.x, point.y);
-    expect(props.onOpenRotationControls).toHaveBeenCalledWith(model.instances[0].id);
-    expect(props.onPlace).not.toHaveBeenCalled();
+    expect(props.onOpenRotationControls).not.toHaveBeenCalled();
     expect(props.onMove).not.toHaveBeenCalled();
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
-    expect(props.onPlace).not.toHaveBeenCalled();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
+    expect(props.onPlace).toHaveBeenCalledOnce();
+    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
   });
-  it("opens the rotation controls for a mobile double tap with a slower second tap", async () => {
-    const { props, point, model } = await mount("build");
+  it("opens rotation controls on a double tap only in selection mode", async () => {
+    const { props, point, model } = await mount("select");
     pointer("pointerdown", point.x, point.y);
     pointer("pointerup", point.x, point.y);
-    await new Promise(resolve => setTimeout(resolve, 430));
-    pointer("pointerdown", point.x + 3, point.y + 2);
-    pointer("pointerup", point.x + 3, point.y + 2);
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
     expect(props.onOpenRotationControls).toHaveBeenCalledWith(model.instances[0].id);
     expect(props.onPlace).not.toHaveBeenCalled();
   });
-  it("opens rotation controls from a native desktop double-click", async () => {
-    const { props, point, model } = await mount("select");
-    act(() => host.dispatchEvent(new MouseEvent("dblclick", {
-      bubbles: true, cancelable: true, clientX: point.x, clientY: point.y,
-    })));
-    expect(props.onOpenRotationControls).toHaveBeenCalledWith(model.instances[0].id);
+  it("does not open rotation controls on a view-mode double tap after tap-selection switches modes", async () => {
+    const { props, point, model } = await mount("view");
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onViewPartTap).toHaveBeenCalledWith(model.instances[0].id);
+    act(() => root.render(<BuilderCanvas {...props} toolMode="select" selectedId={model.instances[0].id} />));
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onOpenRotationControls).not.toHaveBeenCalled();
+    expect(props.onSelect).toHaveBeenCalledWith(model.instances[0].id);
+  });
+  it("does nothing on a view-mode part double tap when tap-selection is disabled", async () => {
+    const { props, point } = await mount("view");
+    const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-view-tap-select-toggle']")!;
+    act(() => toggle.click());
+    const target = new Vector3(...observed.cameraPose!.target);
+    const initialDistance = observed.camera!.position.distanceTo(target);
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onViewPartTap).not.toHaveBeenCalled();
     expect(props.onSelect).not.toHaveBeenCalled();
+    expect(props.onOpenRotationControls).not.toHaveBeenCalled();
+    expect(observed.camera!.position.distanceTo(target)).toBeCloseTo(initialDistance);
+  });
+  it("does not open rotation controls on a delete-mode double tap", async () => {
+    const { props, point, model } = await mount("delete");
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onOpenRotationControls).not.toHaveBeenCalled();
+    expect(props.onSelect).toHaveBeenCalledOnce();
+    expect(props.onSelect).toHaveBeenNthCalledWith(1, model.instances[0].id);
   });
   it("keeps long presses in view mode while allowing camera orbit", async () => {
     const { props, point } = await mount("view");

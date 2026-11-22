@@ -605,6 +605,9 @@ export function BuilderCanvas({
   const [autoSelectOnTap, setAutoSelectOnTap] = useState(true);
   const autoSelectOnTapRef = useRef(true);
   autoSelectOnTapRef.current = autoSelectOnTap;
+  const [autoSelectAfterPlacement, setAutoSelectAfterPlacement] = useState(true);
+  const autoSelectAfterPlacementRef = useRef(true);
+  autoSelectAfterPlacementRef.current = autoSelectAfterPlacement;
   useEffect(() => {
     if (!toggleToast) return;
     const timer = setTimeout(() => setToggleToast(""), 2200);
@@ -707,7 +710,7 @@ export function BuilderCanvas({
   const clickRef = useRef<{ id: number; start: PointerPoint; moved: boolean; startedAt: number } | null>(
     null,
   );
-  const previousPartTapRef = useRef<{ id: string; x: number; y: number; at: number } | null>(null);
+  const previousPartTapRef = useRef<{ id: string; x: number; y: number; at: number; toolMode: ToolMode } | null>(null);
   const previousEmptyTapRef = useRef<{ x: number; y: number; at: number; projectId?: string } | null>(null);
   const lastRotationOpenRef = useRef<{ id: string; at: number } | null>(null);
   const pendingTapActionRef = useRef<{ timer: number; projectId?: string; action: () => void } | null>(null);
@@ -1786,7 +1789,10 @@ export function BuilderCanvas({
       pendingTapActionRef.current = null;
       if (propsRef.current.projectId === pending.projectId) pending.action();
     };
-    const placeAtCanvasPoint = (point: PointerPoint, stayInBuildMode: boolean) => {
+    const placementOptions = () => autoSelectAfterPlacementRef.current
+      ? undefined
+      : { stayInBuildMode: true };
+    const placeAtCanvasPoint = (point: PointerPoint) => {
       if (propsRef.current.toolMode !== "build" || propsRef.current.emptyDoubleTapZoomEnabled === false) return false;
       const destination = projectToPlane(point, 0);
       if (!destination) return false;
@@ -1794,7 +1800,7 @@ export function BuilderCanvas({
       propsRef.current.onPlace(
         { ...destination, y: destination.y - importedOffsetRef.current },
         transform,
-        stayInBuildMode ? { stayInBuildMode: true } : undefined,
+        placementOptions(),
       );
       placementLatch = undefined;
       return true;
@@ -1807,19 +1813,6 @@ export function BuilderCanvas({
       if (propsRef.current.onOpenRotationControls) propsRef.current.onOpenRotationControls(id);
       else propsRef.current.onSelect(id);
     };
-    const onDoubleClick = (event: MouseEvent) => {
-      const hit = findBrick({ x: event.clientX, y: event.clientY });
-      if (!hit) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
-      pendingTapActionRef.current = null;
-      previousPartTapRef.current = null;
-      rollback();
-      dragRef.current = null;
-      openRotationControls(hit.id);
-    };
-
     const startGesture = () => {
       const ids = [...pointersRef.current.keys()];
       if (ids.length < 2) {
@@ -2023,7 +2016,7 @@ export function BuilderCanvas({
             pendingTapActionRef.current = null;
           }
           if (current.toolMode === "build") {
-            placeAtCanvasPoint(point, true);
+            placeAtCanvasPoint(point);
           } else {
             const state = cameraStateRef.current;
             updateCamera(state.theta, state.phi, state.distance / EMPTY_DOUBLE_TAP_ZOOM_FACTOR);
@@ -2043,12 +2036,12 @@ export function BuilderCanvas({
               pendingTapActionRef.current = null;
               previousEmptyTapRef.current = null;
               if (propsRef.current.projectId !== projectAtTap) return;
-              placeAtCanvasPoint(point, false);
+              placeAtCanvasPoint(point);
             }, BUILD_SINGLE_TAP_DELAY_MS);
             pendingTapActionRef.current = {
               timer,
               projectId: projectAtTap,
-              action: () => { placeAtCanvasPoint(point, false); },
+              action: () => { placeAtCanvasPoint(point); },
             };
             suppressTapAction = true;
           }
@@ -2060,7 +2053,7 @@ export function BuilderCanvas({
         const isDoubleTap = previousTap?.id === tapHit.id &&
           now - previousTap.at <= DOUBLE_TAP_INTERVAL_MS &&
           Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 48;
-        if (isDoubleTap) {
+        if (isDoubleTap && current.toolMode === "select" && previousTap?.toolMode === "select") {
           if (pendingTapActionRef.current) {
             window.clearTimeout(pendingTapActionRef.current.timer);
             pendingTapActionRef.current = null;
@@ -2070,9 +2063,15 @@ export function BuilderCanvas({
           dragRef.current = null;
           openRotationControls(tapHit.id);
           suppressTapAction = true;
+        } else if (isDoubleTap) {
+          // In View/Build/Delete, a double tap has no second action. A pending
+          // Build tap is completed once, then the second tap is discarded.
+          if (current.toolMode === "build") flushPendingTap();
+          previousPartTapRef.current = null;
+          suppressTapAction = true;
         } else {
           flushPendingTap();
-          previousPartTapRef.current = { id: tapHit.id, x: point.x, y: point.y, at: now };
+          previousPartTapRef.current = { id: tapHit.id, x: point.x, y: point.y, at: now, toolMode: current.toolMode };
           if (current.toolMode === "build") {
             const brick = current.bricks.find(item => item.id === tapHit.id);
             const y = brick ? brick.y + BRICK_HEIGHT : Math.max(0, tapHit.point.y);
@@ -2086,13 +2085,13 @@ export function BuilderCanvas({
                 previousPartTapRef.current = null;
                 if (propsRef.current.projectId !== projectAtTap) return;
                 updatePlacementPreview(destination);
-                propsRef.current.onPlace(adjusted);
+                propsRef.current.onPlace(adjusted, undefined, placementOptions());
               }, PART_TAP_ACTION_DELAY_MS);
               pendingTapActionRef.current = {
                 timer, projectId: projectAtTap,
                 action: () => {
                   updatePlacementPreview(destination);
-                  propsRef.current.onPlace(adjusted);
+                  propsRef.current.onPlace(adjusted, undefined, placementOptions());
                 },
               };
               suppressTapAction = true;
@@ -2156,7 +2155,7 @@ export function BuilderCanvas({
           }
           if (destination) {
             const transform = updatePlacementPreview(destination);
-            current.onPlace({ ...destination, y: destination.y - importedOffsetRef.current }, transform);
+            current.onPlace({ ...destination, y: destination.y - importedOffsetRef.current }, transform, placementOptions());
             placementLatch = undefined;
           }
         } else if (current.toolMode === "delete" && click && !click.moved) {
@@ -2213,7 +2212,6 @@ export function BuilderCanvas({
     host.addEventListener("pointerup", onPointerUp, { passive: false });
     host.addEventListener("pointercancel", onPointerCancel, { passive: false });
     host.addEventListener("lostpointercapture", onPointerCancel);
-    host.addEventListener("dblclick", onDoubleClick);
     const onBlur = () => {
       rollback(); pointersRef.current.clear(); pointerLastRef.current.clear();
       gestureStartRef.current = null; gesturePairRef.current = null; cameraOnlyRef.current = false;
@@ -2230,7 +2228,6 @@ export function BuilderCanvas({
       host.removeEventListener("pointerup", onPointerUp);
       host.removeEventListener("pointercancel", onPointerCancel);
       host.removeEventListener("lostpointercapture", onPointerCancel);
-      host.removeEventListener("dblclick", onDoubleClick);
       window.removeEventListener("blur", onBlur);
       if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
       pendingTapActionRef.current = null;
@@ -2296,6 +2293,20 @@ export function BuilderCanvas({
         onClick={() => { setShowFloating(!showFloating); setToggleToast(t(showFloating ? "canvas.floatingOff" : "canvas.floatingOn")); }}>
         <Cloud size={20} aria-hidden="true" />
       </button>
+      {toolMode === "build" && <button type="button" data-testid="button-auto-select-after-placement"
+        className={`canvas-control-toggle view-tap-select-toggle pointer-events-auto min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectAfterPlacement
+          ? darkMode ? "border-orange-400 bg-stone-800 text-orange-300" : "border-orange-600 bg-white/95 text-orange-700"
+          : darkMode ? "border-stone-600 bg-stone-800 text-stone-100" : "border-stone-200 bg-white/95 text-stone-800"}`}
+        aria-label={t(autoSelectAfterPlacement ? "canvas.autoSelectAfterPlacementOn" : "canvas.autoSelectAfterPlacementOff")}
+        aria-pressed={autoSelectAfterPlacement}
+        title={t(autoSelectAfterPlacement ? "canvas.autoSelectAfterPlacementOn" : "canvas.autoSelectAfterPlacementOff")}
+        onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+        onClick={() => {
+          setAutoSelectAfterPlacement(!autoSelectAfterPlacement);
+          setToggleToast(t(autoSelectAfterPlacement ? "canvas.autoSelectAfterPlacementOff" : "canvas.autoSelectAfterPlacementOn"));
+        }}>
+        <MousePointer2 size={20} aria-hidden="true" />
+      </button>}
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
     </div>}
     {toolMode === "view" && <div className="absolute bottom-2 left-2 z-10">

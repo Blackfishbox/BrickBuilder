@@ -17,6 +17,7 @@ import {
 import { brickBounds, clampBrickToGround, normalizeTiltAngle } from "./brick-transform";
 import { commit, createHistory, redo, undo, type HistoryState } from "./history";
 import type { LibraryPart } from "../parts/types";
+import { installPackage, searchLocalParts } from "../parts/library";
 import { ensureCatalog, resolveStoredInventory, useCatalog } from "../catalog/client";
 import { refreshedCatalogModel } from "../catalog/refresh-model";
 import { resolveColor } from "../formats/colors";
@@ -87,11 +88,14 @@ export function useBuilder() {
   const [preparedPart, setPreparedPart] = useState<PreparedPart | null>(null);
   const [selectedInventory, setSelectedInventory] = useState<InventoryChoice | null>(null);
   const placementRef = useRef<{ prepared: PreparedPart; inventory?: InventoryChoice } | null>(null);
+  const defaultBuildPartRef = useRef<PreparedPart | null>(null);
+  const defaultBuildPartLoadRef = useRef<AbortController | null>(null);
   const lastPlacedPartRef = useRef<LastPlacedPart | null>(null);
   const resumeBuildRef = useRef<(() => boolean) | null>(null);
   const resumeBuildRequestRef = useRef(0);
   const [partLoading, setPartLoading] = useState(false);
   const [partError, setPartError] = useState<string | null>(null);
+  const [defaultBuildPartRequest, setDefaultBuildPartRequest] = useState(0);
   const partControllerRef = useRef<AbortController | null>(null);
   const spreadControllerRef = useRef<AbortController | null>(null);
   useEffect(() => () => {
@@ -101,6 +105,16 @@ export function useBuilder() {
   const [toolMode, setToolModeState] = useState<ToolMode>("view");
   const setToolMode = useCallback((mode: ToolMode) => {
     if (mode === "build" && resumeBuildRef.current?.()) return;
+    if (mode === "build" && !placementRef.current && defaultBuildPartRef.current) {
+      placementRef.current = { prepared: defaultBuildPartRef.current };
+      setPreparedPart(defaultBuildPartRef.current);
+      setSelectedInventory(null);
+      setSelectedType("brick-2x4");
+    }
+    if (mode === "build" && !placementRef.current && !defaultBuildPartRef.current &&
+        !defaultBuildPartLoadRef.current) {
+      setDefaultBuildPartRequest(value => value + 1);
+    }
     resumeBuildRequestRef.current++;
     if (mode === "view") setSelectedId(null);
     if (mode !== "build") {
@@ -173,11 +187,12 @@ export function useBuilder() {
       if (stored?.imported) await catalogReady;
       if (stored) {
         replaceDocument(stored.imported ? { ...stored, imported: refreshedCatalogModel(stored.imported) } : stored, true);
-        setToolMode("view");
+        setToolMode(stored.imported || stored.bricks.length ? "view" : "build");
         setSavedAt(stored.updatedAt);
         restored = true;
       } else {
         replaceDocument(createEmptyDocument());
+        setToolMode("build");
       }
       await requestPersistentStorage();
       setSaveError(null);
@@ -186,12 +201,13 @@ export function useBuilder() {
         error instanceof Error ? error.message : "Projekt konnte nicht geladen werden.",
       );
       replaceDocument(createEmptyDocument());
+      setToolMode("build");
     } finally {
       setIsReady(true);
     }
     await refreshProjects().catch(() => undefined);
     return restored;
-  }, [refreshProjects, replaceDocument]);
+  }, [refreshProjects, replaceDocument, setToolMode]);
 
   useEffect(() => {
     void restoreLastProject();
@@ -454,6 +470,51 @@ export function useBuilder() {
     })();
     return true;
   };
+  useEffect(() => {
+    if (!isReady || toolMode !== "build" || placementRef.current ||
+        defaultBuildPartRef.current || defaultBuildPartLoadRef.current) return;
+    const controller = new AbortController();
+    defaultBuildPartLoadRef.current = controller;
+    partControllerRef.current?.abort();
+    partControllerRef.current = controller;
+    setPartLoading(true);
+    setPartError(null);
+    void (async () => {
+      try {
+        let part = (await searchLocalParts("3001")).find(candidate => candidate.ldrawId === "3001");
+        if (!part) {
+          await installPackage("ldraw-bricks", controller.signal);
+          part = (await searchLocalParts("3001")).find(candidate => candidate.ldrawId === "3001");
+        }
+        controller.signal.throwIfAborted();
+        if (!part) throw new Error(t("parts.defaultUnavailable"));
+        const prepared = await prepareLibraryPart(part, controller.signal);
+        if (controller.signal.aborted || partControllerRef.current !== controller) return;
+        defaultBuildPartRef.current = prepared;
+        placementRef.current = { prepared };
+        setPreparedPart(prepared);
+        setSelectedInventory(null);
+        setSelectedType("brick-2x4");
+        setPartError(null);
+      } catch (error) {
+        if (!controller.signal.aborted && partControllerRef.current === controller) {
+          setPartError(error instanceof Error ? error.message : String(error));
+        }
+      } finally {
+        if (defaultBuildPartLoadRef.current === controller) defaultBuildPartLoadRef.current = null;
+        if (partControllerRef.current === controller) {
+          partControllerRef.current = null;
+          setPartLoading(false);
+        }
+      }
+    })();
+    return () => {
+      if (defaultBuildPartLoadRef.current === controller) {
+        controller.abort();
+        defaultBuildPartLoadRef.current = null;
+      }
+    };
+  }, [defaultBuildPartRequest, isReady, t, toolMode]);
   const cancelPartPreparation = useCallback(() => {
     partControllerRef.current?.abort();
     setPartLoading(false);
@@ -940,7 +1001,7 @@ export function useBuilder() {
       await refreshProjects();
       return true;
     },
-    [refreshProjects, replaceDocument],
+    [refreshProjects, replaceDocument, setToolMode],
   );
 
   const startNewProject = useCallback(async () => {
@@ -948,11 +1009,11 @@ export function useBuilder() {
     const document = createEmptyDocument();
     replaceDocument(document);
     setSelectedId(null);
-    setToolMode("view");
+    setToolMode("build");
     await saveProject(document);
     setSavedAt(document.updatedAt);
     await refreshProjects();
-  }, [isReady, refreshProjects, replaceDocument]);
+  }, [isReady, refreshProjects, replaceDocument, setToolMode]);
 
   const importProject = useCallback(async (imported: BuilderDocument) => {
     await createImportedProject(historyRef.current.document, imported);
@@ -963,7 +1024,7 @@ export function useBuilder() {
     setSaveError(null);
     // The import is committed even if refreshing the project list subsequently fails.
     await refreshProjects().catch(() => undefined);
-  }, [refreshProjects, replaceDocument]);
+  }, [refreshProjects, replaceDocument, setToolMode]);
 
   const document = history.document;
   return {
