@@ -157,7 +157,7 @@ it("reuses the last placed LDraw part when returning to build mode", async () =>
   expect(prepareLibraryPart).toHaveBeenCalledTimes(1);
 });
 
-it("repeats available list stock then automatically selects the next available row", async () => {
+it("stays in build after double-tap placement, respects stock, and selects the next row", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
   await builderDatabase.open();
@@ -183,17 +183,14 @@ it("repeats available list stock then automatically selects the next available r
   const firstChoice = { listId: inventory.id, rowId: inventory.rows[0].id, ldrawId: "3022", colorCode: "4" };
   await act(async () => { await editor.selectInventoryPart(firstChoice); });
 
-  await act(async () => editor.place({ x: 0, y: 0, z: 0 }));
-  expect(editor.toolMode).toBe("select");
+  await act(async () => editor.place({ x: 0, y: 0, z: 0 }, undefined, { stayInBuildMode: true }));
+  expect(editor.toolMode).toBe("build");
+  expect(editor.selectedId).toBeNull();
+  expect(editor.placementPreview).toBe(prepared);
   expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(1);
 
-  await act(async () => {
-    editor.setToolMode("build");
-    await new Promise(resolve => setTimeout(resolve, 20));
-  });
-  expect(editor.selectedInventory?.rowId).toBe(inventory.rows[0].id);
-  expect(editor.placementPreview).toBe(prepared);
-  await act(async () => editor.place({ x: 4, y: 0, z: 0 }));
+  await act(async () => editor.place({ x: 2, y: 0, z: 0 }));
+  expect(editor.toolMode).toBe("select");
   expect(allocatedCounts(editor.document).get(inventory.rows[0].id)).toBe(2);
 
   await act(async () => {

@@ -11,6 +11,7 @@ import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
 import { setRemoteGeometryEnabled } from "@/features/privacy/geometry-consent";
 
 const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
+const editorCss = readFileSync("src/components/mobile/editor.css", "utf8");
 
 const { editor, getStorageOverview, canvasProps } = vi.hoisted(() => ({
   editor: {} as Record<string, any>,
@@ -158,6 +159,41 @@ it("switches to selection mode and selects a tapped part from the view canvas", 
   expect(editor.select).toHaveBeenCalledWith("imported-part-17");
 });
 
+it("opens the English gesture guide from the header between theme and save", async () => {
+  const container = await mount("light", false, "en");
+  const headerButtons = [...container.querySelectorAll<HTMLButtonElement>(".topbar-end button")];
+  const helpButton = container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!;
+  expect(helpButton.getAttribute("aria-label")).toBe("Gesture help");
+  expect(headerButtons.indexOf(helpButton)).toBe(headerButtons.indexOf(
+    container.querySelector<HTMLButtonElement>('[data-testid="button-toggle-theme"]')!,
+  ) + 1);
+  expect(headerButtons.indexOf(container.querySelector<HTMLButtonElement>('[data-testid="button-save"]')!))
+    .toBe(headerButtons.indexOf(helpButton) + 1);
+
+  await act(async () => helpButton.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  expect(dialog.textContent).toContain("Touch and mouse gestures");
+  expect(dialog.textContent).toContain("Build mode");
+  expect(dialog.textContent).toContain("Double-tap empty space");
+  expect(dialog.textContent).toContain("Double-tap a rotation or tilt slider");
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
+});
+
+it("shows every mode's gesture help in German", async () => {
+  const container = await mount("dark", false, "de");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+
+  expect(dialog.textContent).toContain("Touch- und Mausgesten");
+  expect(dialog.textContent).toContain("Ansichtsmodus");
+  expect(dialog.textContent).toContain("Auswahlmodus");
+  expect(dialog.textContent).toContain("Baumodus");
+  expect(dialog.textContent).toContain("Löschmodus");
+  expect(dialog.textContent).toContain("Doppeltipp auf freie Fläche");
+  expect(dialog.textContent).toContain("Doppeltipp auf einen Dreh- oder Neigungsregler");
+  expect(editorCss).toContain(".dark .gesture-guide-dialog");
+});
+
 it("keeps the thicker-edge control hidden without clearing its saved preference", async () => {
   localStorage.setItem("brickbuilder-thick-edges", "true");
   const container = await mount("light");
@@ -243,8 +279,10 @@ it("hides the canvas status controls for every open mobile selection menu", asyn
     await act(async () => toggle!.click());
     expect(menu.dataset.open).toBe("true");
     expect(canvas.dataset.constructionControls).toBe("false");
+    expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
     await act(async () => toggle!.click());
     expect(canvas.dataset.constructionControls).toBe("true");
+    expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(true);
   }
 });
 

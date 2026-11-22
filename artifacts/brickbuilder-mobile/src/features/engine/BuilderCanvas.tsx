@@ -74,10 +74,17 @@ import { brickTransformMatrix } from "@/features/editor/brick-transform";
 import { brickConstructionBounds, constructionArea, createStudGridGeometry, type ConstructionArea } from "./construction-floor";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { MessageId } from "@/i18n/messages";
+import {
+  BUILD_SINGLE_TAP_DELAY_MS,
+  DOUBLE_TAP_INTERVAL_MS,
+  EMPTY_DOUBLE_TAP_ZOOM_FACTOR,
+  EMPTY_DOUBLE_TAP_ZOOM_MODES,
+} from "./gesture-guide";
 
 interface BuilderCanvasProps {
   viewExporterRef?: MutableRefObject<ViewExporter | null>;
   showConstructionControls?: boolean;
+  emptyDoubleTapZoomEnabled?: boolean;
   darkMode?: boolean;
   /** Screen-space edge stroke; false preserves the original one-pixel view. */
   thickEdges?: boolean;
@@ -100,7 +107,7 @@ interface BuilderCanvasProps {
   selectedColorCode?: string;
   placementPreview?: PreparedPart | null;
   toolMode: ToolMode;
-  onPlace: (position: Position3, transform?: Affine) => void;
+  onPlace: (position: Position3, transform?: Affine, options?: { stayInBuildMode?: boolean }) => void;
   onSelect: (id: string | null) => void;
   onViewPartTap?: (id: string) => void;
   onOpenRotationControls?: (id: string) => void;
@@ -415,7 +422,6 @@ export class FallbackRenderer {
 
 const geometryCache = new Map<BrickType, BufferGeometry>();
 const VIEW_TAP_MAX_DURATION_MS = 400;
-const PART_DOUBLE_TAP_INTERVAL_MS = 500;
 const PART_TAP_ACTION_DELAY_MS = 520;
 
 function polygonPath(context: CanvasRenderingContext2D, points: ProjectedPoint[]): void {
@@ -492,6 +498,7 @@ function softwareWarning(scene: SoftwareScene, locale: "en" | "de", t: ReturnTyp
 export function BuilderCanvas({
   viewExporterRef,
   showConstructionControls = true,
+  emptyDoubleTapZoomEnabled = true,
   darkMode = false,
   viewRotation,
   viewCamera,
@@ -667,6 +674,7 @@ export function BuilderCanvas({
   const raycasterRef = useRef(new Raycaster());
   const propsRef = useRef({
     darkMode,
+    emptyDoubleTapZoomEnabled,
     viewRotation,
     viewCamera, onViewCameraChange,
     instructionFocusIds,
@@ -723,6 +731,7 @@ export function BuilderCanvas({
 
   propsRef.current = {
     darkMode,
+    emptyDoubleTapZoomEnabled,
     viewRotation,
     viewCamera, onViewCameraChange,
     instructionFocusIds,
@@ -1777,6 +1786,19 @@ export function BuilderCanvas({
       pendingTapActionRef.current = null;
       if (propsRef.current.projectId === pending.projectId) pending.action();
     };
+    const placeAtCanvasPoint = (point: PointerPoint, stayInBuildMode: boolean) => {
+      if (propsRef.current.toolMode !== "build" || propsRef.current.emptyDoubleTapZoomEnabled === false) return false;
+      const destination = projectToPlane(point, 0);
+      if (!destination) return false;
+      const transform = updatePlacementPreview(destination);
+      propsRef.current.onPlace(
+        { ...destination, y: destination.y - importedOffsetRef.current },
+        transform,
+        stayInBuildMode ? { stayInBuildMode: true } : undefined,
+      );
+      placementLatch = undefined;
+      return true;
+    };
     const openRotationControls = (id: string) => {
       const now = performance.now();
       const previous = lastRotationOpenRef.current;
@@ -1979,32 +2001,64 @@ export function BuilderCanvas({
       const tapHit = stationaryTap && (current.toolMode !== "view" || autoSelectOnTapRef.current)
         ? physicalTapHit : null;
       let suppressTapAction = false;
-      if (current.toolMode === "view" && stationaryTap && !physicalTapHit) {
+      const emptyTapActionsEnabled = current.emptyDoubleTapZoomEnabled !== false;
+      const emptyZoomMode = EMPTY_DOUBLE_TAP_ZOOM_MODES.has(current.toolMode);
+      const buildEmptyTap = current.toolMode === "build" && emptyTapActionsEnabled;
+      if (
+        stationaryTap &&
+        !physicalTapHit &&
+        emptyTapActionsEnabled &&
+        (emptyZoomMode || buildEmptyTap)
+      ) {
         const now = performance.now();
         const previousTap = previousEmptyTapRef.current;
         const sameProject = !!previousTap && previousTap.projectId === current.projectId;
-        const isDoubleTap = sameProject && now - previousTap.at <= PART_DOUBLE_TAP_INTERVAL_MS &&
+        const isDoubleTap = sameProject && now - previousTap.at <= DOUBLE_TAP_INTERVAL_MS &&
           Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 48;
         previousPartTapRef.current = null;
         if (isDoubleTap) {
           previousEmptyTapRef.current = null;
-          const state = cameraStateRef.current;
-          updateCamera(state.theta, state.phi, state.distance / 2);
-          current.onViewCameraChange?.({
-            theta: state.theta, phi: state.phi, distance: state.distance, target: state.target.toArray(),
-            referenceDistance: cameraReferenceRef.current.distance,
-            referenceTarget: cameraReferenceRef.current.target.toArray(),
-          });
+          if (pendingTapActionRef.current) {
+            window.clearTimeout(pendingTapActionRef.current.timer);
+            pendingTapActionRef.current = null;
+          }
+          if (current.toolMode === "build") {
+            placeAtCanvasPoint(point, true);
+          } else {
+            const state = cameraStateRef.current;
+            updateCamera(state.theta, state.phi, state.distance / EMPTY_DOUBLE_TAP_ZOOM_FACTOR);
+            current.onViewCameraChange?.({
+              theta: state.theta, phi: state.phi, distance: state.distance, target: state.target.toArray(),
+              referenceDistance: cameraReferenceRef.current.distance,
+              referenceTarget: cameraReferenceRef.current.target.toArray(),
+            });
+          }
           suppressTapAction = true;
         } else {
           previousEmptyTapRef.current = { x: point.x, y: point.y, at: now, projectId: current.projectId };
+          if (current.toolMode === "build") {
+            const projectAtTap = current.projectId;
+            const timer = window.setTimeout(() => {
+              if (pendingTapActionRef.current?.timer !== timer) return;
+              pendingTapActionRef.current = null;
+              previousEmptyTapRef.current = null;
+              if (propsRef.current.projectId !== projectAtTap) return;
+              placeAtCanvasPoint(point, false);
+            }, BUILD_SINGLE_TAP_DELAY_MS);
+            pendingTapActionRef.current = {
+              timer,
+              projectId: projectAtTap,
+              action: () => { placeAtCanvasPoint(point, false); },
+            };
+            suppressTapAction = true;
+          }
         }
       } else if (tapHit && stationaryTap) {
         previousEmptyTapRef.current = null;
         const previousTap = previousPartTapRef.current;
         const now = performance.now();
         const isDoubleTap = previousTap?.id === tapHit.id &&
-          now - previousTap.at <= PART_DOUBLE_TAP_INTERVAL_MS &&
+          now - previousTap.at <= DOUBLE_TAP_INTERVAL_MS &&
           Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 48;
         if (isDoubleTap) {
           if (pendingTapActionRef.current) {

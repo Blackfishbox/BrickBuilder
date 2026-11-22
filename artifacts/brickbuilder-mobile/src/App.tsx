@@ -14,6 +14,7 @@ import {
 import {
   Box,
   Check,
+  CircleHelp,
   ChevronDown,
   Command,
   Eye,
@@ -47,6 +48,7 @@ import ImportPartNotification from '@/features/formats/ImportPartNotification';
 import StorageManager from '@/features/storage/StorageManager';
 import InventoryPanel from '@/features/inventory/InventoryPanel';
 import PrivacyDialog from '@/features/privacy/PrivacyDialog';
+import GestureHelpDialog from '@/features/engine/GestureHelpDialog';
 import EvidencedColorPicker from '@/features/catalog/EvidencedColorPicker';
 import { resolveColor } from '@/features/formats/colors';
 import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/color-theme';
@@ -97,6 +99,7 @@ function App() {
   const [rotationPivot, setRotationPivot] = useState<[number, number, number] | null>(null);
   const [storageOpen, setStorageOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [gestureHelpOpen, setGestureHelpOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
   const [additionalColorIds, setAdditionalColorIds] = useState<string[]>([]);
   const [additionalRotationIds, setAdditionalRotationIds] = useState<string[]>([]);
@@ -405,6 +408,17 @@ function App() {
           </button>
           <button
             type="button"
+            className="theme-toggle gesture-help-toggle"
+            onClick={() => { setGestureHelpOpen(true); setProjectMenu(false); }}
+            aria-label={t("gesture.help")}
+            title={t("gesture.help")}
+            aria-haspopup="dialog"
+            data-testid="button-gesture-help"
+          >
+            <CircleHelp size={18} />
+          </button>
+          <button
+            type="button"
             className={`save-button ${editor.isSaving ? 'saving' : ''}`}
             onClick={saveProject}
             disabled={editor.isSaving}
@@ -451,6 +465,9 @@ function App() {
               {!instructionsOpen && <BuilderCanvas
                 viewExporterRef={viewExporterRef}
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
+                emptyDoubleTapZoomEnabled={!gestureHelpOpen && !projectMenu && !partsOpen && !colorsOpen &&
+                  !formatsOpen && !instructionsOpen && !storageOpen && !privacyOpen && !confirmNew &&
+                  !finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                 darkMode={theme === 'dark'}
                 thickEdges={thickEdges}
@@ -723,6 +740,7 @@ function App() {
         </div>
       )}
       {formatsOpen && <FormatDialog document={editor.document} viewExporterRef={viewExporterRef} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
+      {gestureHelpOpen && <GestureHelpDialog onClose={() => setGestureHelpOpen(false)} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal, highlight) => {

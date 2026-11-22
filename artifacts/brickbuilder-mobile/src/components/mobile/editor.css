@@ -360,6 +360,51 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   border-color: #f08a70; color: #ffab94; box-shadow: inset 0 0 0 1px #f08a70, 0 0 0 2px rgba(240,138,112,.2);
 }
 
+.gesture-help-toggle:focus-visible {
+  outline: 3px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.gesture-guide-dialog {
+  z-index: 100;
+  width: min(620px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(86dvh, 760px);
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid #deddd1;
+  border-radius: 18px;
+  background: #fbf9f1;
+  color: #28352e;
+  box-shadow: 0 24px 80px rgba(20, 30, 24, .28);
+}
+.gesture-guide-header { gap: 8px; padding-right: 25px; }
+.gesture-guide-title { font-size: 20px; font-weight: 800; line-height: 1.25; }
+.gesture-guide-intro { font-size: 13px; line-height: 1.5; }
+.gesture-guide-sections { display: grid; gap: 16px; margin-top: 18px; }
+.gesture-guide-sections section {
+  padding: 14px;
+  border: 1px solid #e4e2d8;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .62);
+}
+.gesture-guide-sections h3 {
+  margin: 0 0 8px;
+  color: #a34e39;
+  font-size: 13px;
+  font-weight: 800;
+}
+.gesture-guide-sections ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.gesture-guide-sections li strong { display: block; font-size: 12px; line-height: 1.35; }
+.gesture-guide-sections li p { margin: 3px 0 0; color: #637068; font-size: 12px; line-height: 1.45; }
+.dark .gesture-guide-dialog {
+  border-color: #46564b;
+  background: #1f2b24;
+  color: #e3ece5;
+}
+.dark .gesture-guide-sections section { border-color: #3b4b40; background: #26362e; }
+.dark .gesture-guide-sections h3 { color: #ffab94; }
+.dark .gesture-guide-sections li p { color: #b7c4ba; }
+
 @media (orientation: landscape) and (max-height: 560px) {
   .editor-shell { grid-template-rows: 50px minmax(0,1fr); }
   .topbar { height: 50px; }

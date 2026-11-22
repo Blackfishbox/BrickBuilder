@@ -571,7 +571,7 @@ export function useBuilder() {
   }, [t, updateDocument]);
 
   const place = useCallback(
-    (position: Position3, previewTransform?: Affine) => {
+    (position: Position3, previewTransform?: Affine, options?: { stayInBuildMode?: boolean }) => {
       if (toolMode === "delete" || partLoading) return;
       const selection = placementRef.current;
        if (!selection) { setPartError(t("inventory.chooseFirst")); return; }
@@ -596,9 +596,13 @@ export function useBuilder() {
           colorCode: selectedColorCode,
           projectId: documentRef.current.id,
         };
-        setSelectedId(id);
         setPartError(null);
-        setToolMode("select");
+        if (options?.stayInBuildMode) {
+          setSelectedId(null);
+        } else {
+          setSelectedId(id);
+          setToolMode("select");
+        }
       } catch (error) { setPartError(error instanceof Error ? error.message : String(error)); }
     },
     [selectedColor, selectedColorCode, partLoading, toolMode, updateDocument, setToolMode, t],

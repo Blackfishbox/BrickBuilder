@@ -1087,6 +1087,7 @@ describe("frame-coalesced drag transactions", () => {
       expect(onPlace).not.toHaveBeenCalled();
       pointer("pointerdown", target.x, target.y);
       pointer("pointerup", target.x, target.y);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
       expect(onPlace).toHaveBeenCalledOnce();
       expect(model.instances).toHaveLength(1);
 
@@ -1112,7 +1113,7 @@ describe("frame-coalesced drag transactions", () => {
       expect(onPlace).toHaveBeenCalledOnce();
       expect(model.instances).toHaveLength(1);
     });
-    it(`updates built-in brick preview color in ${webgl ? "WebGL" : "compatibility"} mode`, () => {
+    it(`updates built-in brick preview color in ${webgl ? "WebGL" : "compatibility"} mode`, async () => {
       observed.webglEnabled = webgl;
       const fallbackRender = vi.spyOn(FallbackRenderer.prototype, "render");
       const onPlace = vi.fn();
@@ -1171,6 +1172,7 @@ describe("frame-coalesced drag transactions", () => {
       pointer("pointerdown", target.x, target.y);
       expect(onPlace).not.toHaveBeenCalled();
       pointer("pointerup", target.x, target.y);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
       expect(onPlace).toHaveBeenCalledOnce();
     });
   }
@@ -1662,6 +1664,64 @@ describe("frame-coalesced drag transactions", () => {
 
     const zoomedDistance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
     expect(zoomedDistance).toBeCloseTo(initialDistance / 2, 2);
+  });
+  it("zooms in by two on a double tap on empty space in selection mode", async () => {
+    await mount("select");
+    flushFrame();
+    const target = new Vector3(...observed.cameraPose!.target);
+    const initialDistance = observed.camera!.position.distanceTo(target);
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    flushFrame();
+
+    const zoomedDistance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
+    expect(zoomedDistance).toBeCloseTo(initialDistance / 2, 2);
+  });
+  it("does not double-tap zoom on empty space while a menu is open", async () => {
+    const { props } = await mount("select");
+    act(() => root.render(<BuilderCanvas {...props} emptyDoubleTapZoomEnabled={false} />));
+    flushFrame();
+    const target = new Vector3(...observed.cameraPose!.target);
+    const initialDistance = observed.camera!.position.distanceTo(target);
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    flushFrame();
+
+    const distance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
+    expect(distance).toBeCloseTo(initialDistance, 2);
+  });
+  it("double-tapping empty space in build places once and stays in build mode", async () => {
+    const { props } = await mount("build");
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    expect(props.onPlace).not.toHaveBeenCalled();
+
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+
+    expect(props.onPlace).toHaveBeenCalledOnce();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
+    expect(props.onPlace).toHaveBeenCalledOnce();
+  });
+  it("keeps a single empty-space tap in build mode as the normal placement action", async () => {
+    const { props } = await mount("build");
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    expect(props.onPlace).not.toHaveBeenCalled();
+
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
+
+    expect(props.onPlace).toHaveBeenCalledOnce();
+    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
   });
   it("opens rotation controls on a deliberate double tap without placing the part", async () => {
     const { props, point, model } = await mount("build");
