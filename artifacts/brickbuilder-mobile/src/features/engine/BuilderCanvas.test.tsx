@@ -1769,6 +1769,7 @@ describe("frame-coalesced drag transactions", () => {
     const { props, point } = await mount("view");
     const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-view-tap-select-toggle']")!;
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.classList.contains("view-tap-select-toggle")).toBe(true);
     expect(toggle.querySelector("svg")).not.toBeNull();
     act(() => toggle.click());
     expect(toggle.getAttribute("aria-pressed")).toBe("false");

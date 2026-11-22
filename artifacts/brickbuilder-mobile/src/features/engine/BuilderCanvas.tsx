@@ -2300,7 +2300,7 @@ export function BuilderCanvas({
     </div>}
     {toolMode === "view" && <div className="absolute bottom-2 left-2 z-10">
       <button type="button" data-testid="button-view-tap-select-toggle"
-        className={`min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectOnTap
+        className={`view-tap-select-toggle min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectOnTap
           ? darkMode ? "border-orange-400 bg-stone-800 text-orange-300" : "border-orange-600 bg-white/95 text-orange-700"
           : darkMode ? "border-stone-600 bg-stone-800 text-stone-100" : "border-stone-200 bg-white/95 text-stone-800"}`}
         aria-label={t(autoSelectOnTap ? "canvas.autoSelectOn" : "canvas.autoSelectOff")}
