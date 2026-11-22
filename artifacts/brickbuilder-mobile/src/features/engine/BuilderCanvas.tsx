@@ -2275,21 +2275,21 @@ export function BuilderCanvas({
       <p>{t("canvas.floatingInfo")}</p>
     </div>}
     {showConstructionControls && toolMode !== "view" && <div data-testid="construction-controls" className="absolute bottom-2 left-2 right-2 z-10 flex flex-wrap items-center gap-2 pointer-events-none">
-      <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
+      <button type="button" className="canvas-control-toggle pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showConnections} aria-label={t("canvas.showConnections")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         title={t(showConnections ? "canvas.connectionsOn" : "canvas.connectionsOff")}
         onClick={() => { setShowConnections(!showConnections); setToggleToast(t(showConnections ? "canvas.connectionsOff" : "canvas.connectionsOn")); }}>
         <Link2 size={20} aria-hidden="true" />
       </button>
-      <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
+      <button type="button" className="canvas-control-toggle pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showCollisions} aria-label={t("canvas.showCollisionWarning")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         title={t(showCollisions ? "canvas.collisionOn" : "canvas.collisionOff")}
         onClick={() => { setShowCollisions(!showCollisions); setToggleToast(t(showCollisions ? "canvas.collisionOff" : "canvas.collisionOn")); }}>
         <TriangleAlert size={20} aria-hidden="true" />
       </button>
-      <button type="button" className="pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
+      <button type="button" className="canvas-control-toggle pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showFloating} aria-label={t("canvas.showFloatingWarning")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         title={t(showFloating ? "canvas.floatingOn" : "canvas.floatingOff")}
@@ -2300,7 +2300,7 @@ export function BuilderCanvas({
     </div>}
     {toolMode === "view" && <div className="absolute bottom-2 left-2 z-10">
       <button type="button" data-testid="button-view-tap-select-toggle"
-        className={`view-tap-select-toggle min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectOnTap
+        className={`canvas-control-toggle view-tap-select-toggle min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectOnTap
           ? darkMode ? "border-orange-400 bg-stone-800 text-orange-300" : "border-orange-600 bg-white/95 text-orange-700"
           : darkMode ? "border-stone-600 bg-stone-800 text-stone-100" : "border-stone-200 bg-white/95 text-stone-800"}`}
         aria-label={t(autoSelectOnTap ? "canvas.autoSelectOn" : "canvas.autoSelectOff")}

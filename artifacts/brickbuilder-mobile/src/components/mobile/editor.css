@@ -132,11 +132,16 @@
 }
 .canvas-toggle-toast { left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); width: max-content; }
 .canvas-collision-status { right: 8px; bottom: 112px; max-width: calc(100% - 16px); }
-[data-testid="construction-controls"] button { min-width: 46px; min-height: 46px; }
-[data-testid="construction-controls"] button[aria-pressed="true"] {
+.canvas-control-toggle {
+  box-sizing: border-box;
+  border-width: 1px;
+  border-style: solid;
+}
+.canvas-control-toggle[aria-pressed="true"] {
   border-color: hsl(var(--primary)); color: hsl(var(--primary));
   box-shadow: inset 0 0 0 1px hsl(var(--primary));
 }
+[data-testid="construction-controls"] button { min-width: 46px; min-height: 46px; }
 
 .tool-rail {
   min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 25px; padding: 23px 18px 15px;

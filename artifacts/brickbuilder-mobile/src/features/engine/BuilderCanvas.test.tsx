@@ -750,6 +750,7 @@ describe("frame-coalesced drag transactions", () => {
       ["Verbindungen anzeigen", "Verbindungen", true],
     ] as const) {
       const toggle = element.querySelector<HTMLButtonElement>(`[aria-label='${label}']`)!;
+      expect(toggle.classList.contains("canvas-control-toggle")).toBe(true);
       expect(toggle.textContent).toBe("");
       expect(toggle.querySelector("svg")).not.toBeNull();
       expect(toggle.getAttribute("aria-pressed")).toBe(String(initial));
@@ -1769,6 +1770,7 @@ describe("frame-coalesced drag transactions", () => {
     const { props, point } = await mount("view");
     const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-view-tap-select-toggle']")!;
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.classList.contains("canvas-control-toggle")).toBe(true);
     expect(toggle.classList.contains("view-tap-select-toggle")).toBe(true);
     expect(toggle.querySelector("svg")).not.toBeNull();
     act(() => toggle.click());
