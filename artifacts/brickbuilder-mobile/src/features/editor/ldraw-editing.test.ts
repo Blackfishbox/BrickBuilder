@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Ray, Vector3 } from "three";
+import { Euler, Matrix4, Ray, Vector3 } from "three";
 import { createEmptyDocument } from "./model";
 import { brickBounds } from "./brick-transform";
 import { commit, createHistory, redo, undo } from "./history";
 import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { importedControlAngles } from "./imported-control-angles";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
 import { exportLDR } from "../formats/ldraw/export";
@@ -32,6 +33,31 @@ function fixture() {
 afterEach(async () => { vi.unstubAllGlobals(); await builderDatabase.delete(); });
 
 describe("editable imported LDraw instances", () => {
+  it("shows source rotations in the controls and keeps them as the edit baseline", () => {
+    const document = fixture(), instance = document.imported!.instances[0];
+    const sourceRotation = new Matrix4().makeRotationFromEuler(new Euler(24 * Math.PI / 180, 78 * Math.PI / 180, -31 * Math.PI / 180, "XYZ"));
+    const basisFlip = new Matrix4().makeScale(1, -1, 1);
+    const e = basisFlip.clone().multiply(sourceRotation).multiply(basisFlip).elements;
+    instance.matrix = [
+      e[0], e[4], e[8], 0,
+      e[1], e[5], e[9], 0,
+      e[2], e[6], e[10], 0,
+    ];
+    const initial = importedControlAngles(instance);
+    expect(initial.rotationY).toBeCloseTo(78);
+    expect(initial.tiltX).toBeCloseTo(24);
+    expect(initial.tiltZ).toBeCloseTo(-31);
+
+    const id = instance.id;
+    const rotated = setImportedRotation(document, id, 12);
+    const tilted = tiltImported(rotated, id, 7, -5);
+    const values = importedControlAngles(tilted.imported!.instances[0]);
+    expect(values.rotationY).toBeCloseTo(90);
+    expect(values.tiltX).toBeCloseTo(31);
+    expect(values.tiltZ).toBeCloseTo(-36);
+    expect(tilted.imported!.instances[0].matrix).not.toEqual(instance.matrix);
+  });
+
   it("edits only the selected occurrence and keeps all original upload metadata untouched", () => {
     const original = fixture(), id = original.imported.instances[0].id;
     const source = JSON.stringify([original.imported.sourceText, original.imported.originalBytes, original.imported.sections]);

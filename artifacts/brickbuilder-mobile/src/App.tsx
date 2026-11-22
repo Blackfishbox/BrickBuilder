@@ -53,6 +53,7 @@ import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/col
 import { useI18n } from '@/i18n/I18nProvider';
 import { isGeneratedProjectName } from '@/i18n/project-name';
 import { rotationAnchors } from '@/features/connections/rotation-anchors';
+import { importedControlAngles, importedRotationOffset, importedTiltOffset } from '@/features/editor/imported-control-angles';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -166,6 +167,19 @@ function App() {
   const colorInstances = editor.imported?.instances.filter(instance =>
     instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
   const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
+  const importedAngles = editor.selectedInstance ? importedControlAngles(editor.selectedInstance) : null;
+  const rotationControlValue = importedAngles?.rotationY ?? selectedLegacy?.rotation ?? 0;
+  const tiltXControlValue = importedAngles?.tiltX ?? selectedLegacy?.tiltX ?? 0;
+  const tiltZControlValue = importedAngles?.tiltZ ?? selectedLegacy?.tiltZ ?? 0;
+  const applyRotationControl = (angle: number) => editor.setSelectedRotation(
+    importedAngles ? importedRotationOffset(angle, importedAngles.baseRotationY) : angle,
+    rotationTargetIds,
+    rotationPivot,
+  );
+  const applyTiltControl = (axis: "x" | "z", angle: number) => editor.setSelectedTilt(
+    axis,
+    importedAngles ? importedTiltOffset(angle, axis === "x" ? importedAngles.baseTiltX : importedAngles.baseTiltZ) : angle,
+  );
   const availableRotationAnchors = useMemo(() => editor.selectedInstance && editor.imported
     ? rotationAnchors(editor.selectedInstance.reference, editor.imported) : [],
   [editor.selectedInstance?.reference, editor.imported]);
@@ -462,10 +476,10 @@ function App() {
               <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")} title={t("editor.placeLower")}>↓</button>
               <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected} onOpenChange={setFinePositionOpen} portalOnMobile />
               {rotationSelection(true)}
-              <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
-                tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
-                rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds, rotationPivot)} onTilt={editor.setSelectedTilt}
+              <TiltControls key={`tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={tiltXControlValue}
+                tiltZ={tiltZControlValue}
+                rotationY={rotationControlValue}
+                onRotate={applyRotationControl} onTilt={applyTiltControl}
                 onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                 open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
                  portalOnMobile
@@ -528,10 +542,10 @@ function App() {
                   </button>
                 </div>
                 {rotationSelection()}
-                <TiltControls key={`desktop-tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={editor.selectedInstance?.tiltX ?? selectedLegacy?.tiltX ?? 0}
-                  tiltZ={editor.selectedInstance?.tiltZ ?? selectedLegacy?.tiltZ ?? 0}
-                  rotationY={editor.selectedInstance?.rotationY ?? selectedLegacy?.rotation ?? 0}
-                  onRotate={angle => editor.setSelectedRotation(angle, rotationTargetIds, rotationPivot)} onTilt={editor.setSelectedTilt}
+                <TiltControls key={`desktop-tilt-${editor.selectedId}-${editor.toolMode}`} tiltX={tiltXControlValue}
+                  tiltZ={tiltZControlValue}
+                  rotationY={rotationControlValue}
+                  onRotate={applyRotationControl} onTilt={applyTiltControl}
                   onRotateStart={editor.beginSelectedRotationEdit} onRotateEnd={editor.endSelectedRotationEdit}
                   open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
                   anchors={availableRotationAnchors} rotationPivot={rotationPivot} onPivotChange={setRotationPivot} />

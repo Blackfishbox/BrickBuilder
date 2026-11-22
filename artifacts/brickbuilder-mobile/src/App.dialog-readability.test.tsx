@@ -189,6 +189,27 @@ it("opens the existing rotation controls when the canvas reports a part double t
   expect(host.querySelector<HTMLElement>('[data-testid="tilt-controls-menu"]')?.dataset.open).toBe("true");
 });
 
+it("opens the rotation panel with the selected imported part's current values", async () => {
+  const host = await mount("light", true);
+  editor.selectedInstance = {
+    id: "selected-import",
+    reference: "3001.dat",
+    colorCode: "4",
+    matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0],
+    part: { ldrawId: "3001", status: "resolved" },
+    rotationY: 90,
+    tiltX: 12,
+    tiltZ: -24,
+  };
+  await act(async () => root!.render(<I18nProvider><App /></I18nProvider>));
+  const menu = host.querySelector<HTMLElement>('[data-testid="tilt-controls-menu"]')!;
+  await act(async () => menu.querySelector<HTMLButtonElement>('[data-testid="button-tilt-controls"]')!.click());
+
+  expect(documentRef.body.querySelector<HTMLInputElement>('[data-testid="slider-rotation-y"]')?.value).toBe("90");
+  expect(documentRef.body.querySelector<HTMLInputElement>('[data-testid="slider-tilt-x"]')?.value).toBe("12");
+  expect(documentRef.body.querySelector<HTMLInputElement>('[data-testid="slider-tilt-z"]')?.value).toBe("-24");
+});
+
 it("starts in English and switches the visible app labels to German", async () => {
   const container = await mount("light", false, "en");
   expect(container.textContent).toContain("View");
