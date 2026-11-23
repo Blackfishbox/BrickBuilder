@@ -5,7 +5,6 @@ import {
 
 /** A deliberately obvious outline width when the user enables thick edges. */
 export const THICK_EDGE_WIDTH_PX = 6;
-export const THICK_EDGE_CORE_WIDTH_PX = 4;
 
 /**
  * Expand each source segment into two triangles. The endpoints are repeated
@@ -95,14 +94,8 @@ export function wideLineMaterial(): ShaderMaterial {
       uniform vec3 edgeColor;
       varying float vLineSide;
       void main() {
-        if (edgeOpacity > 0.5) {
-          // A light outer band plus dark center remains visible on both dark and light parts.
-          gl_FragColor = abs(vLineSide) > ${THICK_EDGE_CORE_WIDTH_PX / THICK_EDGE_WIDTH_PX}
-            ? vec4(1.0, 1.0, 1.0, 1.0)
-            : vec4(0.015, 0.02, 0.018, 1.0);
-        } else {
-          gl_FragColor = vec4(edgeColor, edgeOpacity);
-        }
+        // Thickness is the only user-controlled change; preserve the normal edge color/alpha.
+        gl_FragColor = vec4(edgeColor, edgeOpacity);
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
             ? vec4(0.6, 0.015, 0.01, 0.95)

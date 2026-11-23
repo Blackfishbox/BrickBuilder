@@ -62,7 +62,7 @@ import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-ge
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
 import {
-  expandWideLines, setWideLineResolution, THICK_EDGE_CORE_WIDTH_PX, THICK_EDGE_WIDTH_PX, wideLineMaterial,
+  expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, wideLineMaterial,
 } from "./wide-lines";
 
 import {
@@ -338,10 +338,7 @@ export class FallbackRenderer {
           drawSegments(surface.edges, transform);
         }
       }
-      context.strokeStyle = "rgba(255, 255, 255, 0.96)";
-      context.stroke();
-      context.strokeStyle = "rgba(4, 8, 6, 0.98)";
-      context.lineWidth = THICK_EDGE_CORE_WIDTH_PX;
+      context.strokeStyle = "rgba(16, 23, 19, 0.25)";
       context.stroke();
     }
 
@@ -401,10 +398,7 @@ export class FallbackRenderer {
           if (first.depth < 0.1 || second.depth < 0.1) continue;
           context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
         }
-        context.strokeStyle = "rgba(255, 255, 255, 0.96)";
-        context.stroke();
-        context.strokeStyle = "rgba(4, 8, 6, 0.98)";
-        context.lineWidth = THICK_EDGE_CORE_WIDTH_PX;
+        context.strokeStyle = "rgba(16, 23, 19, 0.25)";
         context.stroke();
       }
 
@@ -919,8 +913,6 @@ export function BuilderCanvas({
               !(object.material instanceof ShaderMaterial)) return;
             const enabled = propsRef.current.thickEdges;
             object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : 1;
-            object.material.uniforms.edgeOpacity.value = enabled ? 1 : 0.25;
-            object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#ffffff" : "#000000");
             if (object.name.startsWith("brick-edges-")) object.visible = enabled;
             setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
           });

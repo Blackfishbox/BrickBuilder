@@ -50,7 +50,7 @@ try {
   const target = new WebGLRenderTarget(500, 440);
   function pixels(width) {
     material.uniforms.lineWidth.value = width;
-    material.uniforms.edgeOpacity.value = 1;
+    material.uniforms.edgeOpacity.value = 0.25;
     renderer.setRenderTarget(target); renderer.render(scene, camera);
     const data = new Uint8Array(500 * 440 * 4);
     renderer.readRenderTargetPixels(target, 0, 0, 500, 440, data);

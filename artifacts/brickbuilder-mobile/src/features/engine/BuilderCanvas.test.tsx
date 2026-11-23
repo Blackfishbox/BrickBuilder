@@ -8,7 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import * as instructionOutlines from "../instructions/outlines";
-import { THICK_EDGE_CORE_WIDTH_PX, THICK_EDGE_WIDTH_PX } from "./wide-lines";
+import { THICK_EDGE_WIDTH_PX } from "./wide-lines";
 import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
@@ -446,8 +446,9 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(6);
-  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
-  expect(edgeMaterial.fragmentShader).toContain(`abs(vLineSide) > ${THICK_EDGE_CORE_WIDTH_PX / THICK_EDGE_WIDTH_PX}`);
+  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.25);
+  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("101713");
+  expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(edgeColor, edgeOpacity);");
   expect(edgeMaterial.vertexShader).toContain("vec4 clip = clipA;");
   expect(edgeMaterial.vertexShader).not.toContain("mix(clipA, clipB, lineEndpoint)");
   expect(localEdge.visible).toBe(true);
@@ -463,7 +464,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(transformRows.array[3]).not.toBe(beforeMove);
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges darkMode />));
   flushFrame();
-  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("ffffff");
+  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("101713");
 
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
@@ -502,8 +503,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
   expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
-  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_WIDTH_PX, color: "rgba(255, 255, 255, 0.96)" });
-  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_CORE_WIDTH_PX, color: "rgba(4, 8, 6, 0.98)" });
+  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_WIDTH_PX, color: "rgba(16, 23, 19, 0.25)" });
   expect(software.records.size).toBe(1);
 });
 
