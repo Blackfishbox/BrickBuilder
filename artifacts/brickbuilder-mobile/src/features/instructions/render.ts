@@ -160,10 +160,10 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           }
         });
         renderer.render(scene, camera);
+        const context = output.getContext("2d");
+        if (!context) throw new Error("PDF-Bild konnte nicht zusammengesetzt werden.");
+        context.drawImage(renderer.domElement, 0, 0);
         if (highlightIds?.size) {
-          const context = output.getContext("2d");
-          if (!context) throw new Error("PDF-Konturen konnten nicht gezeichnet werden.");
-          context.drawImage(renderer.domElement, 0, 0);
           const boxes = new Map<string, Box3>();
           assembly.traverse(object => {
             if (object.userData.partId && visible.has(object.userData.partId) && highlightIds.has(object.userData.partId)) {
@@ -184,9 +184,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           const groups = groupInstructionHighlights(highlightOccurrences, new Set([...highlightIds].filter(id => visible.has(id))));
           drawInstructionOutlines(context, camera, instructionGroupBounds(groups, boxes),
             INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
-          return output.toDataURL("image/jpeg", 0.9);
         }
-        return renderer.domElement.toDataURL("image/jpeg", 0.9);
+        return output.toDataURL("image/jpeg", 0.9);
       },
       dispose() {
         if (imported) disposeImportedScene(imported);

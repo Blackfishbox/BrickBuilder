@@ -34,7 +34,7 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
   const before = JSON.stringify(document), softwareFaces: number[][] = [];
   let path: number[] = [];
   const context = {
-    fillRect() {}, beginPath() { path = []; },
+    fillRect() {}, drawImage() {}, beginPath() { path = []; },
     moveTo(x: number, y: number) { path.push(x, y); },
     lineTo(x: number, y: number) { path.push(x, y); },
     closePath() {}, fill() { softwareFaces.push(path.slice()); },
@@ -137,6 +137,10 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
     context.stroke.mockClear();
     renderer.image(new Set(ids), { id: "s", title: "", notes: "", partIds: ids });
     expect(context.stroke).not.toHaveBeenCalled();
+    context.drawImage.mockClear();
+    const snapshot = renderer.image(new Set(ids), { id: "s", title: "", notes: "", partIds: ids });
+    expect(context.drawImage).toHaveBeenCalledOnce();
+    expect(snapshot).toBe("data:image/jpeg;base64,outlined");
     renderer.image(new Set([ids[0]]), { id: "s", title: "", notes: "", partIds: ids }, new Set(ids));
     expect(context.stroke).toHaveBeenCalledOnce();
     expect(JSON.stringify(document)).toBe(before);

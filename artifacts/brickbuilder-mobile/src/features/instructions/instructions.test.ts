@@ -488,6 +488,79 @@ describe("local construction instructions", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
+  it("embeds visible cumulative model diagrams separately from step-part thumbnails", async () => {
+    const manifest = PART_PACKAGES.find(pkg => pkg.id === "ldraw-bricks")!;
+    const bytes = readFileSync(new URL(`../../../public/${manifest.url}`, import.meta.url));
+    const parsed = JSON.parse(new TextDecoder().decode(
+      manifest.compression === "gzip" ? gunzipSync(bytes) : bytes,
+    ));
+    const packageData = validatePayload(parsed, manifest);
+    const doc = fixture(`${line("3004", 0)}\n${line("3004", 40)}\n0 STEP\n${line("3004", 80)}\n`);
+    doc.imported!.resources = Object.fromEntries(packageData.files.map(file => [file.path, file]));
+    for (const part of doc.imported!.instances) part.part.status = "resolved";
+    const frames: { ids: string[]; pixels: Uint8Array; triangles: number }[] = [];
+    let rendered: ReturnType<typeof rasterCanvas> | undefined;
+    vi.stubGlobal("document", {
+      createElement: () => {
+        rendered = rasterCanvas(200, 152);
+        return rendered.canvas;
+      },
+    });
+    try {
+      const thumbnail = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+      const pdf = await exportInstructionPDF(
+        doc,
+        doc.instructions!,
+        {},
+        async (document, signal) => {
+          const renderer = await createSoftwareInstructionRenderer(document, signal, { width: 200, height: 152 });
+          return {
+            image(visible, step, highlightIds) {
+              const image = renderer.image(visible, step, highlightIds);
+              frames.push({
+                ids: [...visible],
+                pixels: rendered!.pixels.slice(),
+                triangles: rendered!.filledTriangles,
+              });
+              return image;
+            },
+            dispose: () => renderer.dispose(),
+          };
+        },
+        async () => thumbnail,
+      );
+      const output = Buffer.from(pdf).toString("latin1");
+      const imageObjects = [...output.matchAll(/<<([\s\S]*?)\/Subtype\s*\/Image\b([\s\S]*?)>>/g)]
+        .map(match => `${match[1]}${match[2]}`);
+      const modelImages = imageObjects.filter(body => /\/Width\s+200\b/.test(body) && /\/Height\s+152\b/.test(body));
+      const pdfText = [...output.matchAll(/<<([\s\S]*?)>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/g)]
+        .filter(match => match[1].includes("/FlateDecode"))
+        .map(match => Buffer.from(unzlibSync(Buffer.from(match[2], "latin1"))).toString("latin1"))
+        .join("\n");
+      const nonWhitePixels = (pixels: Uint8Array) => {
+        let count = 0;
+        for (let index = 0; index < pixels.length; index += 4) {
+          if (pixels[index] < 250 || pixels[index + 1] < 250 || pixels[index + 2] < 250) count++;
+        }
+        return count;
+      };
+      expect(decode(pdf.slice(0, 8))).toContain("%PDF-1.");
+      expect(doc.imported!.resources["parts/3004.dat"].content).toContain("0 !LDRAW_ORG Part");
+      expect(frames).toHaveLength(2);
+      expect(frames.map(frame => frame.ids)).toEqual([
+        doc.imported!.instances.slice(0, 2).map(part => part.id),
+        doc.imported!.instances.map(part => part.id),
+      ]);
+      expect(frames.every(frame => frame.triangles > 0)).toBe(true);
+      expect(frames.every(frame => nonWhitePixels(frame.pixels) > 0)).toBe(true);
+      expect(nonWhitePixels(frames[1].pixels)).toBeGreaterThan(nonWhitePixels(frames[0].pixels));
+      expect(modelImages).toHaveLength(2);
+      expect(output).toContain("/Subtype /Image");
+      expect(pdfText).toContain("LDraw 3004");
+      expect(pdfText).toContain("2×");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("keeps resolved transparent LDraw parts visible in highlighted PDF steps", async () => {
     const manifest = PART_PACKAGES.find(pkg => pkg.id === "ldraw-default-details")!;
     const bytes = readFileSync(new URL(`../../../public/${manifest.url}`, import.meta.url));
