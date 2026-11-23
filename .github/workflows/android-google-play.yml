@@ -1,8 +1,6 @@
 name: Build and publish closed Google Play test
 
 on:
-  push:
-    branches: [android/google-play]
   workflow_dispatch:
     inputs:
       version_name:
@@ -10,19 +8,19 @@ on:
         required: false
         type: string
       release_notes_de:
-        description: "Optional manual German notes (maximum 500 characters); push builds use Release-Notes-DE trailers"
+        description: "Optional German notes (maximum 500 characters)"
         required: false
         type: string
       release_notes_en:
-        description: "Optional manual English notes (maximum 500 characters); push builds use Release-Notes-EN trailers"
+        description: "Optional English notes (maximum 500 characters)"
         required: false
         type: string
 
-# Only the Android release branch can publish, and only to closed testing alpha.
+# Only main can publish, and only to closed testing alpha.
 permissions:
   contents: read
 
-# Builds remain independent so every push receives its own downloadable artifacts.
+# Manual runs remain independent so every build has its own downloadable artifacts.
 jobs:
   android:
     runs-on: ubuntu-24.04
@@ -39,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Require the release branch and all release secrets
+      - name: Require main and all release secrets
         env:
           ANDROID_UPLOAD_KEY_BASE64: ${{ secrets.ANDROID_UPLOAD_KEY_BASE64 }}
           ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
@@ -54,8 +52,8 @@ jobs:
           python3 - <<'PY'
           import json
           import os
-          if os.environ["GITHUB_REF"] != "refs/heads/android/google-play":
-              raise SystemExit("Run this workflow only on android/google-play.")
+          if os.environ["GITHUB_REF"] != "refs/heads/main":
+              raise SystemExit("Run this workflow only on main.")
           keys = [
               "ANDROID_UPLOAD_KEY_BASE64", "ANDROID_UPLOAD_STORE_PASSWORD",
               "ANDROID_UPLOAD_KEY_ALIAS", "ANDROID_UPLOAD_KEY_PASSWORD",
@@ -256,7 +254,7 @@ jobs:
   publish:
     name: Publish closed test (alpha)
     needs: android
-    if: github.ref == 'refs/heads/android/google-play'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

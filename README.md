@@ -1,11 +1,11 @@
-# Android / Google Play branch
+# Android / Google Play releases
 
-Standalone Android preparation is on `android/google-play`.
+Android releases use `main` as their only source and are started manually from
+GitHub Actions. A run builds a signed bundle and publishes only to the closed
+`alpha` test after the required checks pass; pushes do not start a release.
 See [the Android build and release guide](docs/android-google-play.md) for
-offline coverage, local APK/AAB builds, GitHub Actions and remaining Play
-Console/signing/device-test requirements. Pushes to `android/google-play` build
-signed bundles and publish to the closed `alpha` test once the GitHub publishing
-secret and Play Console permissions are configured. `main` does not publish.
+offline coverage, local APK/AAB builds, release setup and remaining Play
+Console/signing/device-test requirements.
 
 # BrickBuilder
 

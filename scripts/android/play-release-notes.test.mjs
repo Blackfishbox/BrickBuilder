@@ -92,9 +92,9 @@ const release = {
 };
 const response = (runs) => ({ ok: true, json: async () => ({ workflow_runs: runs }) });
 
-test("ignores build-only runs and uses the last successful automated release", async () => {
+test("ignores build-only runs and uses the last successful release from main", async () => {
   const sha = await previousPublishedCommit(env, async (url, options) => {
-    assert.equal(url.searchParams.get("branch"), "android/google-play");
+    assert.equal(url.searchParams.get("branch"), "main");
     assert.equal(url.searchParams.get("status"), "success");
     assert.equal(options.headers.Authorization, "Bearer test-only");
     return response([{ ...release, id: 195, name: "Build signed Google Play AAB" }, release]);
@@ -102,7 +102,7 @@ test("ignores build-only runs and uses the last successful automated release", a
   assert.equal(sha, release.head_sha);
 });
 
-test("first automated release has no invented history baseline", async () => {
+test("first successful release has no invented history baseline", async () => {
   assert.equal(await previousPublishedCommit(env, async () => response([])), null);
 });
 

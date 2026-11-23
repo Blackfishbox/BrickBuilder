@@ -59,6 +59,7 @@ The scripted navigation-overlay commands require a test device which exposes
 Android's navigation emulation overlays. A passing emulator check is not a
 claim that a physical manufacturer's device was tested.
 
-Keep the existing release signing, per-push version codes, private policy
-injection and matching ProGuard mapping intact. Never replace the current
-Android branch with a snapshot of the older local web/main Android shell.
+Keep the existing release signing, per-run version codes, private policy
+injection and matching ProGuard mapping intact. `main` is the only Android
+source branch; do not replace its current Android implementation with an older
+snapshot.

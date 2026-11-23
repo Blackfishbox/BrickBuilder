@@ -98,7 +98,7 @@ export async function previousPublishedCommit(env, fetchImpl = fetch) {
   for (let page = 1; page <= 10; page += 1) {
     const url = new URL(`${base}/repos/${env.GITHUB_REPOSITORY}/actions/workflows/android-google-play.yml/runs`);
     url.search = new URLSearchParams({
-      branch: "android/google-play", status: "success", per_page: "100", page: String(page),
+      branch: "main", status: "success", per_page: "100", page: String(page),
     }).toString();
     const response = await fetchImpl(url, {
       headers: {
@@ -128,10 +128,9 @@ export async function previousPublishedCommit(env, fetchImpl = fetch) {
 export function releaseNotesSince(base, git = (...args) => execFileSync("git", args, { encoding: "utf8" }), language = "de") {
   const locale = LANGUAGES[language];
   if (!locale) throw new Error(`Unsupported release-note language: ${language}`);
-  // Follow the Android branch's first-parent history. A merge trailer summarizes
-  // imported main changes; traversing its second parent would replay the entire
-  // unrelated main history, including commits predating Android releases.
-  // Failed Android builds remain on this first-parent path and must be included.
+  // Follow main's first-parent history. Merge trailers summarize incorporated
+  // changes; traversing second parents could replay unrelated older history.
+  // Failed manual runs remain on this path and must be included.
   let output;
   if (!base) {
     output = git("log", "--first-parent", "-1", "--format=%H%x00%B%x00", "HEAD", "--");

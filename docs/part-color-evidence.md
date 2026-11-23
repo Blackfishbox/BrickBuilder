@@ -182,23 +182,17 @@ pnpm --filter @workspace/brickbuilder-mobile exec vitest run src/features/catalo
 python3 -m unittest discover -s scripts/android -p 'test_*.py'
 ```
 
-### Separate Android branch
+### Retired Android branch (historical)
 
-Keep `main` and `android/google-play` separate. Transfer the reviewed
-evidence/picker commits with `git cherry-pick`, starting from the latest remote
-Android tip, rather than merging or replacing Android with `main`. Include the
-catalog worker/client, picker styling, editor guards, regression tests,
-attribution, pinned manifest/binary and coverage report along with the
-generator and documentation. The inventory extension is an already approved
-snapshot; do not regenerate it as part of an Android build.
+The separate `android/google-play` source branch has been retired. Android and
+web application changes now use `main`; do not cherry-pick updates into a
+separate Android branch. Start Play releases manually from `main` using the
+procedure in [the Android and Google Play guide](android-google-play.md).
 
-Do not replace Android's release workflow, native insets, document-provider
-import picker, optional geometry consent, privacy-secret injection, viewport
-transformation, icons or lockfile with their `main` versions. Run the catalog,
-construction and inventory color tests on the resulting Android tree, plus
-the Android platform and preparation regressions. Build with the existing
-`android:prepare` path and run the final AAB verifier before accepting the
-package. Neither this transfer nor the release workflow publishes to Play.
+The Android-specific checks and preservation requirements described in older
+transfer notes remain relevant to the native app, but the old branch-transfer
+steps no longer apply. The inventory extension remains an already approved
+snapshot; do not regenerate it as part of a build.
 
 Upstream URLs are mutable; today's download is not a promise to reproduce an
 older dated snapshot. Retain all nine frozen `.csv.gz` inputs outside Git

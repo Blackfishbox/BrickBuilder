@@ -1,9 +1,10 @@
 # Standalone Android and Google Play preparation
 
-This work lives on **`android/google-play`**. The GitHub `main` branch remains
-the existing web/PWA application. Pushes to `android/google-play` build a signed
-AAB and submit it to the **closed `alpha` test** using the Google Play API.
-The workflow never targets production. `main` does not trigger publishing.
+The GitHub **`main` branch is the only Android release source**. The Google Play
+workflow is started manually from `main`; pushes to any branch, including
+`main`, do not start a release. A manual run builds a signed AAB and submits it
+only to the **closed `alpha` test** using the Google Play API. The workflow never
+targets production.
 
 ## What runs locally
 
@@ -20,7 +21,7 @@ does not request network or broad storage permission. The PWA service worker is
 disabled for the native build; Android updates replace its packaged assets.
 The ordinary web/PWA build remains unchanged.
 
-The Android-branch release workflow retains only the signed AAB and matching
+The manual release workflow retains only the signed AAB and matching
 ProGuard/R8 `mapping.txt` as downloadable GitHub artifacts, and uploads both to
 Google Play with German and English release notes. It does not change store
 listing text or graphics; those are managed separately in Play Console. The
@@ -149,6 +150,10 @@ or Play's internal testing to exercise a signed AAB.
 ## GitHub Actions
 
 Workflow: `.github/workflows/android-google-play.yml`.
+Run it with **Actions → Build and publish closed Google Play test → Run workflow**,
+selecting `main` as the branch. A run selected on another branch fails its
+explicit branch guard and cannot publish. Ordinary pushes to `main` do not start
+the workflow.
 
 ### One-time configuration
 
@@ -162,7 +167,7 @@ Workflow: `.github/workflows/android-google-play.yml`.
 3. The app listing must already exist. If no binary has ever been uploaded,
    perform the first signed AAB upload manually in Play Console; the API cannot
    create the initial app listing. Complete required declarations, Play App
-   Signing and any first-release setup before expecting automated publication.
+   Signing and any first-release setup before expecting workflow publication.
 4. In GitHub **Settings → Secrets and variables → Actions**, add the repository
    secret **`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`**. Paste the complete original
    service-account JSON, including its private key, directly into GitHub's
@@ -183,20 +188,19 @@ Workflow: `.github/workflows/android-google-play.yml`.
    HTTPS URL. Optionally set `ANDROID_VERSION_NAME` (default `0.1.0`) and
    `ANDROID_VERSION_CODE_OFFSET` (default `0`).
 
-### What each push does
+### What a manual run does
 
-1. A push to `android/google-play` runs the existing tests, builds the signed
-   release AAB, checks its signature/privacy policy and generates R8 mapping.
-   Missing or malformed publishing secrets fail early with a clear error.
+1. A manual run from `main` runs the existing tests, builds the signed release
+   AAB, checks its signature/privacy policy and generates R8 mapping. Missing or
+   malformed publishing secrets fail early with a clear error.
 2. The AAB and matching `mapping.txt` remain available in the run's **Artifacts**
    for 14 days, even if the later Play upload fails. No emulator screenshots
    or measurement reports are produced.
 3. A separate publish job downloads those exact artifacts and generates German
    (`de-DE`) and English (`en-US`) release notes, each limited to 500 characters.
-   It compares commits against the last successful automated release, so
-   intervening failed runs are included. Before the first successful automated
-   release, it summarizes the current push's changes; manual runs use the latest
-   commit unless localized notes are supplied.
+   It compares commits against the last successful release, so intervening
+   failed runs are included. Before the first successful release, it summarizes
+   the current commit unless localized notes are supplied.
 4. The pinned upload action sends the AAB, R8 mapping and both sets of notes to
    app `brickbuilder.blackfishbox.de`, track **`alpha`**, with release status
    **`completed`** and `changesNotSentForReview: false`. The workflow does not
@@ -205,12 +209,12 @@ Workflow: `.github/workflows/android-google-play.yml`.
 
 The notes are precise, hand-written German and English commit trailers, not an AI
 translation or a claim that every changed area contains a verified bug fix.
-They require no paid API. Every app-change commit needs both
-`Release-Notes-DE` and `Release-Notes-EN`; complete-batch trailers can cover
-older commits during a localization rollout. For manual notes, use **Run
-workflow**, select `android/google-play`, and fill in `release_notes_de` and/or
-`release_notes_en`. The optional `version_name` input overrides the displayed
-version. The GitHub Actions step summary shows both localized notes.
+They require no paid API. Include both `Release-Notes-DE` and
+`Release-Notes-EN` trailers for app changes intended for release; complete-batch
+trailers can cover older commits during a localization rollout. For an individual
+run, fill in `release_notes_de` and/or `release_notes_en` in the manual workflow
+inputs. The optional `version_name` input overrides the displayed version. The
+GitHub Actions step summary shows both localized notes.
 
 `completed` requests rollout to all eligible testers of this closed track.
 Google review, managed publishing, incomplete declarations or account
@@ -221,16 +225,16 @@ retry as a draft or leave the changes unsubmitted for review.
 
 Publishing jobs are serialized to avoid conflicting Play edits; active uploads
 are never cancelled. Under GitHub concurrency rules, a newer waiting publish
-job can replace an older waiting one during rapid pushes. Every push still has
-its own independent build and downloadable artifacts. An older run is refused
-if a newer automated release has already succeeded. Avoid editing the same
-release manually in Play Console while an automated upload is running.
+job can replace an older waiting one. Each manual run has its own independent
+build and downloadable artifacts. An older run is refused if a newer release
+has already succeeded. Avoid editing the same release manually in Play Console
+while an upload is running.
 
 The version code is `ANDROID_VERSION_CODE_OFFSET + GITHUB_RUN_NUMBER`.
 **Every Play upload must have a strictly higher code than previous uploads**,
-including manual uploads. Adjust the offset before enabling automation if
+including manual uploads. Adjust the offset before the next release if
 necessary. Re-running a run that already uploaded its AAB does not create a new
-code; start a new manual run or push a new commit instead.
+code; start a new manual run from `main` instead.
 
 The workflow verifies signatures and uses the existing permanent upload key,
 never a debug key or a newly generated replacement. Private controller details

@@ -1,8 +1,9 @@
 # Combined catalog and thumbnail verification
 
-The catalog recovery, color-aware LDraw library previews and inventory-row
-previews are integrated together in both `main` and `android/google-play`.
-The branches intentionally retain their platform-specific differences.
+This is a historical record of integrating catalog recovery, color-aware LDraw
+library previews and inventory-row previews across the former `main` and
+`android/google-play` branches. The separate Android branch has since been
+retired; `main` is the only source for both web and Android releases.
 
 ## Combined checks
 
@@ -30,14 +31,14 @@ The native import helper, model picker, geometry request handling, application
 ID, signing configuration, native insets, launcher icons, dependency lockfile
 and release preparation scripts are preserved.
 
-The existing push-triggered signed release workflow remains responsible for
-the final AAB. It validates the packaged catalog, offline building assets,
-privacy policy and R8 mapping. Downloads remain exclusively the signed AAB
-and matching `mapping.txt`; no emulator or screenshot job is added and nothing
-is published to Google Play automatically.
+The current signed-release workflow is started manually from `main` and
+publishes only to the closed `alpha` test. It validates the packaged catalog,
+offline building assets, privacy policy and R8 mapping. Downloads remain
+exclusively the signed AAB and matching `mapping.txt`; no emulator or screenshot
+job is added.
 
-GitHub updates use existing public branch ancestry and normal fast-forward
-pushes, not Replit checkpoint history or a full cross-branch snapshot.
+The branch-transfer notes above describe that historical integration only;
+they are not instructions to recreate or push to the retired Android branch.
 Private uploads, signing material, personal fields and generated build output
 are excluded. The workflow's live status must be checked separately; the local
 checks above are not a claim of a finished signed build or physical-phone
