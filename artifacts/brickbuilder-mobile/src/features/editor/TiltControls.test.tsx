@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import TiltControls from "./TiltControls";
+import TiltControls, { snapRotationDetent } from "./TiltControls";
 import type { RotationAnchor } from "@/features/connections/rotation-anchors";
 
 let root: ReturnType<typeof createRoot> | undefined;
@@ -170,6 +170,25 @@ it("sends slider changes as whole-degree values", () => {
   });
   expect(onRotate).toHaveBeenLastCalledWith(138);
   expect(onTilt.mock.calls).toEqual([["x", 49], ["z", -36]]);
+});
+
+it("snaps the rotation slider to the 90 and 180 degree detents", () => {
+  expect(snapRotationDetent(87)).toBe(90);
+  expect(snapRotationDetent(93)).toBe(90);
+  expect(snapRotationDetent(177)).toBe(180);
+  expect(snapRotationDetent(183)).toBe(180);
+  expect(snapRotationDetent(86)).toBe(86);
+  expect(snapRotationDetent(184)).toBe(184);
+
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const onRotate = vi.fn();
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<TiltControls onRotate={onRotate} tiltX={0} tiltZ={0} onTilt={vi.fn()} />));
+  act(() => {
+    host!.querySelector<HTMLButtonElement>('[data-testid="button-rotation-detent-90"]')!.click();
+    host!.querySelector<HTMLButtonElement>('[data-testid="button-rotation-detent-180"]')!.click();
+  });
+  expect(onRotate.mock.calls).toEqual([[90], [180]]);
 });
 
 it("brackets Y-rotation pointer gestures so the editor can save them as one history step", () => {

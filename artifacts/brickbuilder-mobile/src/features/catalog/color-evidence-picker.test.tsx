@@ -66,3 +66,16 @@ it("offers an intersection for mixed selections and locks all inventory recolori
   expect(onChange).not.toHaveBeenCalled();
   expect(container.textContent).toContain("Farbe ist für diese Auswahl festgelegt");
 });
+
+it("sorts palette colors by their display names and replaces underscores", async () => {
+  const unordered = [
+    { name: "Warm_Tan", value: "#aa8866", ldrawCode: "3" },
+    { name: "Blue", value: "#0000ff", ldrawCode: "1" },
+    { name: "Dark_Green", value: "#00451a", ldrawCode: "2" },
+  ];
+  await act(async () => root.render(<EvidencedColorPicker palette={unordered} references={["unknown"]}
+    locked={false} current={[]} mobile onChange={() => {}} />));
+  const names = [...container.querySelectorAll(".mobile-color-option span:nth-child(2)")]
+    .map(element => element.textContent);
+  expect(names).toEqual(["Blue", "Dark Green", "Warm Tan"]);
+});

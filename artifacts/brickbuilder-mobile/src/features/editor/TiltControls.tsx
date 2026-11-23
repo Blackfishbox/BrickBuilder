@@ -6,6 +6,15 @@ import type { RotationAnchor } from "@/features/connections/rotation-anchors";
 import DraggablePanel from "./DraggablePanel";
 
 type SliderAxis = "y" | "x" | "z";
+const ROTATION_DETENTS = [90, 180] as const;
+const ROTATION_DETENT_CAPTURE_DEGREES = 3;
+
+export function snapRotationDetent(angle: number): number {
+  const rounded = Math.round(angle);
+  return ROTATION_DETENTS.find(detent => Math.abs(rounded - detent) <= ROTATION_DETENT_CAPTURE_DEGREES)
+    ?? rounded;
+}
+
 type TouchGesture = {
   axis: SliderAxis;
   x: number;
@@ -106,7 +115,13 @@ export default function TiltControls({
 
   const adjustRotation = (raw: string) => {
     const angle = Number(raw);
-    if (Number.isFinite(angle)) onRotate?.(Math.max(0, Math.min(360, Math.round(angle))));
+    if (Number.isFinite(angle)) onRotate?.(Math.max(0, Math.min(360, snapRotationDetent(angle))));
+  };
+
+  const setRotationDetent = (angle: typeof ROTATION_DETENTS[number]) => {
+    onRotateStart?.();
+    onRotate?.(angle);
+    onRotateEnd?.();
   };
 
   const adjustTilt = (axis: "x" | "z", raw: string) => {
@@ -176,6 +191,14 @@ export default function TiltControls({
             {...sliderEvents("y")}
           />
           <output htmlFor={`${controlId}-slider-y`} data-testid="value-rotation-y">{Math.round(rotationY)}°</output>
+          <div className="tilt-rotation-detents" aria-label={t("tilt.rotationPresets")}>
+            {ROTATION_DETENTS.map(angle => (
+              <button key={angle} type="button" aria-label={t("tilt.setRotation", { degrees: angle })}
+                aria-pressed={Math.round(rotationY) === angle}
+                data-testid={`button-rotation-detent-${angle}`}
+                onClick={() => setRotationDetent(angle)}>{angle}°</button>
+            ))}
+          </div>
         </div>
         {(["x", "z"] as const).map(axis => {
           const angle = axis === "x" ? tiltX : tiltZ;

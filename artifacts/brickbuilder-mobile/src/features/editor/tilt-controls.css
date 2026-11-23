@@ -58,6 +58,19 @@
   cursor: pointer;
 }
 .tilt-axis-control output { color: #30463d; font-variant-numeric: tabular-nums; text-align: right; }
+.tilt-rotation-detents {
+  grid-column: 2 / 4; display: flex; justify-content: space-between; gap: 8px;
+  margin-top: -5px;
+}
+.tilt-rotation-detents button {
+  min-width: 56px; min-height: 32px; padding: 0 10px;
+  border: 1px solid #dcded3; border-radius: 8px; background: #f0eee4;
+  color: #536c5f; font: inherit; font-weight: 800; cursor: pointer;
+}
+.tilt-rotation-detents button[aria-pressed="true"] {
+  border-color: #d75b3f; background: #fbe9e3; color: #9f402c;
+}
+.tilt-rotation-detents button:focus-visible { outline: 2px solid #214a42; outline-offset: 2px; }
 @media (max-width: 900px) {
   .mobile-selection-actions .tilt-controls { position: relative; flex: 0 0 auto; }
   .mobile-selection-actions .tilt-controls-toggle {
@@ -89,6 +102,13 @@
 .dark .tilt-panel small { color: #9fb3a5; }
 .dark .tilt-axis-control label, .dark .tilt-axis-control output { color: #d5e4da; }
 .dark .tilt-axis-control input[type="range"] { accent-color: #9fc9aa; }
+.dark .tilt-rotation-detents button {
+  border-color: #46564b; background: #26362e; color: #d5e4da;
+}
+.dark .tilt-rotation-detents button[aria-pressed="true"] {
+  border-color: #f08a70; background: #49312b; color: #ffab94;
+}
+.dark .tilt-rotation-detents button:focus-visible { outline-color: #a8d8b2; }
 .dark .mobile-selection-actions .tilt-controls-toggle { background: #26362e; color: #d5e4da; }
 .dark .panel-drag-handle, .dark .tilt-anchor-control select {
   border-color: #46564b; background: #26362e; color: #d5e4da;

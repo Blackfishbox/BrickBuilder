@@ -114,6 +114,13 @@ export function selectionColorEvidence(references: string[], index?: ColorEviden
 }
 
 export interface EvidenceSwatch { name: string; value: string; ldrawCode: string }
+export function displayColorName(name: string): string {
+  return name.replace(/_+/g, " ").trim();
+}
+export function sortColorNames<T extends { name: string }>(colors: readonly T[]): T[] {
+  const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  return [...colors].sort((a, b) => collator.compare(displayColorName(a.name), displayColorName(b.name)));
+}
 /** Keep existing/imported colors visible, but don't offer them as proven replacements. */
 export function evidencePalette(palette: EvidenceSwatch[], codes: string[] | undefined, current: EvidenceSwatch[]) {
   const visible = palette.filter(c => codes === undefined || codes.includes(c.ldrawCode));

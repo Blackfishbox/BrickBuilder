@@ -8,6 +8,7 @@ import { MAX_LIST_BYTES, MAX_ROWS, type Inventory, type InventoryChoice, type In
 import './inventory.css';
 import { importFileAccept } from '@/platform/import-file';
 import { useI18n } from '@/i18n/I18nProvider';
+import { displayColorName, sortColorNames } from '@/features/catalog/color-evidence';
 
 const PAGE = 30;
 export const CSV_TEMPLATE = `part_id,color_id,quantity
@@ -311,7 +312,7 @@ export default function InventoryPanel({ document, selected, onSelect, onSpread,
                     <label className="inv-pick">{t('inventory.chooseLdrawColor')}
                       <select value={pick.colorCode ?? ''} onChange={e => setPicks(p => ({ ...p, [row.id]: { ...p[row.id], colorCode: e.target.value || undefined } }))} data-testid={`select-inventory-color-${row.id}`}>
                         <option value="">{t('inventory.chooseOption')}</option>
-                        {res.colors.map(c => <option key={c.ldrawCode} value={c.ldrawCode}>{c.ldrawCode} – {c.name}</option>)}
+                         {sortColorNames(res.colors).map(c => <option key={c.ldrawCode} value={c.ldrawCode}>{c.ldrawCode} – {displayColorName(c.name)}</option>)}
                       </select>
                     </label>)}
                   {!issue && (
