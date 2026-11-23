@@ -1,9 +1,9 @@
 import {
-  AmbientLight, Box3, Color, DirectionalLight,
+  AmbientLight, Box3, BufferGeometry, Color, DirectionalLight,
   Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Matrix4,
   Mesh, MeshLambertMaterial, OrthographicCamera, Scene, Vector3, WebGLRenderer,
 } from "three";
-import type { BuilderDocument } from "../editor/model";
+import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
@@ -84,8 +84,21 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   let imported: Group | undefined;
   const brickColors = new Map<string, Color>();
   const brickMaterials = new Map<string, MeshLambertMaterial>();
+  // Geometry is immutable and export-owned; materials remain occurrence-specific.
+  const brickGeometries = new Map<BrickType, BufferGeometry>();
   const output = globalThis.document.createElement("canvas");
   output.width = INSTRUCTION_RENDER_SIZE.width; output.height = INSTRUCTION_RENDER_SIZE.height;
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    if (imported) disposeImportedScene(imported);
+    for (const geometry of brickGeometries.values()) geometry.dispose();
+    for (const material of brickMaterials.values()) material.dispose();
+    brickGeometries.clear(); brickMaterials.clear(); brickColors.clear();
+    renderer.dispose(); renderer.forceContextLoss();
+    output.width = 1; output.height = 1;
+  };
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
@@ -98,7 +111,12 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       const material = new MeshLambertMaterial({ color: new Color(part.color) });
       brickColors.set(part.id, material.color.clone());
       brickMaterials.set(part.id, material);
-      group.add(new Mesh(createLocalBrickGeometry(part.type), material));
+      let geometry = brickGeometries.get(part.type);
+      if (!geometry) {
+        geometry = createLocalBrickGeometry(part.type);
+        brickGeometries.set(part.type, geometry);
+      }
+      group.add(new Mesh(geometry, material));
       group.applyMatrix4(brickTransformMatrix(part));
       assembly.add(group);
       // A rotated bounding box includes empty space above the body beside the
@@ -187,23 +205,10 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         }
         return output.toDataURL("image/jpeg", 0.9);
       },
-      dispose() {
-        if (imported) disposeImportedScene(imported);
-        for (const group of assembly.children.filter(child => child !== imported)) {
-          group.traverse(object => {
-            if (object instanceof Mesh) {
-              object.geometry.dispose();
-              for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
-            }
-          });
-        }
-        renderer.dispose(); renderer.forceContextLoss();
-        output.width = 1; output.height = 1;
-      },
+      dispose,
     };
   } catch (error) {
-    if (imported) disposeImportedScene(imported);
-    renderer.dispose(); renderer.forceContextLoss();
+    dispose();
     throw error;
   }
 }

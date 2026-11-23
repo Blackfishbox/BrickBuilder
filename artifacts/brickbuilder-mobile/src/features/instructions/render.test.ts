@@ -1,12 +1,18 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { InstancedMesh, Mesh, Vector3, type Camera, type Scene } from "three";
-import { createEmptyDocument } from "../editor/model";
+import { BufferGeometry, Color, InstancedMesh, Mesh, Vector3, type Camera, type Scene } from "three";
+import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { brickTransformMatrix } from "../editor/brick-transform";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { createInstructionRenderer } from "./render";
 import { exportInstructionPDF } from "./pdf";
+import { instructionDisplayColor } from "./highlight-color";
+
+vi.mock("../engine/local-brick-geometry", async importOriginal => {
+  const module = await importOriginal<typeof import("../engine/local-brick-geometry")>();
+  return { ...module, createLocalBrickGeometry: vi.fn(module.createLocalBrickGeometry) };
+});
 
 const { frames, rendererDispose, forceContextLoss, rendererSetSize } = vi.hoisted(() => ({
   frames: vi.fn(), rendererDispose: vi.fn(), forceContextLoss: vi.fn(), rendererSetSize: vi.fn(),
@@ -30,6 +36,7 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
     { id: "base", type: "brick-2x4", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 },
     { id: "stack", type: "brick-2x2", color: "#00ff00", x: 0, y: 1.2, z: 0, rotation: 90 },
     { id: "tilt", type: "brick-1x2", color: "#0000ff", x: 3, y: 2.4, z: 1, rotation: 35, tiltX: 28, tiltZ: -19 },
+    { id: "repeat", type: "brick-2x4", color: "#ffff00", x: -4, y: 3, z: 2, rotation: 67, tiltX: -13, tiltZ: 22 },
   ];
   const before = JSON.stringify(document), softwareFaces: number[][] = [];
   let path: number[] = [];
@@ -90,6 +97,155 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
   } finally { webgl.dispose(); software.dispose(); }
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+
+function repeatedDocument(count = 128): BuilderDocument {
+  const document = createEmptyDocument();
+  document.bricks = Array.from({ length: count }, (_, index) => ({
+    id: `repeat-${index}`, type: "brick-2x2" as const,
+    color: index % 2 ? "#ff0000" : "#0000ff",
+    x: index % 16 * 3, y: 0, z: Math.floor(index / 16) * 3, rotation: index % 4 * 90,
+  }));
+  return document;
+}
+
+function stubCanvas() {
+  const context = {
+    fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), drawImage: vi.fn(),
+    beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn(), fill: vi.fn(),
+    save: vi.fn(), restore: vi.fn(), stroke: vi.fn(),
+  };
+  const canvas = { width: 0, height: 0, getContext: () => context,
+    toDataURL: () => "data:image/jpeg;base64,test" };
+  vi.stubGlobal("document", { createElement: () => canvas });
+  return { canvas, context };
+}
+
+it("shares WebGL geometry but not occurrence colors, visibility or highlights, and disposes once", async () => {
+  stubCanvas();
+  const document = repeatedDocument(3);
+  document.bricks[2].type = "brick-1x2";
+  const renderer = await createInstructionRenderer(document);
+  expect(createLocalBrickGeometry).toHaveBeenCalledTimes(2);
+  const visible = new Set(document.bricks.slice(0, 2).map(part => part.id));
+  const step = { id: "s", title: "", notes: "", partIds: [...visible] };
+  renderer.image(visible, step, new Set([document.bricks[0].id]));
+  const meshes: Mesh<BufferGeometry, import("three").MeshLambertMaterial>[] = [];
+  (frames.mock.lastCall![0] as Scene).traverse(object => {
+    if (object instanceof Mesh) meshes.push(object as typeof meshes[number]);
+  });
+  expect(meshes[0].geometry).toBe(meshes[1].geometry);
+  expect(meshes[0].geometry).not.toBe(meshes[2].geometry);
+  expect(meshes[0].material).not.toBe(meshes[1].material);
+  meshes.forEach((mesh, index) => {
+    const expected = new Color(document.bricks[index].color);
+    instructionDisplayColor(expected, index === 0);
+    expect(mesh.material.color).toEqual(expected);
+    expect(mesh.parent!.visible).toBe(index < 2);
+  });
+  renderer.image(new Set(document.bricks.map(part => part.id)), step);
+  meshes.forEach((mesh, index) => expect(mesh.material.color).toEqual(new Color(document.bricks[index].color)));
+  const disposals = [...new Set(meshes.map(mesh => mesh.geometry)), ...meshes.map(mesh => mesh.material)]
+    .map(resource => vi.spyOn(resource, "dispose"));
+  renderer.dispose(); renderer.dispose();
+  disposals.forEach(dispose => expect(dispose).toHaveBeenCalledOnce());
+  expect(rendererDispose).toHaveBeenCalledOnce();
+  expect(forceContextLoss).toHaveBeenCalledOnce();
+});
+
+it("releases cached WebGL geometry and occurrence materials after a later preparation failure", async () => {
+  const { canvas } = stubCanvas();
+  const actual = await vi.importActual<typeof import("../engine/local-brick-geometry")>("../engine/local-brick-geometry");
+  const geometry = actual.createLocalBrickGeometry("brick-2x2");
+  const dispose = vi.spyOn(geometry, "dispose");
+  vi.mocked(createLocalBrickGeometry).mockReturnValueOnce(geometry).mockImplementationOnce(() => {
+    throw new Error("geometry failed");
+  });
+  const document = repeatedDocument(2);
+  document.bricks[1].type = "brick-1x2";
+  await expect(createInstructionRenderer(document)).rejects.toThrow("geometry failed");
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(rendererDispose).toHaveBeenCalledOnce();
+  expect(forceContextLoss).toHaveBeenCalledOnce();
+  expect([canvas.width, canvas.height]).toEqual([1, 1]);
+});
+
+it("builds and flattens software geometry once per type without sharing occurrence visibility", async () => {
+  const { context } = stubCanvas();
+  const flatten = vi.spyOn(BufferGeometry.prototype, "toNonIndexed");
+  const document = repeatedDocument(3);
+  const renderer = await createSoftwareInstructionRenderer(document);
+  try {
+    expect(createLocalBrickGeometry).toHaveBeenCalledOnce();
+    expect(flatten).toHaveBeenCalledOnce();
+    const step = { id: "s", title: "", notes: "", partIds: [] };
+    renderer.image(new Set([document.bricks[0].id]), step);
+    const trianglesPerBrick = context.fill.mock.calls.length;
+    expect(trianglesPerBrick).toBeGreaterThan(100);
+    context.fill.mockClear();
+    renderer.image(new Set(document.bricks.map(part => part.id)), step, new Set([document.bricks[1].id]));
+    expect(context.fill).toHaveBeenCalledTimes(trianglesPerBrick * 3);
+    expect(context.stroke).toHaveBeenCalledOnce();
+    context.fill.mockClear(); context.stroke.mockClear();
+    renderer.image(new Set(), step, new Set([document.bricks[1].id]));
+    expect(context.fill).not.toHaveBeenCalled();
+    expect(context.stroke).not.toHaveBeenCalled();
+  } finally { renderer.dispose(); flatten.mockRestore(); }
+});
+
+it("keeps the software triangle budget per occurrence and releases every allocated geometry once", async () => {
+  const { canvas } = stubCanvas();
+  const disposed: BufferGeometry[] = [];
+  const dispose = vi.spyOn(BufferGeometry.prototype, "dispose").mockImplementation(function (this: BufferGeometry) {
+    disposed.push(this);
+  });
+  try {
+    await expect(createSoftwareInstructionRenderer(repeatedDocument(500))).rejects.toThrow(
+      "PDF: WebGL ist nicht verfügbar und dieses Modell ist für die vollständige Software-Abbildung zu groß.",
+    );
+    expect(createLocalBrickGeometry).toHaveBeenCalledOnce();
+    expect(disposed.length).toBeGreaterThan(2);
+    expect(new Set(disposed).size).toBe(disposed.length);
+    expect([canvas.width, canvas.height]).toEqual([1, 1]);
+  } finally { dispose.mockRestore(); }
+});
+
+it("compares repeated-brick geometry preparation time and allocations with the former per-occurrence path", async () => {
+  const actual = await vi.importActual<typeof import("../engine/local-brick-geometry")>("../engine/local-brick-geometry");
+  const count = 128;
+  const measure = (software: boolean, reuse: boolean) => {
+    let allocations = 0;
+    const dispose = vi.spyOn(BufferGeometry.prototype, "dispose").mockImplementation(() => { allocations++; });
+    const started = performance.now();
+    try {
+      // Every allocated geometry in this fixture has exactly one owner/disposal.
+      const templates = new Map<string, BufferGeometry>();
+      for (let index = 0; index < count; index++) {
+        let geometry = reuse ? templates.get("brick-2x2") : undefined;
+        if (!geometry) {
+          geometry = actual.createLocalBrickGeometry("brick-2x2");
+          if (software) {
+            const flat = geometry.toNonIndexed();
+            geometry.dispose();
+            geometry = flat;
+          }
+          if (reuse) templates.set("brick-2x2", geometry);
+        }
+        if (!reuse) geometry.dispose();
+      }
+      for (const geometry of templates.values()) geometry.dispose();
+      return { milliseconds: performance.now() - started, geometryAllocations: allocations };
+    } finally { dispose.mockRestore(); }
+  };
+  // Warm up both code paths; timing is evidence, not a flaky pass/fail threshold.
+  measure(false, true); measure(true, true);
+  for (const software of [false, true]) {
+    const before = measure(software, false), after = measure(software, true);
+    console.info(`${software ? "Software" : "WebGL"} geometry preparation (${count} identical bricks):`,
+      JSON.stringify({ before, after }));
+    expect(before.geometryAllocations).toBe(after.geometryAllocations * count);
+    expect(after.geometryAllocations).toBe(software ? 7 : 6);
+  }
+});
 
 it("uses print-resolution dimensions for the software PDF renderer", async () => {
   const canvas = { width: 0, height: 0, getContext: () => ({

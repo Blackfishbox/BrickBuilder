@@ -1,5 +1,5 @@
-import { Box3, BufferGeometry, Color, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
-import type { BuilderDocument } from "../editor/model";
+import { Box3, Color, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
+import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
@@ -53,19 +53,28 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
       }
       if (index % 12 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
-    const addGeometry = (id: string, geometry: BufferGeometry, matrix: Matrix4, color: string) => {
-      const flat = geometry.index ? geometry.toNonIndexed() : geometry;
-      try {
-        push(id, flat.getAttribute("position").array, matrix, `0x2${color.slice(1)}`);
-      } finally {
-        if (flat !== geometry) flat.dispose();
-        geometry.dispose();
-      }
-    };
+    // Retain only read-only triangle arrays during preparation, not GPU resources.
+    const localTriangles = new Map<BrickType, ArrayLike<number>>();
     for (const part of document.bricks) {
       signal?.throwIfAborted();
-      addGeometry(part.id, createLocalBrickGeometry(part.type), brickTransformMatrix(part), part.color);
+      let positions = localTriangles.get(part.type);
+      if (!positions) {
+        const geometry = createLocalBrickGeometry(part.type);
+        try {
+          const flat = geometry.index ? geometry.toNonIndexed() : geometry;
+          try {
+            positions = flat.getAttribute("position").array;
+            localTriangles.set(part.type, positions);
+          } finally {
+            if (flat !== geometry) flat.dispose();
+          }
+        } finally {
+          geometry.dispose();
+        }
+      }
+      push(part.id, positions, brickTransformMatrix(part), `0x2${part.color.slice(1)}`);
     }
+    localTriangles.clear();
     signal?.throwIfAborted();
     const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
     const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius ?? 1, bounds.getSize(new Vector3()).length() / 2);
