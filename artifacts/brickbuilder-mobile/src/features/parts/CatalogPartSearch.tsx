@@ -3,6 +3,7 @@ import { AlertTriangle, Download, Search } from "lucide-react";
 import { searchBuildingCatalog, type CatalogSearchResult } from "../catalog/client";
 import InventoryThumbnail from "../inventory/InventoryThumbnail";
 import type { LibraryPart } from "./types";
+import PartPlacementControl from "./PartPlacementControl";
 import { incomingLDrawIds } from "../catalog/ldraw-identity";
 import { useI18n } from "@/i18n/I18nProvider";
 export { incomingLDrawIds } from "../catalog/ldraw-identity";
@@ -11,9 +12,10 @@ type Props = {
   query: string; category: string; installedIds: ReadonlySet<string>;
   color: string; colorCode: string; loading: boolean; selectionError?: string | null;
   onSelect(part: LibraryPart): void | boolean | Promise<void | boolean>;
+  onPlaceQuantity?(part: LibraryPart, quantity: number): void | boolean | Promise<void | boolean>;
 };
 
-export default function CatalogPartSearch({ query, category, installedIds, color, colorCode, loading, selectionError, onSelect }: Props) {
+export default function CatalogPartSearch({ query, category, installedIds, color, colorCode, loading, selectionError, onSelect, onPlaceQuantity }: Props) {
   const { t } = useI18n();
   const [page, setPage] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -62,6 +64,11 @@ export default function CatalogPartSearch({ query, category, installedIds, color
           const chosen = ids.length === 1 ? ids[0] : ids.includes(choices[row.id]) ? choices[row.id] : "";
           const brickLinkIds = [...new Set(row.mappings.filter(mapping => mapping[1] === "BL" && mapping[3] === "True").map(mapping => mapping[2]))];
           const local = Boolean(chosen && installedIds.has(chosen));
+          const part: LibraryPart | undefined = chosen ? {
+            id: `catalog:${row.id}:${chosen}`, packageId: "catalog", ldrawId: chosen,
+            file: `parts/${chosen}.dat`, name: row.name, category: category || t("catalog.full"), keywords: [],
+            ...(brickLinkIds.length === 1 ? { brickLinkId: brickLinkIds[0] } : {}),
+          } : undefined;
           return <li key={row.id} className="plib-catalog-row">
             <div className="plib-catalog-row-head">
               {chosen && <InventoryThumbnail ldrawId={chosen} color={color} colorCode={colorCode}
@@ -87,6 +94,9 @@ export default function CatalogPartSearch({ query, category, installedIds, color
               }, row.id)}>
               {!local && <Download size={15} />}{local ? t("catalog.build") : t("catalog.verifyBuild")}
             </button>
+            {part && onPlaceQuantity && (
+              <PartPlacementControl part={part} disabled={loading || Boolean(selection?.pending)} onPlace={onPlaceQuantity} />
+            )}
             {selection?.id === row.id && selection.pending && <p role="status">{t("catalog.loadingGeometry", { id: chosen })}</p>}
             {selection?.id === row.id && selection.error && <p role="alert" className="plib-error">
               LDraw {chosen}: {selectionError || selection.error}

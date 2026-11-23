@@ -25,7 +25,7 @@ import { selectionColorEvidence } from "../catalog/color-evidence";
 import { getColorEvidenceState } from "../catalog/color-evidence-state";
 import { updateInstructions } from "../instructions/model";
 import { instructionPlanSchema, type InstructionPlan } from "../instructions/types";
-import { editImported, moveImported, placePreparedPart, placeInventoryPart, placeInventoryBatch, prepareLibraryPart, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, moveImported, placePreparedPart, placePreparedPartBatch, placeInventoryPart, placeInventoryBatch, prepareLibraryPart, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
 import { inheritStackingBounds, localPartBounds } from "../engine/stacking";
 import { worldMatrix } from "../engine/ldraw-geometry";
 import { constructionTransform } from "../connections/engine";
@@ -336,6 +336,49 @@ export function useBuilder() {
       if (partControllerRef.current === controller && !controller.signal.aborted) setPartLoading(false);
     }
   }, []);
+  const placeLibraryQuantity = useCallback(async (part: LibraryPart, quantity: number) => {
+    if (partLoading) return false;
+    resumeBuildRequestRef.current++;
+    partControllerRef.current?.abort();
+    const controller = new AbortController();
+    partControllerRef.current = controller;
+    const projectId = documentRef.current.id;
+    setPartLoading(true);
+    setPartError(null);
+    try {
+      const prepared = await prepareLibraryPart(part, controller.signal);
+      if (partControllerRef.current !== controller || controller.signal.aborted) return false;
+      if (documentRef.current.id !== projectId) throw new Error(t("project.changed"));
+      let lastId = "";
+      updateDocument(document => {
+        if (document.id !== projectId) throw new Error(t("project.changed"));
+        const next = placePreparedPartBatch(document, prepared, quantity, selectedColor, selectedColorCode);
+        inheritStackingBounds(document.imported, next.imported!);
+        lastId = next.imported!.instances.at(-1)!.id;
+        return next;
+      });
+      if (partControllerRef.current !== controller || controller.signal.aborted) return false;
+      placementRef.current = { prepared };
+      lastPlacedPartRef.current = {
+        prepared,
+        color: selectedColor,
+        colorCode: selectedColorCode,
+        projectId,
+      };
+      setPreparedPart(prepared);
+      setSelectedInventory(null);
+      setSelectedId(lastId);
+      setToolMode("select");
+      return true;
+    } catch (error) {
+      if (partControllerRef.current === controller && !controller.signal.aborted) {
+        setPartError(error instanceof Error ? error.message : String(error));
+      }
+      return false;
+    } finally {
+      if (partControllerRef.current === controller && !controller.signal.aborted) setPartLoading(false);
+    }
+  }, [partLoading, selectedColor, selectedColorCode, setToolMode, t, updateDocument]);
   const selectInventoryPart = useCallback(async (
     choice: InventoryChoice,
     colorOverride?: { hex: string; code?: string },
@@ -1040,7 +1083,7 @@ export function useBuilder() {
     selectedPart: preparedPart?.part ?? null,
     placementPreview: preparedPart,
     selectedInstance: document.imported?.instances.find(instance => instance.id === selectedId) ?? null,
-    selectLibraryPart, selectInventoryPart, replacePartsInventory, selectedInventory, cancelPartPreparation, partLoading, partError,
+    selectLibraryPart, placeLibraryQuantity, selectInventoryPart, replacePartsInventory, selectedInventory, cancelPartPreparation, partLoading, partError,
     spreadInventoryParts,
     toolMode,
     canUndo: history.past.length > 0,

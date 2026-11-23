@@ -4,6 +4,7 @@ import { normalizeTiltAngle } from "./brick-transform";
 import { clampRotationAngle } from "./model";
 import type { ImportedInstance, ImportedModel, Affine } from "../formats/types";
 import type { LibraryPart } from "../parts/types";
+import { MAX_PART_BATCH_PLACEMENT_UNITS } from "../parts/placement-limits";
 import { COLORS, resolveColor } from "../formats/colors";
 import { importLDraw } from "../formats/ldraw/import";
 import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
@@ -340,6 +341,83 @@ export function placePreparedPart(document: BuilderDocument, prepared: PreparedP
     ...document, updatedAt: new Date().toISOString(),
     imported: { ...(original ?? prepared.model), edited: true, resources, legalDocuments,
       instances: [...(original?.instances ?? []), instance] },
+  };
+}
+
+/** Add one part in a compact, non-overlapping floor grid as a single history change. */
+export function placePreparedPartBatch(
+  document: BuilderDocument,
+  prepared: PreparedPart,
+  quantity: number,
+  hex: string,
+  code?: string,
+): BuilderDocument {
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_PART_BATCH_PLACEMENT_UNITS) {
+    throw new Error(`Choose a quantity from 1 to ${MAX_PART_BATCH_PLACEMENT_UNITS}.`);
+  }
+  const source = prepared.model.instances[0];
+  if (!source || source.part.status !== "resolved") {
+    throw new Error(`LDraw ${prepared.part.ldrawId}: complete geometry is not available.`);
+  }
+  const localBounds = localPartBounds(prepared.model, source.reference);
+  if (localBounds.isEmpty()) throw new Error(`LDraw ${prepared.part.ldrawId}: no renderable geometry is available.`);
+
+  const sceneBounds = new Box3();
+  if (document.imported) {
+    for (const bounds of stackingBounds(document.imported).values()) sceneBounds.union(bounds);
+  }
+  for (const brick of document.bricks) sceneBounds.union(brickBounds(brick));
+
+  const size = localBounds.getSize(new Vector3());
+  const localMinX = localBounds.min.x / 20;
+  const localMinZ = localBounds.min.z / 20;
+  const cellWidth = Math.max(1, Math.ceil(size.x / 20) + 1);
+  const cellDepth = Math.max(1, Math.ceil(size.z / 20) + 1);
+  const columns = Math.max(1, Math.ceil(Math.sqrt(quantity)));
+  const originX = sceneBounds.isEmpty() ? 0 : Math.ceil(sceneBounds.max.x + 1 - localMinX);
+  const originZ = sceneBounds.isEmpty() ? 0 : Math.floor(sceneBounds.min.z - localMinZ);
+  const positions = Array.from({ length: quantity }, (_, index) => ({
+    x: originX + (index % columns) * cellWidth,
+    y: 0,
+    z: originZ + Math.floor(index / columns) * cellDepth,
+  }));
+
+  const original = document.imported;
+  const resources = { ...(original?.resources ?? {}) };
+  for (const [path, file] of Object.entries(prepared.model.resources)) {
+    if (resources[path] && resources[path].content !== file.content) {
+      throw new Error(`LDraw source conflict at ${path}; existing geometry was not changed.`);
+    }
+    resources[path] = resources[path] ?? file;
+  }
+  const colorCode = appearanceCode(hex, code);
+  const instances: ImportedInstance[] = positions.map(position => ({
+    ...source,
+    id: `ldraw:${crypto.randomUUID()}`,
+    colorCode,
+    color: resolveColor(colorCode),
+    matrix: [
+      1, 0, 0, position.x * 20,
+      0, 1, 0, -(position.y - prepared.bottom) * 20,
+      0, 0, 1, position.z * 20,
+    ],
+    sourcePath: ["BrickBuilder"],
+    sourceOccurrence: undefined,
+  }));
+  const legalDocuments = [...(original?.legalDocuments ?? [])];
+  for (const legal of prepared.model.legalDocuments) {
+    if (!legalDocuments.some(existing => JSON.stringify(existing) === JSON.stringify(legal))) legalDocuments.push(legal);
+  }
+  return {
+    ...document,
+    updatedAt: new Date().toISOString(),
+    imported: {
+      ...(original ?? prepared.model),
+      edited: true,
+      resources,
+      legalDocuments,
+      instances: [...(original?.instances ?? []), ...instances],
+    },
   };
 }
 

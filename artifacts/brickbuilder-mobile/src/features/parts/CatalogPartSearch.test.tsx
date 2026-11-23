@@ -50,6 +50,24 @@ it("finds nonbundled parts and hands their exact LDraw identity to the existing 
   expect(fetch).not.toHaveBeenCalled();
 });
 
+it("offers a quantity placement control for searchable catalog parts", async () => {
+  const place = vi.fn().mockResolvedValue(true);
+  search.mockResolvedValue({ results: [mapped], total: 1 });
+  await act(async () => root!.render(<CatalogPartSearch query="cone" category="" installedIds={new Set()}
+    color="#B40000" colorCode="4" loading={false} onSelect={vi.fn()} onPlaceQuantity={place} />));
+  await settle(() => expect(host.querySelector('[data-testid="button-place-quantity-catalog-rb-cone-99999"]')).not.toBeNull());
+  const input = host.querySelector<HTMLInputElement>('[data-testid="input-part-quantity-catalog-rb-cone-99999"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "3");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-place-quantity-catalog-rb-cone-99999"]')!.click();
+    await Promise.resolve();
+  });
+  expect(place).toHaveBeenCalledWith(expect.objectContaining({ ldrawId: "99999", brickLinkId: "cone-bl" }), 3);
+});
+
 it("hides unusable records, rejects output-only IDs and requires an explicit ambiguous choice", async () => {
   const ambiguous = { ...mapped, id: "ambiguous", mappings: [
     ["ambiguous", "LD", "3001", "True", "True"], ["ambiguous", "LD", "3002", "True", "True"],

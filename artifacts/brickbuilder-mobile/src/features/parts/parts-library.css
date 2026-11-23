@@ -44,6 +44,7 @@
 .plib-filter button { min-height: 30px; padding: 0 12px; border: 1px solid #dcded3; border-radius: 999px; background: #f8f7ef; color: #5d7064; cursor: pointer; font-size: 10px; font-weight: 800; }
 .plib-filter button.active { border-color: #809a88; background: #e8eee4; color: #30463d; }
 .plib-results { display: flex; flex-direction: column; gap: 8px; }
+.plib-part-entry { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .plib-id { display: grid; place-items: center; width: 55px; height: 40px; flex: none; border-radius: 8px; background: #214a42; color: #cfe0d6; font: 500 8px/1.2 var(--app-font-mono); text-align: center; letter-spacing: .08em; }
 .plib-id b { color: #f9f4e7; font-size: 12px; letter-spacing: 0; }
 .plib-part.is-catalog { cursor: default; opacity: .82; }
@@ -62,6 +63,14 @@
 .plib-thumbnail img { display: block; width: 80px; height: 60px; object-fit: contain; }
 .plib-thumbnail.is-ready { background: #f8f6ed; }
 .plib-part-number { color: #5d7064; font: 500 10px/1.4 var(--app-font-mono); }
+.plib-placement-wrap { min-width: 0; padding: 0 4px; }
+.plib-placement-control { display: grid; grid-template-columns: minmax(72px, 84px) minmax(0, 1fr); align-items: end; gap: 8px; }
+.plib-placement-control label { display: flex; flex-direction: column; gap: 3px; color: #68776e; font-size: 10px; font-weight: 700; }
+.plib-placement-control input { width: 100%; min-width: 0; min-height: 44px; padding: 0 8px; border: 1px solid #d5d9cf; border-radius: 8px; background: #fbfaf5; color: #30463d; font: 600 13px var(--app-font-mono); }
+.plib-placement-button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid #c9563b; border-radius: 9px; background: #d85d41; color: #fff8ed; cursor: pointer; font-size: 11px; font-weight: 800; }
+.plib-placement-button:disabled { opacity: .45; cursor: not-allowed; }
+.plib-placement-button:focus-visible, .plib-placement-control input:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2px; }
+.plib-placement-error { margin: 5px 4px 0; color: #a84f3a; font-size: 10px; overflow-wrap: anywhere; }
 .plib-part .drawer-piece-copy { min-width: 0; }
 .plib-catalog-search { min-width: 0; margin-top: 16px; padding-top: 12px; border-top: 1px solid #d7ded8; }
 .plib-catalog-search h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; }

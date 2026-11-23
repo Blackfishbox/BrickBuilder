@@ -6,6 +6,7 @@ import './parts-library.css';
 import CatalogPanel from "../catalog/CatalogPanel";
 import PartThumbnail from "./PartThumbnail";
 import CatalogPartSearch from "./CatalogPartSearch";
+import PartPlacementControl from "./PartPlacementControl";
 import { useI18n } from "@/i18n/I18nProvider";
 
 type PkgState = { status: 'idle' | 'pending' | 'error'; error?: string };
@@ -36,9 +37,10 @@ interface Props {
   loading?: boolean;
   selectionError?: string | null;
   onSelect: (part: LibraryPart) => void | boolean | Promise<void | boolean>;
+  onPlaceQuantity?: (part: LibraryPart, quantity: number) => void | boolean | Promise<void | boolean>;
 }
 
-export default function PartsLibrary({ online, selectedPartId, selectedColor = "#B40000", selectedColorCode = "4", paletteRevision, loading = false, selectionError, onSelect }: Props) {
+export default function PartsLibrary({ online, selectedPartId, selectedColor = "#B40000", selectedColorCode = "4", paletteRevision, loading = false, selectionError, onSelect, onPlaceQuantity }: Props) {
   const { locale, t } = useI18n();
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
@@ -292,8 +294,8 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
             </>
           );
           return (
+            <div key={part.id} className="plib-part-entry" data-testid={`part-entry-${part.ldrawId}`}>
             <button
-              key={part.id}
               type="button"
               className={`drawer-piece plib-part ${selectedPartId === part.ldrawId ? 'chosen' : ''}`}
               disabled={loading}
@@ -304,6 +306,8 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
               {body}
               {selectedPartId === part.ldrawId ? <Check size={17} className="chosen-check" /> : <Plus size={17} className="add-glyph" />}
             </button>
+            {onPlaceQuantity && <PartPlacementControl part={part} disabled={loading} onPlace={onPlaceQuantity} />}
+            </div>
           );
         })}
       </div>
@@ -313,7 +317,8 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
         </button>
       )}
       <CatalogPartSearch query={query} category={category} installedIds={installedIds}
-        color={selectedColor} colorCode={selectedColorCode} loading={loading} selectionError={selectionError} onSelect={onSelect} />
+        color={selectedColor} colorCode={selectedColorCode} loading={loading} selectionError={selectionError}
+        onSelect={onSelect} onPlaceQuantity={onPlaceQuantity} />
       {libraryDetails}
     </section>
   );

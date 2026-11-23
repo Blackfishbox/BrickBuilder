@@ -701,6 +701,11 @@ function App() {
                     if (success) setPartsOpen(false);
                     return success;
                   }}
+                  onPlaceQuantity={async (part, quantity) => {
+                    const success = await editor.placeLibraryQuantity(part, quantity);
+                    if (success) setPartsOpen(false);
+                    return success ? true : undefined;
+                  }}
                 />
               </div>
             )}

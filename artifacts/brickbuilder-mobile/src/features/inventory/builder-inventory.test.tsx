@@ -36,6 +36,36 @@ afterEach(async () => {
   vi.unstubAllGlobals(); vi.clearAllMocks();
 });
 
+it("places a requested LDraw quantity in one editor action and selects the final part", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });
+  await builderDatabase.open();
+  let editor!: ReturnType<typeof useBuilder>;
+  function Harness() { editor = useBuilder(); return null; }
+  const container = document.createElement("div");
+  root = createRoot(container);
+  const model: PreparedPart["model"] = {
+    version: 1, format: "ldr", sourceName: "synthetic.ldr", sourceText: "0 Synthetic", originalBytes: [],
+    ...parseLDraw("1 4 0 0 0 1 0 0 0 1 0 0 0 1 test.dat"),
+    resources: { "parts/test.dat": { path: "parts/test.dat", author: "Synthetic", sourceUrl: "https://example.invalid",
+      license: "CC0-1.0", content: "0 Synthetic triangle\n3 16 0 0 0 20 0 0 0 0 20" } }, legalDocuments: [],
+  };
+  model.instances[0].part.status = "resolved";
+  const part = { id: "test", packageId: "test", ldrawId: "test", name: "Synthetic", category: "", keywords: [], file: "parts/test.dat" };
+  const prepared: PreparedPart = { part, model, bottom: 0 };
+  vi.mocked(prepareLibraryPart).mockResolvedValue(prepared);
+  await act(async () => { root!.render(<Harness />); });
+  await act(async () => { await vi.waitFor(() => expect(editor.isReady).toBe(true)); });
+  let placed = false;
+  await act(async () => { placed = await editor.placeLibraryQuantity(part, 5); });
+  expect(placed).toBe(true);
+  expect(editor.document.imported?.instances).toHaveLength(5);
+  expect(editor.toolMode).toBe("select");
+  expect(editor.selectedId).toBe(editor.document.imported?.instances.at(-1)?.id);
+  expect(editor.document.imported?.instances.map(instance => [instance.matrix[3] / 20, instance.matrix[11] / 20]))
+    .toEqual([[0, 0], [2, 0], [4, 0], [0, 2], [2, 2]]);
+});
+
 it("handles loading, editable inventory colors, fast taps, stock, catalog exit and project switching", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("Worker", class { addEventListener() {} postMessage() {} terminate() {} });

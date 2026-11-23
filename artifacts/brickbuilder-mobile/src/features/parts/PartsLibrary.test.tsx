@@ -52,3 +52,42 @@ it("automatically shows offline parts, bounds rendered results, filters categori
     host.remove();
   }
 });
+
+it("lets the user choose a quantity and place that many local parts", async () => {
+  await builderDatabase.open();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+    new Response(readFileSync(resolve("public", url.replace(/^.*?parts\//, "parts/")))),
+  ));
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const place = vi.fn().mockResolvedValue(true);
+  try {
+    await act(async () => root.render(<PartsLibrary online={false} onSelect={vi.fn()} onPlaceQuantity={place} />));
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+      expect(host.querySelector('[data-testid="input-search-library"]')).not.toBeNull();
+    }, { timeout: 15_000 });
+    const searchInput = host.querySelector<HTMLInputElement>('[data-testid="input-search-library"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(searchInput, "3001");
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)); });
+      expect(host.querySelector('[data-testid="part-entry-3001"]')).not.toBeNull();
+    }, { timeout: 5_000 });
+    const entry = host.querySelector<HTMLElement>('[data-testid="part-entry-3001"]')!;
+    const input = entry.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const button = entry.querySelector<HTMLButtonElement>(".plib-placement-button")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "6");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button.click());
+    expect(place).toHaveBeenCalledWith(expect.objectContaining({ ldrawId: "3001" }), 6);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

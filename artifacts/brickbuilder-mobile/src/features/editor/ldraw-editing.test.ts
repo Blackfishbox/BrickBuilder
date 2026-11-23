@@ -3,7 +3,8 @@ import { Euler, Matrix4, Ray, Vector3 } from "three";
 import { createEmptyDocument } from "./model";
 import { brickBounds } from "./brick-transform";
 import { commit, createHistory, redo, undo } from "./history";
-import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { editImported, enrichImportedGeometry, moveImported, placePreparedPart, placePreparedPartBatch, recolorImported, rotateImported, rotateSelection, setImportedRotation, tiltImported, type PreparedPart } from "./ldraw-editing";
+import { MAX_PART_BATCH_PLACEMENT_UNITS } from "../parts/placement-limits";
 import { importedControlAngles } from "./imported-control-angles";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { exportInternal, importInternal } from "../formats/internal/adapter";
@@ -254,6 +255,35 @@ describe("editable imported LDraw instances", () => {
     expect(placed.imported!.instances[0]).toMatchObject({ reference: "test.dat", colorCode: "14" });
     expect(placed.imported!.instances[0].matrix[7]).toBeCloseTo(-28);
     expect(placed.imported!.resources["parts/test.dat"]).toBe(original.imported.resources["parts/test.dat"]);
+  });
+  it("places the requested quantity in a spaced floor grid in one document update", () => {
+    const original = fixture();
+    const model: ImportedModel = {
+      ...original.imported,
+      resources: {
+        ...original.imported.resources,
+        "parts/test.dat": {
+          ...original.imported.resources["parts/test.dat"],
+          content: "0 Synthetic test surface\n3 16 0 0 0 20 0 0 0 0 20\n",
+        },
+      },
+    };
+    const prepared: PreparedPart = {
+      part: { id: "test", packageId: "test", ldrawId: "test", name: "Test part", category: "Test", keywords: [], file: "parts/test.dat" },
+      model, bottom: -1,
+    };
+    const empty = createEmptyDocument();
+    const placed = placePreparedPartBatch(empty, prepared, 4, "#FAC80A", "14");
+    const instances = placed.imported!.instances;
+    expect(placed).not.toBe(empty);
+    expect(instances).toHaveLength(4);
+    expect(instances.every(instance => instance.colorCode === "14")).toBe(true);
+    expect(instances.map(instance => [instance.matrix[3] / 20, instance.matrix[11] / 20])).toEqual([
+      [0, 0], [2, 0], [0, 2], [2, 2],
+    ]);
+    expect(new Set(instances.map(instance => instance.id)).size).toBe(4);
+    expect(() => placePreparedPartBatch(empty, prepared, MAX_PART_BATCH_PLACEMENT_UNITS + 1, "#FAC80A"))
+      .toThrow(/1 to 1000/);
   });
   it("reuses compiled buffers after color or matrix edits without modifying older snapshots", () => {
     const original = fixture();
