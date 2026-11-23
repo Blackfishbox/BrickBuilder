@@ -1,7 +1,8 @@
 import {
-  AmbientLight, Box3, DirectionalLight, OrthographicCamera, Scene, Vector3, WebGLRenderer,
+  AmbientLight, Box3, DirectionalLight, Group, Mesh, OrthographicCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from "three";
 import { createImportedGroup, disposeImportedScene } from "../../engine/imported-scene";
+import { setWideLineResolution } from "../../engine/wide-lines";
 import type { ImportedModel } from "../../formats/types";
 import { reuseGeometryCache } from "../../engine/ldraw-geometry";
 
@@ -13,6 +14,16 @@ function releaseRenderer() {
   renderer?.dispose();
   renderer?.forceContextLoss();
   renderer = undefined;
+}
+
+/** Keep screen-space part edges at the thumbnail's real pixel dimensions. */
+export function configureThumbnailEdges(root: Group, width: number, height: number): void {
+  root.traverse(object => {
+    if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
+      !(object.material instanceof ShaderMaterial)) return;
+    object.material.uniforms.lineWidth.value = 1;
+    setWideLineResolution(object.material, width, height);
+  });
 }
 
 /** A single detached canvas, never a WebGL context for each library row. */
@@ -30,6 +41,7 @@ export function renderThumbnail(model: ImportedModel, colorCode: string): string
     reuseGeometryCache(model, colored);
     const group = createImportedGroup(colored);
     try {
+      configureThumbnailEdges(group, 160, 120);
       const bounds = new Box3().setFromObject(group);
       if (bounds.isEmpty()) throw new Error("Keine Vorschaugeometrie.");
       const center = bounds.getCenter(new Vector3());
