@@ -437,7 +437,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(importedEdge.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
   expect(edgeMaterial.side).toBe(DoubleSide);
   expect(edgeMaterial.depthTest).toBe(true);
-  expect(edgeMaterial.transparent).toBe(false);
+  expect(edgeMaterial.transparent).toBe(true);
   expect(importedEdge.renderOrder).toBeGreaterThan(0);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
   expect(importedEdge.geometry.getAttribute("instanceEdgeColor").count).toBe(imported.instances.length);
@@ -457,13 +457,13 @@ it("toggles screen-space edge width without rebuilding imported or local model g
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
-  expect(THICK_EDGE_WIDTH_PX).toBe(6.5);
+  expect(THICK_EDGE_WIDTH_PX).toBe(5.5);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThan(1);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeLessThan(7);
   expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
   expect(edgeMaterial.fragmentShader).toContain("vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);");
-  expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(baseColor * (hemisphere + sunlight), 1.0);");
+  expect(edgeMaterial.fragmentShader).toContain("smoothstep(1.0 - edgeWidth, 1.0, abs(vLineSide))");
   expect(edgeMaterial.vertexShader).toContain("vec4 clip = clipA;");
   expect(edgeMaterial.vertexShader).not.toContain("clip.z -=");
   expect(edgeMaterial.vertexShader).not.toContain("mix(clipA, clipB, lineEndpoint)");
@@ -505,7 +505,7 @@ it("draws the enabled thick edges on the current local brick preview", async () 
   expect(edges.geometry.getAttribute("instanceEdgeColor").array).toHaveLength(3);
   expect(edges.geometry.getAttribute("edgeNormal").count).toBe(edges.geometry.getAttribute("position").count);
   expect(edges.geometry.getAttribute("edgeAlternateNormal").count).toBe(edges.geometry.getAttribute("position").count);
-  expect((edges.material as ShaderMaterial).transparent).toBe(false);
+  expect((edges.material as ShaderMaterial).transparent).toBe(true);
   expect((edges.material as ShaderMaterial).uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect((preview.material as MeshLambertMaterial).opacity).toBe(1);
   expect((preview.material as MeshLambertMaterial).transparent).toBe(false);

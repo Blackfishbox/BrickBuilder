@@ -5,7 +5,7 @@ import {
 import { BUILDER_LIGHTING } from "./lighting";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
-export const THICK_EDGE_WIDTH_PX = 6.5;
+export const THICK_EDGE_WIDTH_PX = 5.5;
 
 export interface LineNormalPairs {
   primary: Float32Array;
@@ -153,7 +153,7 @@ export function wideLineMaterial(): ShaderMaterial {
   const ground = new Color(BUILDER_LIGHTING.ground);
   const sunDirection = new Vector3(...BUILDER_LIGHTING.direction).normalize();
   return new ShaderMaterial({
-    transparent: false,
+    transparent: true,
     // Screen-space quads face either direction depending on the source edge.
     side: DoubleSide,
     // Draw after solid and translucent part surfaces, but keep hidden edges occluded.
@@ -256,7 +256,9 @@ export function wideLineMaterial(): ShaderMaterial {
         float hemisphere = mix(hemisphereGround, 1.0, skyWeight) * hemisphereIntensity;
         float sunlight = max(0.0, dot(visibleNormal, normalize(sunDirection))) * sunIntensity;
         vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);
-        gl_FragColor = vec4(baseColor * (hemisphere + sunlight), 1.0);
+        float edgeWidth = max(fwidth(vLineSide), 0.0001);
+        float coverage = 1.0 - smoothstep(1.0 - edgeWidth, 1.0, abs(vLineSide));
+        gl_FragColor = vec4(baseColor * (hemisphere + sunlight), coverage);
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
             ? vec4(0.6, 0.015, 0.01, 0.95)

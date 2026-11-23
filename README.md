@@ -9,12 +9,12 @@ Play Console/signing/device-test requirements.
 
 # BrickBuilder
 
-A local-first, installable 3D brick-building PWA with a **German application
-interface**. Build with verified LDraw geometry, save projects in your browser,
-install reviewed LDraw parts packages, and import IO, LDR, MPD or internal JSON
-models. No account or paid external catalog API is required. The complete
-mapping catalog needs one successful download from the supplied resolver or a
-static snapshot URL; it then remains available locally.
+A local-first, installable 3D brick-building PWA with **English and German
+interfaces** (English by default). Build with verified LDraw geometry, save
+projects in your browser, install reviewed LDraw parts packages, and import IO,
+LDR, MPD or internal JSON models. No account or paid external catalog API is
+required. The complete mapping catalog needs one successful download from the
+supplied resolver or a static snapshot URL; it then remains available locally.
 
 Import support is bounded, not a claim of general BrickLink Studio compatibility.
 Imported parts can be selected individually, moved, rotated, recolored and
@@ -99,10 +99,10 @@ optional API services and troubleshooting.
 ## Contributing
 
 First-party documentation, code comments, test descriptions and development-facing
-explanations are **English**. Application labels, notifications, localized errors,
-manifest locale and other user-visible content remain **German**. Preserve
-third-party source files, original credits and authoritative license texts verbatim.
-Use specific English commit subjects and bodies; do not rewrite existing history.
+explanations are **English**. The application interface is available in English
+and German, with English as the default. Preserve third-party source files,
+original credits and authoritative license texts verbatim. Use specific English
+commit subjects and bodies; do not rewrite existing history.
 
 Keep private uploads, credentials, local agent context and generated output out
 of commits. Tests needing private uploads skip explicitly when those files are

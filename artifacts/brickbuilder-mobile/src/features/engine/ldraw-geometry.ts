@@ -21,6 +21,7 @@ const cache = new WeakMap<ImportedModel, Map<string, Surface[]>>();
 const MAX_VERTICES = 1_500_000;
 const MAX_DERIVED_EDGE_TRIANGLES = 20_000;
 const MAX_RENDER_EDGE_SEGMENTS = 100_000;
+const DERIVED_EDGE_CREASE_ANGLE_DEGREES = 30;
 
 /** Uses authored LDraw edge lines, or derives visible creases when a part has none. */
 export function visibleEdgeLines(surfaces: readonly Surface[]): Float32Array {
@@ -37,7 +38,9 @@ export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
       surface.positions.length / 9 <= MAX_DERIVED_EDGE_TRIANGLES) {
       const geometry = new BufferGeometry();
       geometry.setAttribute("position", new BufferAttribute(surface.positions, 3));
-      const creaseGeometry = new EdgesGeometry(geometry, 18);
+      // 30° suppresses the 22.5° facet seams on standard 16-sided LEGO studs,
+      // while retaining actual body corners and authored LDraw line records.
+      const creaseGeometry = new EdgesGeometry(geometry, DERIVED_EDGE_CREASE_ANGLE_DEGREES);
       geometry.dispose();
       edges = creaseGeometry.getAttribute("position").array as Float32Array;
       creaseGeometry.dispose();
