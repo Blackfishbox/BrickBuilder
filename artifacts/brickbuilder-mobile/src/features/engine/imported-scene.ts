@@ -120,6 +120,12 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
     bounds.union(transformed.copy(local).applyMatrix4(matrix));
   });
   rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
+  const edgeColors = new Float32Array(instances.length * 3);
+  instances.forEach((instance, index) => {
+    const color = new Color(resolveColor(instance.colorCode)?.hex ?? "#ff00ff");
+    edgeColors.set([color.r, color.g, color.b], index * 3);
+  });
+  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3));
   geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(instances.length), 1));
   geometry.instanceCount = instances.length;
   geometry.boundingBox = bounds;

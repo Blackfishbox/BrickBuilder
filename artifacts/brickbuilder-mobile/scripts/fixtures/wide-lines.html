@@ -14,7 +14,7 @@ pre { white-space: pre-wrap; }
 <pre id="result">Pending</pre>
 <script type="module">
 import {
-  AmbientLight, BoxGeometry, DirectionalLight, EdgesGeometry,
+  AmbientLight, BoxGeometry, Color, DirectionalLight, EdgesGeometry,
   Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh,
   MeshLambertMaterial, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget,
 } from "three";
@@ -39,6 +39,10 @@ try {
   geometry.setAttribute("instanceRow0", new InstancedBufferAttribute(new Float32Array([1,0,0,-1.4, 0,0,1,1.4]), 4));
   geometry.setAttribute("instanceRow1", new InstancedBufferAttribute(new Float32Array([0,1,0,-0.7, 0,1,0,0.7]), 4));
   geometry.setAttribute("instanceRow2", new InstancedBufferAttribute(new Float32Array([0,0,1,0, -1,0,0,0]), 4));
+  const blue = new Color(0x2164ae), red = new Color(0xdb3939);
+  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(new Float32Array([
+    blue.r, blue.g, blue.b, red.r, red.g, red.b,
+  ]), 3));
   geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array(2), 1));
   geometry.instanceCount = 2;
   const material = wideLineMaterial();
@@ -50,7 +54,6 @@ try {
   const target = new WebGLRenderTarget(500, 440);
   function pixels(width) {
     material.uniforms.lineWidth.value = width;
-    material.uniforms.edgeOpacity.value = 0.25;
     renderer.setRenderTarget(target); renderer.render(scene, camera);
     const data = new Uint8Array(500 * 440 * 4);
     renderer.readRenderTargetPixels(target, 0, 0, 500, 440, data);
@@ -75,6 +78,13 @@ try {
     if (thick[(y * 500 + x) * 4 + 3]) halves[x < 250 ? 0 : 1]++;
   }
   assert(halves.every(value => value > 500), "An instanced part lost its edges");
+  let blueEdges = 0, redEdges = 0;
+  for (let i = 0; i < thick.length; i += 4) {
+    const [r, g, b] = [thick[i], thick[i + 1], thick[i + 2]];
+    if (b > r * 1.3 && b > g * 1.15) blueEdges++;
+    if (r > g * 1.3 && r > b * 1.3) redEdges++;
+  }
+  assert(blueEdges > 300 && redEdges > 300, `Edge lines lost part colors: blue ${blueEdges}, red ${redEdges}`);
   renderer.setRenderTarget(null);
   const faces = new Group();
   for (const [x, y, angle, color] of [[-1.4,-0.7,0,0x2164ae],[1.4,0.7,Math.PI/2,0xdb3939]]) {
@@ -90,7 +100,7 @@ try {
     document.querySelector(enabled ? "#on" : "#off").append(canvas);
   }
   assert(renderer.info.programs.every(program => program.diagnostics?.runnable !== false), "Shader compilation failed");
-  result.textContent = `PASS: old shader ${brokenCount} pixels; thin ${thinCount}; thick ${thickCount}; both transformed instances visible.`;
+  result.textContent = `PASS: old shader ${brokenCount} pixels; thin ${thinCount}; thick ${thickCount}; source colors retained (blue ${blueEdges}, red ${redEdges}); both instances visible.`;
   document.body.dataset.result = "passed";
   target.dispose(); renderer.dispose();
 } catch (error) {

@@ -275,7 +275,7 @@ export class FallbackRenderer {
       for (const surface of placementGeometry.surfaces) {
         const mapping = resolveColor(surface.colorCode === "16" ? placementGeometry.colorCode : surface.colorCode);
         const base = new Color(mapping?.hex ?? "#ff00ff");
-        const alpha = (mapping?.alpha ?? 255) / 255 * 0.72;
+        const alpha = (mapping?.alpha ?? 255) / 255;
         for (let index = 0; index < surface.positions.length; index += 9) {
           a.fromArray(surface.positions, index).applyMatrix4(transform);
           b.fromArray(surface.positions, index + 3).applyMatrix4(transform);
@@ -328,18 +328,25 @@ export class FallbackRenderer {
       if (imported) {
         for (const record of imported.edgeRecords) {
           if (remainingEdgeSegments <= 0) break;
-          if (record.localEdges.length) drawSegments(record.localEdges, worldMatrix(record.currentMatrix), importOffset);
+          if (record.localEdges.length) {
+            context.beginPath();
+            drawSegments(record.localEdges, worldMatrix(record.currentMatrix), importOffset);
+            context.strokeStyle = resolveColor(record.instance.colorCode)?.hex ?? "#ff00ff";
+            context.stroke();
+          }
         }
       }
       if (placementGeometry) {
         const transform = worldMatrix(placementGeometry.matrix);
         for (const surface of placementGeometry.surfaces) {
           if (remainingEdgeSegments <= 0) break;
+          context.beginPath();
           drawSegments(surface.edges, transform);
+          const colorCode = surface.colorCode === "16" ? placementGeometry.colorCode : surface.colorCode;
+          context.strokeStyle = resolveColor(colorCode)?.hex ?? "#ff00ff";
+          context.stroke();
         }
       }
-      context.strokeStyle = "rgba(16, 23, 19, 0.25)";
-      context.stroke();
     }
 
     const orderedBricks = [...bricks, ...(placementBrick ? [placementBrick] : [])].sort(
@@ -372,7 +379,7 @@ export class FallbackRenderer {
           points,
           depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
           shade: 0.58 + 0.42 * Math.abs(normal.dot(light)),
-          opacity: brick.id === "placement-preview-brick" ? 0.72 : 1,
+          opacity: 1,
         });
       }
       faces.sort((first, second) => second.depth - first.depth);
@@ -398,7 +405,7 @@ export class FallbackRenderer {
           if (first.depth < 0.1 || second.depth < 0.1) continue;
           context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
         }
-        context.strokeStyle = "rgba(16, 23, 19, 0.25)";
+        context.strokeStyle = brick.color;
         context.stroke();
       }
 
@@ -1145,13 +1152,7 @@ export function BuilderCanvas({
           index.preview(PLACEMENT_PREVIEW_ID, matrix);
           root.name = "placement-preview";
           root.traverse(object => {
-            if (!(object instanceof Mesh)) return;
-            for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-              material.transparent = true;
-              material.opacity = (material.opacity ?? 1) * 0.72;
-              material.depthWrite = false;
-            }
-            object.renderOrder = 5;
+            if (object instanceof Mesh) object.renderOrder = 5;
           });
           scene.add(root);
           placementRootRef.current = root;
@@ -1169,13 +1170,13 @@ export function BuilderCanvas({
       placementPreviewBrickRef.current = brick;
       if (rendererRef.current instanceof WebGLRenderer) {
         const material = new MeshLambertMaterial({
-          color: selectedColor, transparent: true, opacity: 0.72, depthWrite: false,
+          color: selectedColor,
         });
         const mesh = new Mesh(brickGeometry(selectedType).clone(), material);
         mesh.name = "placement-preview";
         mesh.position.set(target.x, target.y, target.z);
         mesh.renderOrder = 5;
-        mesh.add(localPreviewEdgeMesh(selectedType));
+        mesh.add(localPreviewEdgeMesh(selectedType, selectedColor));
         scene.add(mesh);
         placementRootRef.current = mesh;
       }
@@ -1456,6 +1457,12 @@ export function BuilderCanvas({
         bounds.union(transformed.copy(local).applyMatrix4(matrix));
       });
       rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
+      const edgeColors = new Float32Array(groupBricks.length * 3);
+      groupBricks.forEach((brick, index) => {
+        const color = new Color(brick.color);
+        edgeColors.set([color.r, color.g, color.b], index * 3);
+      });
+      geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3));
       geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array(groupBricks.length), 1));
       geometry.instanceCount = groupBricks.length;
       geometry.boundingBox = bounds;
@@ -2384,7 +2391,7 @@ function geometryCacheHas(geometry: InstancedMesh["geometry"]): boolean {
   return [...geometryCache.values()].some((cached) => cached === geometry);
 }
 
-function localPreviewEdgeMesh(type: BrickType): Mesh {
+function localPreviewEdgeMesh(type: BrickType, brickColor: string): Mesh {
   const expanded = expandWideLines(localBrickEdges(type));
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
@@ -2392,6 +2399,8 @@ function localPreviewEdgeMesh(type: BrickType): Mesh {
   geometry.setAttribute("instanceRow0", new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0]), 4));
   geometry.setAttribute("instanceRow1", new InstancedBufferAttribute(new Float32Array([0, 1, 0, 0]), 4));
   geometry.setAttribute("instanceRow2", new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0]), 4));
+  const color = new Color(brickColor);
+  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(new Float32Array([color.r, color.g, color.b]), 3));
   geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array([0]), 1));
   geometry.instanceCount = 1;
   const edges = new Mesh(geometry, wideLineMaterial());

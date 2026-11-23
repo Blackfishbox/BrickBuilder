@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Color, DoubleSide, LessEqualDepth, ShaderMaterial, Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, DoubleSide, LessEqualDepth, ShaderMaterial, Vector2 } from "three";
 import {
   FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER,
 } from "./instruction-focus";
@@ -42,7 +42,7 @@ export function expandWideLines(source: Float32Array): BufferGeometry {
 
 export function wideLineMaterial(): ShaderMaterial {
   return new ShaderMaterial({
-    transparent: true,
+    transparent: false,
     // Screen-space quads face either direction depending on the source edge.
     side: DoubleSide,
     // Draw after solid and translucent part surfaces, but keep hidden edges occluded.
@@ -52,22 +52,23 @@ export function wideLineMaterial(): ShaderMaterial {
     uniforms: {
       lineWidth: { value: 1 },
       resolution: { value: new Vector2(1, 1) },
-      edgeOpacity: { value: 0.25 },
-      edgeColor: { value: new Color("#101713") },
       instructionFocusEnabled: { value: false },
     },
     vertexShader: FOCUS_VERTEX_HEADER + `
       attribute vec4 instanceRow0;
       attribute vec4 instanceRow1;
       attribute vec4 instanceRow2;
+      attribute vec3 instanceEdgeColor;
       attribute vec3 lineEnd;
       attribute float lineEndpoint;
       attribute float lineSide;
       uniform float lineWidth;
       uniform vec2 resolution;
       varying float vLineSide;
+      varying vec3 vEdgeColor;
       void main() {
         ${FOCUS_VERTEX}
+        vEdgeColor = instanceEdgeColor;
         vLineSide = lineSide;
         vec4 p = vec4(position, 1.0);
         vec4 q = vec4(lineEnd, 1.0);
@@ -85,17 +86,14 @@ export function wideLineMaterial(): ShaderMaterial {
         vec2 normal = vec2(-direction.y, direction.x);
         vec4 clip = clipA;
         clip.xy += normal * lineSide * lineWidth / resolution * clip.w;
-        clip.z -= 0.001 * clip.w;
         gl_Position = clip;
       }`,
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
       uniform bool instructionFocusEnabled;
-      uniform float edgeOpacity;
-      uniform vec3 edgeColor;
       varying float vLineSide;
+      varying vec3 vEdgeColor;
       void main() {
-        // Thickness is the only user-controlled change; preserve the normal edge color/alpha.
-        gl_FragColor = vec4(edgeColor, edgeOpacity);
+        gl_FragColor = vec4(vEdgeColor, 1.0);
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
             ? vec4(0.6, 0.015, 0.01, 0.95)

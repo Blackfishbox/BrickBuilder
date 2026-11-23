@@ -437,19 +437,21 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(importedEdge.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
   expect(edgeMaterial.side).toBe(DoubleSide);
   expect(edgeMaterial.depthTest).toBe(true);
+  expect(edgeMaterial.transparent).toBe(false);
   expect(importedEdge.renderOrder).toBeGreaterThan(0);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
-  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.25);
+  expect(importedEdge.geometry.getAttribute("instanceEdgeColor").count).toBe(imported.instances.length);
+  const originalEdgeColor = [...importedEdge.geometry.getAttribute("instanceEdgeColor").array];
   expect(localEdge.visible).toBe(false);
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(6);
-  expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.25);
-  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("101713");
-  expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(edgeColor, edgeOpacity);");
+  expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
+  expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(vEdgeColor, 1.0);");
   expect(edgeMaterial.vertexShader).toContain("vec4 clip = clipA;");
+  expect(edgeMaterial.vertexShader).not.toContain("clip.z -=");
   expect(edgeMaterial.vertexShader).not.toContain("mix(clipA, clipB, lineEndpoint)");
   expect(localEdge.visible).toBe(true);
   expect(localEdge.renderOrder).toBeGreaterThan(0);
@@ -464,7 +466,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(transformRows.array[3]).not.toBe(beforeMove);
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges darkMode />));
   flushFrame();
-  expect(edgeMaterial.uniforms.edgeColor.value.getHexString()).toBe("101713");
+  expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
 
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
@@ -486,7 +488,16 @@ it("draws the enabled thick edges on the current local brick preview", async () 
   const edges = preview.getObjectByName("brick-edges-brick-2x2") as Mesh;
   expect(edges).toBeDefined();
   expect(edges.visible).toBe(true);
+  expect(edges.geometry.getAttribute("instanceEdgeColor").array).toHaveLength(3);
+  expect((edges.material as ShaderMaterial).transparent).toBe(false);
   expect((edges.material as ShaderMaterial).uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
+  expect((preview.material as MeshLambertMaterial).opacity).toBe(1);
+  expect((preview.material as MeshLambertMaterial).transparent).toBe(false);
+  const previewColor = edges.geometry.getAttribute("instanceEdgeColor").array;
+  const faceColor = new Color("#B40000");
+  expect(previewColor[0]).toBeCloseTo(faceColor.r);
+  expect(previewColor[1]).toBeCloseTo(faceColor.g);
+  expect(previewColor[2]).toBeCloseTo(faceColor.b);
 });
 
 it("draws bounded thicker source edges in the compatibility renderer", async () => {
@@ -503,7 +514,8 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
   expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
-  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_WIDTH_PX, color: "rgba(16, 23, 19, 0.25)" });
+  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_WIDTH_PX, color: "#B40000" });
+  expect(observedPaints.some(item => item.globalAlpha === 1 && item.fillStyle.startsWith("rgb("))).toBe(true);
   expect(software.records.size).toBe(1);
 });
 
@@ -1113,9 +1125,9 @@ describe("frame-coalesced drag transactions", () => {
             .find(draw => draw instanceof InstancedMesh && draw.userData.inherited) as InstancedMesh | undefined;
           expect(inheritedFace).toBeDefined();
           const material = inheritedFace!.material as MeshLambertMaterial;
-          expect(material.opacity).toBeCloseTo(alpha / 255 * 0.72);
-          expect(material.transparent).toBe(true);
-          expect(material.depthWrite).toBe(false);
+          expect(material.opacity).toBeCloseTo(alpha / 255);
+          expect(material.transparent).toBe(alpha < 255);
+          expect(material.depthWrite).toBe(alpha === 255);
           const color = new Color();
           inheritedFace!.getColorAt(0, color);
           expect(color.getHexString()).toBe(hex);
@@ -1257,7 +1269,7 @@ describe("frame-coalesced drag transactions", () => {
     renderer.render(camera, new Vector3(), [], null, undefined, 0, false, undefined,
       constructionArea(new Box3(new Vector3(-2, -2, -2), new Vector3(2, 2, 2))), false, geometry);
 
-    const paint = observedPaints.find(item => Math.abs(item.globalAlpha - 128 / 255 * 0.72) < 1e-6);
+    const paint = observedPaints.find(item => Math.abs(item.globalAlpha - 128 / 255) < 1e-6);
     expect(paint).toBeDefined();
     expect(paint!.fillStyle).toMatch(/^rgb\(/);
     const channels = paint!.fillStyle.match(/\d+/g)!.map(Number);
@@ -1272,7 +1284,8 @@ describe("frame-coalesced drag transactions", () => {
     renderer.render(camera, new Vector3(), [], null, undefined, 0, false, undefined,
       constructionArea(new Box3(new Vector3(-2, -2, -2), new Vector3(2, 2, 2))), false,
       { ...geometry, colorCode: "15" });
-    const opaquePaint = observedPaints.find(item => Math.abs(item.globalAlpha - 0.72) < 1e-6);
+    const opaquePaint = observedPaints.find(item =>
+      Math.abs(item.globalAlpha - 1) < 1e-6 && item.fillStyle !== "#e1e6df");
     expect(opaquePaint).toBeDefined();
     expect(opaquePaint!.fillStyle).toMatch(/^rgb\(/);
     const opaqueChannels = opaquePaint!.fillStyle.match(/\d+/g)!.map(Number);
