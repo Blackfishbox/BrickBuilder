@@ -3,8 +3,8 @@
 An independent, local-first, installable building PWA with an LDraw-only parts
 picker and individually editable imported model instances. This is
 not a BrickLink Studio clone and does not use proprietary Studio resources.
-The application interface is deliberately German; repository-facing material
-is English.
+The application interface is available in English (the default) and German;
+repository-facing material is English.
 
 For installation, tested tool versions, required variables and deployment,
 see the [root README](../../README.md) and
@@ -52,12 +52,12 @@ not a full offline browser acceptance run.
 
 ## Model import and file formats
 
-In the German UI, use **Projektmenü → Datei importieren / exportieren**
-to select a local IO, LDR, MPD or JSON file. The preview shows instance,
-part and color counts and issues. Only **Neues Projekt aus Import anlegen**
-saves/opens a new project; the previous model is retained. Read/save failures
-do not replace existing projects. A notice above the model opens the saved
-import report.
+Open the project menu and choose **Import file** (the label follows the
+selected language) to select a local IO, LDR, MPD or JSON file. The preview
+shows instance, part and color counts and issues. Only **Create project from
+import** saves/opens a new project; the previous model is retained. Read/save
+failures do not replace existing projects. A notice above the model opens the
+saved import report.
 
 The supplied private Studio reference demonstrated **429 instances, 74 distinct
 external parts and eight effective colors**, submodels and full affine
