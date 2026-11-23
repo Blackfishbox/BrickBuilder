@@ -18,7 +18,7 @@ import {
   Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh,
   MeshLambertMaterial, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget, SRGBColorSpace,
 } from "three";
-import { expandWideLines, deriveLineNormals, wideLineMaterial, setWideLineResolution, THICK_EDGE_WIDTH_PX } from "/src/features/engine/wide-lines.ts";
+import { expandWideLines, deriveLineNormalPairs, wideLineMaterial, setWideLineResolution, THICK_EDGE_WIDTH_PX } from "/src/features/engine/wide-lines.ts";
 import { createBuilderLighting } from "/src/features/engine/lighting.ts";
 
 const result = document.querySelector("#result");
@@ -34,11 +34,11 @@ try {
   const edgeGeometry = new EdgesGeometry(solid);
   const flat = solid.toNonIndexed();
   const sourceEdges = edgeGeometry.getAttribute("position").array;
-  const sourceNormals = deriveLineNormals(
+  const sourceNormals = deriveLineNormalPairs(
     sourceEdges, flat.getAttribute("position").array, flat.getAttribute("normal").array,
   );
   flat.dispose();
-  const expanded = expandWideLines(sourceEdges, sourceNormals);
+  const expanded = expandWideLines(sourceEdges, sourceNormals.primary, sourceNormals.alternate);
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
   // Two actual instances, including a rotated/translated instance.
@@ -104,7 +104,7 @@ try {
   const facePixels = pixels(THICK_EDGE_WIDTH_PX);
   edges.visible = true;
   const combinedPixels = pixels(THICK_EDGE_WIDTH_PX);
-  let matchedLitPixels = 0, overlapPixels = 0;
+  let matchedLitPixels = 0, overlapPixels = 0, exactPixels = 0, nearPixels = 0, summedDifference = 0;
   for (let i = 0; i < thick.length; i += 4) {
     if (!thick[i + 3] || !facePixels[i + 3]) continue;
     overlapPixels++;
@@ -112,9 +112,13 @@ try {
       Math.abs(combinedPixels[i + 1] - facePixels[i + 1]) +
       Math.abs(combinedPixels[i + 2] - facePixels[i + 2]);
     if (difference <= 45) matchedLitPixels++;
+    if (difference === 0) exactPixels++;
+    if (difference <= 12) nearPixels++;
+    summedDifference += difference;
   }
   assert(overlapPixels > 300, "No edge pixels overlap the rendered brick faces");
   assert(matchedLitPixels > 250, `Thick strokes do not match lit brick faces: ${matchedLitPixels}/${overlapPixels}`);
+  renderer.setRenderTarget(null);
   for (const enabled of [false, true]) {
     edges.visible = enabled;
     renderer.render(scene, camera);
@@ -123,7 +127,7 @@ try {
     document.querySelector(enabled ? "#on" : "#off").append(canvas);
   }
   assert(renderer.info.programs.every(program => program.diagnostics?.runnable !== false), "Shader compilation failed");
-  result.textContent = `PASS: old shader ${brokenCount} pixels; thin ${thinCount}; thick ${thickCount}; source colors retained (blue ${blueEdges}, red ${redEdges}); lit face matches ${matchedLitPixels}/${overlapPixels}; both instances visible.`;
+  result.textContent = `PASS: old shader ${brokenCount} pixels; thin ${thinCount}; thick ${thickCount}; colors retained (blue ${blueEdges}, red ${redEdges}); lit-face match <=45: ${matchedLitPixels}/${overlapPixels}, <=12: ${nearPixels}, exact: ${exactPixels}, mean RGB delta: ${(summedDifference / overlapPixels).toFixed(1)}; both instances visible.`;
   document.body.dataset.result = "passed";
   target.dispose(); renderer.dispose();
 } catch (error) {

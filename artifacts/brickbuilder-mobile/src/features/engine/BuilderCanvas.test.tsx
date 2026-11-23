@@ -444,6 +444,9 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(importedEdge.geometry.getAttribute("edgeNormal").count).toBe(
     importedEdge.geometry.getAttribute("position").count,
   );
+  expect(importedEdge.geometry.getAttribute("edgeAlternateNormal").count).toBe(
+    importedEdge.geometry.getAttribute("position").count,
+  );
   expect(importedEdge.geometry.getAttribute("edgeBaseColor").count).toBe(
     importedEdge.geometry.getAttribute("position").count,
   );
@@ -454,9 +457,10 @@ it("toggles screen-space edge width without rebuilding imported or local model g
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
+  expect(THICK_EDGE_WIDTH_PX).toBe(6.5);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThan(1);
-  expect(edgeMaterial.uniforms.lineWidth.value).toBeLessThan(6);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBeLessThan(7);
   expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
   expect(edgeMaterial.fragmentShader).toContain("vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);");
   expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(baseColor * (hemisphere + sunlight), 1.0);");
@@ -500,6 +504,7 @@ it("draws the enabled thick edges on the current local brick preview", async () 
   expect(edges.visible).toBe(true);
   expect(edges.geometry.getAttribute("instanceEdgeColor").array).toHaveLength(3);
   expect(edges.geometry.getAttribute("edgeNormal").count).toBe(edges.geometry.getAttribute("position").count);
+  expect(edges.geometry.getAttribute("edgeAlternateNormal").count).toBe(edges.geometry.getAttribute("position").count);
   expect((edges.material as ShaderMaterial).transparent).toBe(false);
   expect((edges.material as ShaderMaterial).uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect((preview.material as MeshLambertMaterial).opacity).toBe(1);

@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, EdgesGeometry, Matrix4 } from "three";
 import type { Affine, ImportedModel } from "../formats/types";
 import { IDENTITY, multiply, referenceLine } from "../formats/ldraw/parser";
 import { candidates, normalizeReference } from "@workspace/ldraw-source";
-import { deriveLineNormals } from "./wide-lines";
+import { deriveLineNormalPairs } from "./wide-lines";
 
 export interface Surface {
   colorCode: string;
@@ -13,6 +13,7 @@ export interface Surface {
 export interface VisibleEdgeData {
   positions: Float32Array;
   normals: Float32Array;
+  alternateNormals: Float32Array;
   colorCodes: string[];
 }
 interface PendingSurface { colorCode: string; positions: number[]; edges: number[] }
@@ -28,7 +29,7 @@ export function visibleEdgeLines(surfaces: readonly Surface[]): Float32Array {
 
 /** Retain the source surface appearance and lighting normal for each edge. */
 export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
-  const chunks: { positions: Float32Array; normals: Float32Array; colorCode: string }[] = [];
+  const chunks: { positions: Float32Array; normals: Float32Array; alternateNormals: Float32Array; colorCode: string }[] = [];
   let totalSegments = 0;
   for (const surface of surfaces) {
     let edges = surface.edges;
@@ -42,19 +43,23 @@ export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
       creaseGeometry.dispose();
     }
     if (!edges.length) continue;
+    const lineNormals = deriveLineNormalPairs(edges, surface.positions, surface.normals);
     chunks.push({
-      positions: edges,
-      normals: deriveLineNormals(edges, surface.positions, surface.normals),
+      positions: edges, normals: lineNormals.primary, alternateNormals: lineNormals.alternate,
       colorCode: surface.colorCode,
     });
     totalSegments += Math.floor(edges.length / 6);
   }
-  if (!totalSegments) return { positions: new Float32Array(), normals: new Float32Array(), colorCodes: [] };
+  if (!totalSegments) return {
+    positions: new Float32Array(), normals: new Float32Array(),
+    alternateNormals: new Float32Array(), colorCodes: [],
+  };
 
   const stride = Math.max(1, Math.ceil(totalSegments / MAX_RENDER_EDGE_SEGMENTS));
   const selectedSegments = Math.ceil(totalSegments / stride);
   const positions = new Float32Array(selectedSegments * 6);
   const normals = new Float32Array(selectedSegments * 6);
+  const alternateNormals = new Float32Array(selectedSegments * 6);
   const colorCodes: string[] = [];
   let sourceSegment = 0, outputSegment = 0;
   for (const chunk of chunks) {
@@ -62,13 +67,18 @@ export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
       if (sourceSegment % stride !== 0) continue;
       positions.set(chunk.positions.subarray(offset, offset + 6), outputSegment * 6);
       normals.set(chunk.normals.subarray(offset, offset + 6), outputSegment * 6);
+      alternateNormals.set(chunk.alternateNormals.subarray(offset, offset + 6), outputSegment * 6);
       colorCodes.push(chunk.colorCode);
       outputSegment++;
     }
   }
   return outputSegment === selectedSegments
-    ? { positions, normals, colorCodes }
-    : { positions: positions.slice(0, outputSegment * 6), normals: normals.slice(0, outputSegment * 6), colorCodes };
+    ? { positions, normals, alternateNormals, colorCodes }
+    : {
+      positions: positions.slice(0, outputSegment * 6),
+      normals: normals.slice(0, outputSegment * 6),
+      alternateNormals: alternateNormals.slice(0, outputSegment * 6), colorCodes,
+    };
 }
 /** Undo may remove newly acquired but now unused files without invalidating live parts. */
 export function sameSceneSources(previous: ImportedModel, next: ImportedModel): boolean {

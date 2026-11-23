@@ -5,7 +5,12 @@ import {
 import { BUILDER_LIGHTING } from "./lighting";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
-export const THICK_EDGE_WIDTH_PX = 4.5;
+export const THICK_EDGE_WIDTH_PX = 6.5;
+
+export interface LineNormalPairs {
+  primary: Float32Array;
+  alternate: Float32Array;
+}
 
 /** Match line endpoints to the average normals of coincident surface vertices. */
 export function deriveLineNormals(
@@ -37,17 +42,73 @@ export function deriveLineNormals(
   return result;
 }
 
+/** Keep both faces meeting at each edge so the renderer can shade the visible one. */
+export function deriveLineNormalPairs(
+  lines: Float32Array,
+  positions: Float32Array,
+  normals: Float32Array,
+): LineNormalPairs {
+  const key = (data: Float32Array, offset: number) =>
+    `${Math.round(data[offset] * 100_000)},${Math.round(data[offset + 1] * 100_000)},${Math.round(data[offset + 2] * 100_000)}`;
+  type Pair = { low: [number, number, number]; high: [number, number, number] };
+  const candidates = new Map<string, Pair[]>();
+  const normalAt = (offset: number): [number, number, number] => {
+    const value = [normals[offset], normals[offset + 1], normals[offset + 2]] as [number, number, number];
+    const length = Math.hypot(...value) || 1;
+    return [value[0] / length, value[1] / length, value[2] / length];
+  };
+  const pointKey = (offset: number) =>
+    `${Math.round(positions[offset] * 100_000)},${Math.round(positions[offset + 1] * 100_000)},${Math.round(positions[offset + 2] * 100_000)}`;
+  for (let offset = 0; offset + 8 < positions.length && offset + 8 < normals.length; offset += 9) {
+    for (const [first, second] of [[0, 3], [3, 6], [6, 0]]) {
+      const firstKey = pointKey(offset + first), secondKey = pointKey(offset + second);
+      if (firstKey === secondKey) continue;
+      const lowFirst = firstKey < secondKey;
+      const low = normalAt(offset + (lowFirst ? first : second));
+      const high = normalAt(offset + (lowFirst ? second : first));
+      const edgeKey = lowFirst ? `${firstKey}|${secondKey}` : `${secondKey}|${firstKey}`;
+      const list = candidates.get(edgeKey) ?? [];
+      const duplicate = list.some(pair =>
+        pair.low.every((value, index) => Math.abs(value - low[index]) < 1e-4) &&
+        pair.high.every((value, index) => Math.abs(value - high[index]) < 1e-4));
+      if (!duplicate) list.push({ low, high });
+      candidates.set(edgeKey, list);
+    }
+  }
+  const fallback = deriveLineNormals(lines, positions, normals);
+  const primary = new Float32Array(lines.length);
+  const alternate = new Float32Array(lines.length);
+  for (let offset = 0; offset + 5 < lines.length; offset += 6) {
+    const firstKey = key(lines, offset), secondKey = key(lines, offset + 3);
+    const lowFirst = firstKey < secondKey;
+    const list = candidates.get(lowFirst ? `${firstKey}|${secondKey}` : `${secondKey}|${firstKey}`);
+    for (const [endpoint, pointKeyValue] of [[0, firstKey], [3, secondKey]] as const) {
+      const lowEndpoint = pointKeyValue === (lowFirst ? firstKey : secondKey);
+      const firstNormal = list?.[0] ? (lowEndpoint ? list[0].low : list[0].high) : [...fallback.subarray(offset + endpoint, offset + endpoint + 3)] as [number, number, number];
+      const secondNormal = list?.[1] ? (lowEndpoint ? list[1].low : list[1].high) : firstNormal;
+      primary.set(firstNormal, offset + endpoint);
+      alternate.set(secondNormal, offset + endpoint);
+    }
+  }
+  return { primary, alternate };
+}
+
 /**
  * Expand each source segment into two triangles. The endpoints are repeated
  * only in this render buffer; the source part geometry remains untouched.
  */
-export function expandWideLines(source: Float32Array, sourceNormals?: Float32Array): BufferGeometry {
+export function expandWideLines(
+  source: Float32Array,
+  sourceNormals?: Float32Array,
+  sourceAlternateNormals?: Float32Array,
+): BufferGeometry {
   const segments = Math.floor(source.length / 6);
   const positions = new Float32Array(segments * 18);
   const lineEnds = new Float32Array(positions.length);
   const endpoints = new Float32Array(segments * 6);
   const sides = new Float32Array(segments * 6);
   const normals = sourceNormals ? new Float32Array(positions.length) : undefined;
+  const alternateNormals = sourceNormals ? new Float32Array(positions.length) : undefined;
   const baseColors = new Float32Array(positions.length);
   const useInstanceColor = new Float32Array(segments * 6);
   const endpointForVertex = [0, 0, 1, 1, 0, 1];
@@ -68,6 +129,10 @@ export function expandWideLines(source: Float32Array, sourceNormals?: Float32Arr
         sourceNormals.subarray(segment * 6 + endpoint * 3, segment * 6 + endpoint * 3 + 3),
         vertex * 3,
       );
+      if (alternateNormals && sourceNormals) alternateNormals.set(
+        (sourceAlternateNormals ?? sourceNormals).subarray(segment * 6 + endpoint * 3, segment * 6 + endpoint * 3 + 3),
+        vertex * 3,
+      );
     }
   }
   const geometry = new BufferGeometry();
@@ -76,6 +141,7 @@ export function expandWideLines(source: Float32Array, sourceNormals?: Float32Arr
   geometry.setAttribute("lineEndpoint", new BufferAttribute(endpoints, 1));
   geometry.setAttribute("lineSide", new BufferAttribute(sides, 1));
   if (normals) geometry.setAttribute("edgeNormal", new BufferAttribute(normals, 3));
+  if (alternateNormals) geometry.setAttribute("edgeAlternateNormal", new BufferAttribute(alternateNormals, 3));
   geometry.setAttribute("edgeBaseColor", new BufferAttribute(baseColors, 3));
   geometry.setAttribute("edgeUseInstanceColor", new BufferAttribute(useInstanceColor, 1));
   geometry.computeBoundingBox();
@@ -111,6 +177,7 @@ export function wideLineMaterial(): ShaderMaterial {
       attribute vec3 edgeBaseColor;
       attribute float edgeUseInstanceColor;
       attribute vec3 edgeNormal;
+      attribute vec3 edgeAlternateNormal;
       attribute vec3 lineEnd;
       attribute float lineEndpoint;
       attribute float lineSide;
@@ -120,6 +187,9 @@ export function wideLineMaterial(): ShaderMaterial {
       varying vec3 vEdgeColor;
       varying vec3 vInstanceEdgeColor;
       varying vec3 vEdgeNormal;
+      varying vec3 vEdgeAlternateNormal;
+      varying float vEdgeFacing;
+      varying float vEdgeAlternateFacing;
       varying float vEdgeUseInstanceColor;
       vec3 edgeColorToLinear(vec3 color) {
         vec3 low = color / 12.92;
@@ -133,10 +203,19 @@ export function wideLineMaterial(): ShaderMaterial {
         vEdgeUseInstanceColor = edgeUseInstanceColor;
         vec3 normal = length(edgeNormal) > 0.0001 ? normalize(edgeNormal) : vec3(0.0, 1.0, 0.0);
         vEdgeNormal = normalize(vec3(
-          dot(vec3(instanceRow0.x, instanceRow1.x, instanceRow2.x), normal),
-          dot(vec3(instanceRow0.y, instanceRow1.y, instanceRow2.y), normal),
-          dot(vec3(instanceRow0.z, instanceRow1.z, instanceRow2.z), normal)
+          dot(instanceRow0.xyz, normal),
+          dot(instanceRow1.xyz, normal),
+          dot(instanceRow2.xyz, normal)
         ));
+        vec3 alternateNormal = length(edgeAlternateNormal) > 0.0001
+          ? normalize(edgeAlternateNormal) : normal;
+        vEdgeAlternateNormal = normalize(vec3(
+          dot(instanceRow0.xyz, alternateNormal),
+          dot(instanceRow1.xyz, alternateNormal),
+          dot(instanceRow2.xyz, alternateNormal)
+        ));
+        vEdgeFacing = (viewMatrix * vec4(vEdgeNormal, 0.0)).z;
+        vEdgeAlternateFacing = (viewMatrix * vec4(vEdgeAlternateNormal, 0.0)).z;
         vLineSide = lineSide;
         vec4 p = vec4(position, 1.0);
         vec4 q = vec4(lineEnd, 1.0);
@@ -166,11 +245,16 @@ export function wideLineMaterial(): ShaderMaterial {
       varying vec3 vEdgeColor;
       varying vec3 vInstanceEdgeColor;
       varying vec3 vEdgeNormal;
+      varying vec3 vEdgeAlternateNormal;
+      varying float vEdgeFacing;
+      varying float vEdgeAlternateFacing;
       varying float vEdgeUseInstanceColor;
       void main() {
-        float skyWeight = (vEdgeNormal.y + 1.0) * 0.5;
+        vec3 visibleNormal = vEdgeFacing >= vEdgeAlternateFacing
+          ? normalize(vEdgeNormal) : normalize(vEdgeAlternateNormal);
+        float skyWeight = (visibleNormal.y + 1.0) * 0.5;
         float hemisphere = mix(hemisphereGround, 1.0, skyWeight) * hemisphereIntensity;
-        float sunlight = max(0.0, dot(normalize(vEdgeNormal), normalize(sunDirection))) * sunIntensity;
+        float sunlight = max(0.0, dot(visibleNormal, normalize(sunDirection))) * sunIntensity;
         vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);
         gl_FragColor = vec4(baseColor * (hemisphere + sunlight), 1.0);
         if (instructionFocusEnabled) {

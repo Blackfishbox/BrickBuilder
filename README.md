@@ -1,11 +1,11 @@
 # Android / Google Play releases
 
-Android releases use `main` as their only source and are started manually from
-GitHub Actions. A run builds a signed bundle and publishes only to the closed
-`alpha` test after the required checks pass; pushes do not start a release.
-See [the Android build and release guide](docs/android-google-play.md) for
-offline coverage, local APK/AAB builds, release setup and remaining Play
-Console/signing/device-test requirements.
+Android release builds are started manually in GitHub Actions. A run builds a
+signed bundle and publishes only to the closed `alpha` test after the required
+checks pass; pushes do not start a release. See
+[the Android build and release guide](docs/android-google-play.md) for offline
+coverage, local APK/AAB builds, release setup and remaining
+Play Console/signing/device-test requirements.
 
 # BrickBuilder
 

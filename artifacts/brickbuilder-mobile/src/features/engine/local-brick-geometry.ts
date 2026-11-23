@@ -1,7 +1,7 @@
 import { BoxGeometry, BufferGeometry, CylinderGeometry, EdgesGeometry } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BrickType } from "../editor/model";
-import { deriveLineNormals } from "./wide-lines";
+import { deriveLineNormalPairs, deriveLineNormals } from "./wide-lines";
 
 // Rendering dimensions only. Construction spacing and collision bounds still
 // use BRICK_HEIGHT and the nominal stud footprint.
@@ -47,6 +47,7 @@ export function createLocalBrickGeometry(type: BrickType): BufferGeometry {
 const triangleCache = new Map<BrickType, Float32Array>();
 const edgeCache = new Map<BrickType, Float32Array>();
 const edgeNormalCache = new Map<BrickType, Float32Array>();
+const edgeNormalPairCache = new Map<BrickType, { primary: Float32Array; alternate: Float32Array }>();
 
 /** Read-only sharp edges for the compatibility renderer and GPU outline batches. */
 export function localBrickEdges(type: BrickType): Float32Array {
@@ -81,6 +82,24 @@ export function localBrickEdgeNormals(type: BrickType): Float32Array {
     return normals;
   } finally {
     flat.dispose();
+    geometry.dispose();
+  }
+}
+
+/** Face normals on both sides of each edge, for view-dependent matching light. */
+export function localBrickEdgeNormalPairs(type: BrickType): { primary: Float32Array; alternate: Float32Array } {
+  const cached = edgeNormalPairCache.get(type);
+  if (cached) return cached;
+  const geometry = createLocalBrickGeometry(type);
+  try {
+    const pairs = deriveLineNormalPairs(
+      localBrickEdges(type),
+      geometry.getAttribute("position").array as Float32Array,
+      geometry.getAttribute("normal").array as Float32Array,
+    );
+    edgeNormalPairCache.set(type, pairs);
+    return pairs;
+  } finally {
     geometry.dispose();
   }
 }

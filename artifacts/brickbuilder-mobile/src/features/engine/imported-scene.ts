@@ -105,7 +105,7 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
   const length = source.positions.length;
   if (!length) return;
   if (length / 6 > MAX_WIDE_EDGE_SEGMENTS) throw new SceneBudgetExceeded();
-  const expanded = expandWideLines(source.positions, source.normals);
+  const expanded = expandWideLines(source.positions, source.normals, source.alternateNormals);
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
   expanded.dispose();

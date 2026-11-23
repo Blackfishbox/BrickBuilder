@@ -30,7 +30,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { createLocalBrickGeometry, localBrickEdges, localBrickEdgeNormals, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
+import { createLocalBrickGeometry, localBrickEdges, localBrickEdgeNormals, localBrickEdgeNormalPairs, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -1466,7 +1466,8 @@ export function BuilderCanvas({
       localEdgeGroups.set(brick.type, group);
     }
     for (const [type, groupBricks] of localEdgeGroups) {
-      const expanded = expandWideLines(localBrickEdges(type), localBrickEdgeNormals(type));
+      const normals = localBrickEdgeNormalPairs(type);
+      const expanded = expandWideLines(localBrickEdges(type), normals.primary, normals.alternate);
       const geometry = new InstancedBufferGeometry();
       for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
       expanded.dispose();
@@ -2417,7 +2418,8 @@ function geometryCacheHas(geometry: InstancedMesh["geometry"]): boolean {
 }
 
 function localPreviewEdgeMesh(type: BrickType, brickColor: string): Mesh {
-  const expanded = expandWideLines(localBrickEdges(type), localBrickEdgeNormals(type));
+  const normals = localBrickEdgeNormalPairs(type);
+  const expanded = expandWideLines(localBrickEdges(type), normals.primary, normals.alternate);
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
   expanded.dispose();
