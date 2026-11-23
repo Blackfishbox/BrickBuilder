@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { renderView, ViewExportError, type ViewExporter } from "./view-export";
-import { Link2, TriangleAlert, Cloud, MousePointer2 } from "lucide-react";
+import { Link2, TriangleAlert, Cloud, MousePointer2, Layers } from "lucide-react";
 import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
   BoxGeometry,
@@ -47,6 +47,7 @@ import { InstanceIndex, instanceIndex } from "./instance-index";
 import {
   activeConnections, magneticConstructionTransform, hasUsableConnections,
 } from "../connections/engine";
+import { connectedPartsAbove } from "../connections/connected-move";
 import type { MagneticLatch } from "../connections/engine";
 import { placementSnapModel, PLACEMENT_SNAP_ID } from "./placement-snapping";
 import { ConnectionOverlay } from "../connections/overlay";
@@ -609,6 +610,7 @@ export function BuilderCanvas({
   const [autoSelectAfterPlacement, setAutoSelectAfterPlacement] = useState(false);
   const autoSelectAfterPlacementRef = useRef(false);
   autoSelectAfterPlacementRef.current = autoSelectAfterPlacement;
+  const [moveConnectedAbove, setMoveConnectedAbove] = useState(true);
   useEffect(() => {
     if (!toggleToast) return;
     const timer = setTimeout(() => setToggleToast(""), 2200);
@@ -700,6 +702,7 @@ export function BuilderCanvas({
     onOpenRotationControls,
     onMove,
     onMoveGroup,
+    moveConnectedAbove,
   });
   const pointersRef = useRef(new Map<number, PointerPoint>());
   const pointerLastRef = useRef(new Map<number, PointerPoint>());
@@ -757,6 +760,7 @@ export function BuilderCanvas({
     onOpenRotationControls,
     onMove,
     onMoveGroup,
+    moveConnectedAbove,
   };
 
   useEffect(() => {
@@ -1889,9 +1893,12 @@ export function BuilderCanvas({
             instance ? { x: instance.matrix[3] / 20, y: -instance.matrix[7] / 20 + importedOffsetRef.current, z: instance.matrix[11] / 20 } : null;
           if (origin) {
             const requestedIds = current.selectedIds?.includes(hit.id) ? current.selectedIds : [hit.id];
+            const moveIds = current.moveConnectedAbove
+              ? connectedPartsAbove(current.imported, current.bricks, requestedIds)
+              : new Set(requestedIds);
             const members: DragMember[] = [
-              ...current.bricks.filter(item => requestedIds.includes(item.id)).map(item => ({ id: item.id, brick: item })),
-              ...(current.imported?.instances ?? []).filter(item => requestedIds.includes(item.id))
+              ...current.bricks.filter(item => moveIds.has(item.id)).map(item => ({ id: item.id, brick: item })),
+              ...(current.imported?.instances ?? []).filter(item => moveIds.has(item.id))
                 .map(item => ({ id: item.id, matrix: [...item.matrix] as Affine })),
             ];
             if (!members.some(member => member.id === hit.id)) {
@@ -2327,6 +2334,18 @@ export function BuilderCanvas({
           setToggleToast(t(autoSelectAfterPlacement ? "canvas.autoSelectAfterPlacementOff" : "canvas.autoSelectAfterPlacementOn"));
         }}>
         <MousePointer2 size={20} aria-hidden="true" />
+      </button>}
+      {toolMode === "select" && <button type="button" data-testid="button-move-connected-above"
+        className="canvas-control-toggle pointer-events-auto min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm"
+        aria-label={t("canvas.moveConnectedAbove")}
+        aria-pressed={moveConnectedAbove}
+        title={t(moveConnectedAbove ? "canvas.moveConnectedAboveOn" : "canvas.moveConnectedAboveOff")}
+        onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+        onClick={() => {
+          setMoveConnectedAbove(!moveConnectedAbove);
+          setToggleToast(t(moveConnectedAbove ? "canvas.moveConnectedAboveOff" : "canvas.moveConnectedAboveOn"));
+        }}>
+        <Layers size={20} aria-hidden="true" />
       </button>}
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
     </div>}

@@ -761,6 +761,27 @@ describe("frame-coalesced drag transactions", () => {
       expect(element.querySelector("[data-testid='construction-toggle-toast']")?.textContent).toBe(`${name} ${initial ? "aktiv" : "inaktiv"}`);
     }
   });
+  it("defaults connected upper-part movement on and shows its state when toggled", () => {
+    const props = { bricks: [], selectedId: null, selectedType: "brick-1x2" as const, selectedColor: "#fff",
+      toolMode: "select" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+
+    const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-move-connected-above']")!;
+    expect(toggle).not.toBeNull();
+    expect(toggle.getAttribute("aria-label")).toBe("Verbundene obere Teile mitbewegen");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.querySelector("svg")).not.toBeNull();
+
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(element.querySelector("[data-testid='construction-toggle-toast']")?.textContent)
+      .toBe("Verbundene obere Teile bleiben stehen");
+
+    act(() => root.render(<BuilderCanvas {...props} toolMode="build" />));
+    expect(element.querySelector("[data-testid='button-move-connected-above']")).toBeNull();
+    act(() => root.render(<BuilderCanvas {...props} toolMode="view" />));
+    expect(element.querySelector("[data-testid='button-move-connected-above']")).toBeNull();
+  });
   it("keeps icon toggle gestures from starting a canvas camera gesture", async () => {
     await mount("select");
     const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!;
@@ -771,6 +792,12 @@ describe("frame-coalesced drag transactions", () => {
     pointerOn(toggle, "pointermove", 180, 150);
     pointerOn(toggle, "pointerup", 180, 150);
 
+    expect(capturePointer).not.toHaveBeenCalled();
+
+    const connectedToggle = element.querySelector<HTMLButtonElement>("[data-testid='button-move-connected-above']")!;
+    pointerOn(connectedToggle, "pointerdown", 120, 150);
+    pointerOn(connectedToggle, "pointermove", 180, 150);
+    pointerOn(connectedToggle, "pointerup", 180, 150);
     expect(capturePointer).not.toHaveBeenCalled();
   });
   it("shows collisions on demand and recalculates after moving and deleting parts", async () => {
