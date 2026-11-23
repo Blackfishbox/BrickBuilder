@@ -319,7 +319,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
 
   return (
     <div className="ins-shell" role="dialog" aria-modal="true" aria-label={t("instruction.dialog")} data-testid="panel-instructions">
-      <header className="ins-head">
+      <header className={`ins-head${studioPdfAvailable ? " has-studio-pdf" : ""}`} data-testid="header-instructions">
         <div className="ins-head-title">
           <small>{t("instruction.title")}</small>
           <strong data-testid="text-instructions-summary">{t("instruction.summary", {

@@ -2,6 +2,7 @@
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { PerspectiveCamera, Vector3 } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { LANGUAGE_STORAGE_KEY } from "../../i18n/I18nProvider";
@@ -26,6 +27,7 @@ let host: HTMLDivElement;
 afterEach(() => {
   if (root) act(() => root!.unmount());
   host?.remove(); localStorage.removeItem(LANGUAGE_STORAGE_KEY); vi.unstubAllGlobals(); vi.clearAllMocks();
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
 });
 
 it("uses English default step names and singular instruction summary", () => {
@@ -515,6 +517,43 @@ it("shows the Studio-layout PDF export only for imported IO layouts", () => {
   const withStudioLayout = { ...source, imported, instructions: readStudioInstructions(xml, sourceInstructionPlan(imported)) };
   act(() => root!.render(<InstructionsPanel document={withStudioLayout} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
   expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).not.toBeNull();
+});
+
+it("keeps the instruction header actions available at narrow mobile widths with and without Studio export", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, "de");
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "local", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat\n0 STEP\n";
+  const imported = { version: 1 as const, format: "io" as const, sourceName: "fixture.io", originalBytes: [],
+    sourceText, ...parseLDraw(sourceText), resources: {}, legalDocuments: [] };
+  const xml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='OneByOne'><Slot><Step SerializedIndex='0'/></Slot></Page></Pages></Instruction>";
+  const withStudioLayout = { ...source, imported, instructions: readStudioInstructions(xml, sourceInstructionPlan(imported)) };
+  const render = (document: BuilderDocument) => act(() => root!.render(
+    <InstructionsPanel document={document} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}}
+      onExportStudioPDF={async () => {}} />,
+  ));
+  host = document.createElement("div"); host.style.width = "320px"; document.body.appendChild(host); root = createRoot(host);
+
+  render(source);
+  const header = () => host.querySelector<HTMLElement>('[data-testid="header-instructions"]')!;
+  expect(header().classList.contains("has-studio-pdf")).toBe(false);
+  expect(host.querySelector('[data-testid="button-instructions-export-pdf"]')?.getAttribute("aria-label")).toBe("Anleitung als PDF exportieren");
+  expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).toBeNull();
+  expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
+
+  render(withStudioLayout);
+  expect(header().classList.contains("has-studio-pdf")).toBe(true);
+  expect(host.querySelector('[data-testid="button-instructions-export-pdf"]')).not.toBeNull();
+  expect(host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-studio-pdf"]')?.textContent).toContain("Studio-PDF");
+  expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
+
+  const css = readFileSync("src/features/instructions/instructions.css", "utf8");
+  expect(css).toMatch(/@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*?\.ins-head\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+44px/);
+  expect(css).toMatch(/\.ins-head\.has-studio-pdf\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)\s+44px/);
+  expect(css).toMatch(/\.ins-head-title strong\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  expect(css).toMatch(/\.ins-head > \.ins-primary\s*\{[^}]*overflow-wrap:\s*anywhere/);
 });
 
 it("saves a focused angle edit before passing the plan to PDF export", async () => {
