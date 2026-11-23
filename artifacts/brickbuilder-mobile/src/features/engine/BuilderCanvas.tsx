@@ -1472,6 +1472,7 @@ export function BuilderCanvas({
       edgeMesh.userData.brickIds = groupBricks.map(brick => brick.id);
       edgeMesh.userData.isWideEdgeMesh = true;
       edgeMesh.frustumCulled = false;
+      edgeMesh.renderOrder = 10;
       nextRoot.add(edgeMesh);
     }
 

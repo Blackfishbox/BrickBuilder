@@ -1,10 +1,10 @@
-import { BufferAttribute, BufferGeometry, Color, DoubleSide, ShaderMaterial, Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, Color, DoubleSide, LessEqualDepth, ShaderMaterial, Vector2 } from "three";
 import {
   FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER,
 } from "./instruction-focus";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
-export const THICK_EDGE_WIDTH_PX = 24;
+export const THICK_EDGE_WIDTH_PX = 32;
 
 /**
  * Expand each source segment into two triangles. The endpoints are repeated
@@ -45,6 +45,9 @@ export function wideLineMaterial(): ShaderMaterial {
     transparent: true,
     // Screen-space quads face either direction depending on the source edge.
     side: DoubleSide,
+    // Draw after solid and translucent part surfaces, but keep hidden edges occluded.
+    depthTest: true,
+    depthFunc: LessEqualDepth,
     depthWrite: false,
     uniforms: {
       lineWidth: { value: 1 },

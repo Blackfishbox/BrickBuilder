@@ -200,6 +200,7 @@ it("shows the thicker-edge control and persists its toggled preference", async (
   const toggle = container.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')!;
   expect(toggle).not.toBeNull();
   expect(toggle.hidden).toBe(false);
+  expect(toggle.textContent).toContain("Dickere Kanten");
   expect(toggle.getAttribute("aria-pressed")).toBe("false");
   expect(canvasProps.current.thickEdges).toBe(false);
 

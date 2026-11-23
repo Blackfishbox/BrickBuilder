@@ -431,6 +431,8 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   const edgeMaterial = importedEdge.material as ShaderMaterial;
   expect(importedEdge.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
   expect(edgeMaterial.side).toBe(DoubleSide);
+  expect(edgeMaterial.depthTest).toBe(true);
+  expect(importedEdge.renderOrder).toBeGreaterThan(0);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(0.25);
   expect(localEdge.visible).toBe(false);
@@ -438,9 +440,10 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
-  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(20);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(30);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
   expect(localEdge.visible).toBe(true);
+  expect(localEdge.renderOrder).toBeGreaterThan(0);
   expect(importedEdge.visible).toBe(true);
   expect(importedEdge.geometry).toBe(importedGeometry);
   expect(localEdge.geometry).toBe(localGeometry);

@@ -132,6 +132,7 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
   lines.userData.brickIds = instances.map(instance => instance.id);
   lines.userData.batchKey = `${instances[0].reference.toLowerCase()}|edges`;
   lines.userData.localBounds = local;
+  lines.renderOrder = 10;
   root.add(lines);
 }
 

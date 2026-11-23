@@ -107,8 +107,8 @@
 .brick-count { color: #41534b; font: 500 11px var(--app-font-mono); }
 .history-controls { display: flex; gap: 5px; }
 @media (max-width: 620px) {
-  .thick-edges-toggle { width: 36px; min-width: 36px; padding: 0; }
-  .thick-edges-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .thick-edges-toggle { min-width: 36px; padding: 0 6px; gap: 5px; }
+  .thick-edges-label { font-size: 9px; }
 }
 .icon-button {
   display: grid; place-items: center; width: 39px; height: 39px; border: 1px solid #e2dfd4;
