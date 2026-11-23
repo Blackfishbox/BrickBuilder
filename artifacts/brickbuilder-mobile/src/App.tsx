@@ -36,8 +36,6 @@ import {
   Redo2,
   Moon,
   Sun,
-  Wifi,
-  WifiOff,
   X,
   MousePointer2,
 } from 'lucide-react';
@@ -78,10 +76,10 @@ function App() {
   const catalog = useCatalog();
   const COLORS = catalogPalette().map(color => ({ name: color.name, value: color.hex, ldrawCode: color.ldrawCode }));
   const editor = useBuilder();
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const displayedProjectName = isGeneratedProjectName(editor.projectName) ? t("project.new") : editor.projectName;
   const [theme, setTheme] = useState<ColorTheme>(readColorTheme);
   const [thickEdges, setThickEdges] = useState(readThickEdgesPreference);
-  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
@@ -381,20 +379,6 @@ function App() {
         </div>
 
         <div className="topbar-end">
-          <div
-            className={`connectivity ${online ? 'is-online' : 'is-offline'}`}
-            role="status"
-            aria-label={online
-              ? t("connectivity.onlineDescription")
-              : t("connectivity.offlineDescription")}
-            title={online
-              ? t("editor.networkInfo")
-              : t("connectivity.offlineDescription")}
-            data-testid="status-connectivity"
-          >
-            {online ? <Wifi size={15} /> : <WifiOff size={15} />}
-            <span>{online ? t("connectivity.onlineLabel") : t("connectivity.offlineLabel")}</span>
-          </div>
           <button
             type="button"
             className="theme-toggle"

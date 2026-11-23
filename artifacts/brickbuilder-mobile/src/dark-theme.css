@@ -140,10 +140,6 @@
   cursor: pointer;
 }
 .theme-toggle:hover { background: hsl(var(--accent)); }
-.dark .connectivity { color: hsl(var(--muted-foreground)); }
-.dark .connectivity svg { color: hsl(var(--accent-foreground)); }
-.dark .connectivity.is-offline,
-.dark .connectivity.is-offline svg { color: hsl(var(--destructive)); }
 .dark .project-name-input,
 .dark .search-field input,
 .dark .mobile-color-option,

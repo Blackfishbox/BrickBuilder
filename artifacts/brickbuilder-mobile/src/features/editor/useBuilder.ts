@@ -681,10 +681,10 @@ export function useBuilder() {
         }); } catch (error) { setPartError(error instanceof Error ? error.message : String(error)); }
         return;
       }
-      const snapped = snapPosition(position);
       updateDocument(document => {
         const existing = document.bricks.find(brick => brick.id === id);
         if (!existing) return document;
+        const snapped = snapPosition(position, existing.type, existing.rotation);
         const next = clampBrickToGround({ ...existing, ...snapped });
         if (next.x === existing.x && next.y === existing.y && next.z === existing.z) return document;
         return {

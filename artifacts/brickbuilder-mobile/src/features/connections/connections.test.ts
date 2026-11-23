@@ -97,6 +97,24 @@ describe("genuine source profile families", () => {
 });
 
 describe("oriented connection transactions", () => {
+  it("snaps free placement on the construction floor to whole studs, keeping half studs above it", () => {
+    const model = connectionFixture(partLine("3001"));
+    const id = model.instances[0].id;
+    const onFloor = constructionTransform(model, id, { x: 0.28, y: 0, z: 0.72 });
+    const connectors = describeConnections("3001.dat", model).connectors.filter(connector =>
+      connector.family === "cylinder" && connector.gender === "M" && connector.clearId === "studC",
+    );
+    expect(connectors).toHaveLength(8);
+    const alignedStudX = connectors[0].frame[3] / 20 + onFloor.matrix[3] / 20;
+    const alignedStudZ = connectors[0].frame[11] / 20 + onFloor.matrix[11] / 20;
+    expect(alignedStudX).toBeCloseTo(Math.round(alignedStudX));
+    expect(alignedStudZ).toBeCloseTo(Math.round(alignedStudZ));
+
+    const raised = constructionTransform(model, id, { x: 0.28, y: 1.2, z: 0.72 });
+    expect(raised.matrix[3] / 20).toBe(0.5);
+    expect(raised.matrix[11] / 20).toBe(0.5);
+  });
+
   it("captures studs across the diagonal midpoint rather than leaving grid dead zones", () => {
     const model = connectionFixture([partLine("3001", 0, -24), partLine("3003", 160, -24)].join("\n"));
     const snap = snapConnection(model, model.instances[1].id, { x: 0.49, y: 1.2, z: 0.49 });
@@ -243,7 +261,7 @@ describe("oriented connection transactions", () => {
     const id = model.instances[1].id;
     const result = constructionTransform(model, id, { x: 12.1, y: 1.2, z: 0 });
     expect(result.contacts).toHaveLength(0);
-    expect(result.matrix[3]).toBe(240);
+    expect(result.matrix[3]).toBe(250);
     expect(activeConnections(model, id)).toHaveLength(0);
   });
   it("uses the next free layer and rejects an occupied socket", () => {

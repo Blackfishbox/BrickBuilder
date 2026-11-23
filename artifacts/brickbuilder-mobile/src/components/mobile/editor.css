@@ -52,10 +52,6 @@
 .project-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
 .project-title-button > svg { color: #7a8981; flex: none; }
 .topbar-end { display: flex; align-items: center; gap: 16px; margin-left: auto; }
-.connectivity { display: flex; align-items: center; gap: 7px; font: 500 10px var(--app-font-mono); color: #537568; white-space: nowrap; }
-.connectivity svg { color: #648773; }
-.connectivity.is-offline { color: #a65a45; }
-.connectivity.is-offline svg { color: #bd6046; }
 .save-button {
   border: 0; border-radius: 9px; min-height: 38px; display: flex; align-items: center; gap: 8px;
   padding: 0 14px; background: #d85d41; color: #fff8ed; cursor: pointer; font-size: 12px; font-weight: 800;
@@ -287,9 +283,6 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .project-title-button { max-width: min(34vw, 170px); gap: 7px; padding: 8px 6px; }
   .project-title { font-size: 11px; }
   .topbar-end { gap: 9px; margin-left: 0; }
-  .connectivity { width: 19px; justify-content: center; }
-  .connectivity span { display: none; }
-  .connectivity svg { width: 17px; height: 17px; }
   .save-button { width: 44px; height: 44px; min-height: 44px; justify-content: center; padding: 0; border-radius: 10px; }
   .save-button span { display: none; }
   .work-area { display: block; min-height: 0; position: relative; }

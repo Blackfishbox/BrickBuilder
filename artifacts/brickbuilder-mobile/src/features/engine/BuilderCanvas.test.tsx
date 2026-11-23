@@ -1033,10 +1033,10 @@ describe("frame-coalesced drag transactions", () => {
         return [preview.matrix[3], preview.matrix[7], preview.matrix[11]];
       };
       if (webgl) {
-        expect(visiblePosition()[0]).toBeCloseTo(1);
+        expect(visiblePosition()[0]).toBeCloseTo(0.5);
         expect(visiblePosition()[2]).toBeCloseTo(1);
       } else {
-        expect(visiblePosition()[0]).toBeCloseTo(20);
+        expect(visiblePosition()[0]).toBeCloseTo(10);
         expect(visiblePosition()[2]).toBeCloseTo(20);
       }
       const positionBeforeColorChange = visiblePosition();
