@@ -6,7 +6,9 @@ import { PerspectiveCamera, Vector3 } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { LANGUAGE_STORAGE_KEY } from "../../i18n/I18nProvider";
 import InstructionsPanel from "./InstructionsPanel";
-import { updateInstructions } from "./model";
+import { sourceInstructionPlan, updateInstructions } from "./model";
+import { parseLDraw } from "../formats/ldraw/parser";
+import { readStudioInstructions } from "./studio";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -421,6 +423,24 @@ it("passes the enabled highlight option to PDF export", async () => {
   });
   expect(onExportPDF).toHaveBeenCalledOnce();
   expect(onExportPDF.mock.calls[0][3]).toBe(true);
+});
+
+it("shows the Studio-layout PDF export only for imported IO layouts", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "local", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  const onExportStudioPDF = vi.fn(async () => {});
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
+  expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).toBeNull();
+
+  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat\n0 STEP\n";
+  const imported = { version: 1 as const, format: "io" as const, sourceName: "fixture.io", originalBytes: [],
+    sourceText, ...parseLDraw(sourceText), resources: {}, legalDocuments: [] };
+  const xml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='OneByOne'><Slot><Step SerializedIndex='0'/></Slot></Page></Pages></Instruction>";
+  const withStudioLayout = { ...source, imported, instructions: readStudioInstructions(xml, sourceInstructionPlan(imported)) };
+  act(() => root!.render(<InstructionsPanel document={withStudioLayout} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
+  expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).not.toBeNull();
 });
 
 it("saves a focused angle edit before passing the plan to PDF export", async () => {

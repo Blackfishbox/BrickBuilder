@@ -12,6 +12,7 @@ import {
 import StudioLayoutEditor from "./StudioLayoutEditor";
 import StepPartsBox from "./StepPartsBox";
 import { instructionHighlightIds } from "./callouts";
+import { hasStudioPdfLayout } from "./studio-pdf";
 import "./instructions.css";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -21,6 +22,7 @@ interface Props {
   onChange: (plan: InstructionPlan) => void;
   onClose: () => void;
   onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
+  onExportStudioPDF?: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
 }
 
 interface PartInfo { id: string; label: string; color: string }
@@ -29,7 +31,7 @@ const PAGE = 60;
 const STEP_WINDOW = 30;
 const noop = () => undefined;
 
-export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF }: Props) {
+export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF, onExportStudioPDF }: Props) {
   const { t } = useI18n();
   const plan = useMemo(() => {
     const source = effectiveInstructions(document);
@@ -57,6 +59,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [retryStudioExport, setRetryStudioExport] = useState(false);
   const [angleDrafts, setAngleDrafts] = useState<Record<string, string>>({});
   const angleDraftRef = useRef<{ stepId: string; axis: number; value: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -78,6 +81,10 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
     return map;
   }, [plan]);
   const view = useMemo(() => instructionView(document, plan, current), [document, plan, current]);
+  const studioPdfAvailable = useMemo(
+    () => Boolean(onExportStudioPDF && hasStudioPdfLayout(document, plan)),
+    [document.imported?.format, plan.studioLayout, onExportStudioPDF],
+  );
 
   const listed = useMemo(() => {
     const source = scope === "step" ? step.partIds : [...parts.keys()];
@@ -199,7 +206,8 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
     });
   };
 
-  const exportPdf = async () => {
+  const exportPdf = async (studioLayout = false) => {
+    setRetryStudioExport(studioLayout);
     const latestPlan = planRef.current;
     const steps = saveAngleDraft(latestPlan.steps);
     const exportPlan = steps === latestPlan.steps
@@ -215,7 +223,9 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       // Release the interactive preview before allocating the PDF renderer.
       await new Promise(resolve => setTimeout(resolve, 0));
       controller.signal.throwIfAborted();
-      await onExportPDF(exportPlan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
+      const exportHandler = studioLayout ? onExportStudioPDF : onExportPDF;
+      if (!exportHandler) throw new Error(t("instruction.studioPdfUnavailable"));
+      await exportHandler(exportPlan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
     } catch (error) {
       if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : t("format.exportError"));
     } finally {
@@ -240,9 +250,15 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             partUnit: t(total === 1 ? "instruction.partUnit" : "instruction.partsUnit"),
           })}</strong>
         </div>
-        <button className="ins-primary" onClick={exportPdf} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
+        <button className="ins-primary" onClick={() => void exportPdf()} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
           <FileDown size={16} /> PDF
         </button>
+        {studioPdfAvailable && (
+          <button className="ins-primary ins-studio-pdf" onClick={() => void exportPdf(true)} disabled={!!exporting || total === 0}
+            aria-label={t("instruction.exportStudioPdf")} data-testid="button-instructions-export-studio-pdf">
+            <FileDown size={16} /> {t("instruction.studioPdfShort")}
+          </button>
+        )}
         <button className="ins-icon" onClick={onClose} aria-label={t("instruction.close")} data-testid="button-instructions-close"><X size={18} /></button>
       </header>
 
@@ -257,7 +273,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       {exportError && (
         <div className="ins-banner is-error" role="alert" data-testid="status-instructions-export-error">
           <span>{exportError}</span>
-          <button className="ins-ghost" onClick={exportPdf} data-testid="button-instructions-export-retry">{t("inventory.retry")}</button>
+          <button className="ins-ghost" onClick={() => void exportPdf(retryStudioExport)} data-testid="button-instructions-export-retry">{t("inventory.retry")}</button>
           <button className="ins-ghost" onClick={() => setExportError(null)} aria-label={t("common.close")} data-testid="button-instructions-export-dismiss"><X size={14} /></button>
         </div>
       )}

@@ -11,6 +11,8 @@
 .ins-shell button:disabled { opacity: .45; cursor: not-allowed; }
 .ins-primary { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 9px; background: #d85d41; color: #fff8ed; font-weight: 800; font-size: 12px; box-shadow: 0 2px 0 #b84b33; }
 .ins-primary:active { transform: translateY(1px); box-shadow: none; }
+.ins-studio-pdf { padding: 0 9px; border: 1px solid #b84b33; background: transparent; color: #a3412c; box-shadow: none; white-space: nowrap; }
+.ins-studio-pdf:active { box-shadow: none; }
 .ins-icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #ddd8c9; border-radius: 10px; background: #fbf9f1; color: #30443e; }
 .ins-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; padding: 0 11px; border: 1px solid #ddd8c9; border-radius: 9px; background: #fbf9f1; color: #30443e; font-size: 12px; font-weight: 600; }
 .ins-ghost.is-danger { color: #a3412c; }
