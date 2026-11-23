@@ -422,10 +422,10 @@ function App() {
               <span className="context-divider" />
               <span className="brick-count" data-testid="text-brick-count">{t(editor.brickCount === 1 ? "canvas.partCount.one" : "canvas.partCount", { count: editor.brickCount })}</span>
             </div>
-            {/* Keep the control and implementation available for later restoration. */}
-            <button type="button" className="thick-edges-toggle" hidden
+            <button type="button" className="thick-edges-toggle"
               aria-pressed={thickEdges}
               aria-label={t("canvas.thickEdges")}
+              title={t("canvas.thickEdges")}
               data-testid="button-thick-edges"
               onClick={() => {
                 const next = !thickEdges;
@@ -433,7 +433,7 @@ function App() {
                 try { window.localStorage.setItem(THICK_EDGES_STORAGE_KEY, String(next)); } catch { /* Keep the session preference if storage is unavailable. */ }
               }}>
               <span className="thick-edges-sample" aria-hidden="true" />
-              <span>{t("canvas.thickEdges")}</span>
+              <span className="thick-edges-label">{t("canvas.thickEdges")}</span>
             </button>
             <div className="history-controls">
               <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="button-undo">

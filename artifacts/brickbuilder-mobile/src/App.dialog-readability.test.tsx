@@ -194,12 +194,16 @@ it("shows every mode's gesture help in German", async () => {
   expect(editorCss).toContain(".dark .gesture-guide-dialog");
 });
 
-it("keeps the thicker-edge control hidden without clearing its saved preference", async () => {
-  localStorage.setItem("brickbuilder-thick-edges", "true");
+it("shows the thicker-edge control and persists its toggled preference", async () => {
+  localStorage.setItem("brickbuilder-thick-edges", "false");
   const container = await mount("light");
   const toggle = container.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')!;
   expect(toggle).not.toBeNull();
-  expect(toggle.hidden).toBe(true);
+  expect(toggle.hidden).toBe(false);
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  expect(canvasProps.current.thickEdges).toBe(false);
+
+  act(() => toggle.click());
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
   expect(canvasProps.current.thickEdges).toBe(true);
   expect(localStorage.getItem("brickbuilder-thick-edges")).toBe("true");
@@ -209,7 +213,7 @@ it("keeps the thicker-edge control hidden without clearing its saved preference"
   host?.remove();
   host = undefined;
   const reopened = await mount("dark");
-  expect(reopened.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')?.hidden).toBe(true);
+  expect(reopened.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')?.hidden).toBe(false);
   expect(canvasProps.current.thickEdges).toBe(true);
 });
 

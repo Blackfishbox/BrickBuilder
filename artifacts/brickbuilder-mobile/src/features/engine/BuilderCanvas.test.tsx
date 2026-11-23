@@ -8,6 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import * as instructionOutlines from "../instructions/outlines";
+import { THICK_EDGE_WIDTH_PX } from "./wide-lines";
 import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
@@ -436,7 +437,8 @@ it("toggles screen-space edge width without rebuilding imported or local model g
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
-  expect(edgeMaterial.uniforms.lineWidth.value).toBe(18);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(20);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
   expect(localEdge.visible).toBe(true);
   expect(importedEdge.visible).toBe(true);
@@ -471,7 +473,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   camera.lookAt(0, 0, 0);
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
-  expect(observedLineWidths).toContain(18);
+  expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
   expect(software.records.size).toBe(1);
 });
 

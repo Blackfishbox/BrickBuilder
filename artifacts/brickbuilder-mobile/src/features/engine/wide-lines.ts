@@ -3,6 +3,9 @@ import {
   FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER,
 } from "./instruction-focus";
 
+/** A deliberately obvious outline width when the user enables thick edges. */
+export const THICK_EDGE_WIDTH_PX = 24;
+
 /**
  * Expand each source segment into two triangles. The endpoints are repeated
  * only in this render buffer; the source part geometry remains untouched.
