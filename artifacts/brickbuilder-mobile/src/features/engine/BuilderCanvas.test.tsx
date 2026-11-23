@@ -445,9 +445,11 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
-  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(30);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(6);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
-  expect(edgeMaterial.fragmentShader).toContain("abs(vLineSide) > 0.5625");
+  expect(edgeMaterial.fragmentShader).toContain(`abs(vLineSide) > ${THICK_EDGE_CORE_WIDTH_PX / THICK_EDGE_WIDTH_PX}`);
+  expect(edgeMaterial.vertexShader).toContain("vec4 clip = clipA;");
+  expect(edgeMaterial.vertexShader).not.toContain("mix(clipA, clipB, lineEndpoint)");
   expect(localEdge.visible).toBe(true);
   expect(localEdge.renderOrder).toBeGreaterThan(0);
   expect(importedEdge.visible).toBe(true);

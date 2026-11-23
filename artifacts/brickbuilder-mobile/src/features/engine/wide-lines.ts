@@ -4,8 +4,8 @@ import {
 } from "./instruction-focus";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
-export const THICK_EDGE_WIDTH_PX = 32;
-export const THICK_EDGE_CORE_WIDTH_PX = 18;
+export const THICK_EDGE_WIDTH_PX = 6;
+export const THICK_EDGE_CORE_WIDTH_PX = 4;
 
 /**
  * Expand each source segment into two triangles. The endpoints are repeated
@@ -78,11 +78,13 @@ export function wideLineMaterial(): ShaderMaterial {
         vec4 clipB = projectionMatrix * modelViewMatrix * vec4(b, 1.0);
         vec2 screenA = clipA.xy / clipA.w * resolution;
         vec2 screenB = clipB.xy / clipB.w * resolution;
-        vec2 delta = screenB - screenA;
+        // position is already this vertex's endpoint; lineEnd is the opposite.
+        // Keep the normal consistent at both ends instead of folding the quad.
+        vec2 delta = (screenB - screenA) * (1.0 - 2.0 * lineEndpoint);
         float deltaLength = length(delta);
         vec2 direction = deltaLength > 0.0001 ? delta / deltaLength : vec2(1.0, 0.0);
         vec2 normal = vec2(-direction.y, direction.x);
-        vec4 clip = mix(clipA, clipB, lineEndpoint);
+        vec4 clip = clipA;
         clip.xy += normal * lineSide * lineWidth / resolution * clip.w;
         clip.z -= 0.001 * clip.w;
         gl_Position = clip;
@@ -95,7 +97,7 @@ export function wideLineMaterial(): ShaderMaterial {
       void main() {
         if (edgeOpacity > 0.5) {
           // A light outer band plus dark center remains visible on both dark and light parts.
-          gl_FragColor = abs(vLineSide) > 0.5625
+          gl_FragColor = abs(vLineSide) > ${THICK_EDGE_CORE_WIDTH_PX / THICK_EDGE_WIDTH_PX}
             ? vec4(1.0, 1.0, 1.0, 1.0)
             : vec4(0.015, 0.02, 0.018, 1.0);
         } else {

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "check:svg-compatibility": "tsx scripts/check-svg-compatibility.ts",
+    "check:wide-lines": "node scripts/check-wide-lines.mjs",
     "android:prepare": "node ../../scripts/android/prepare.mjs",
     "android:open": "cap open android"
   },
