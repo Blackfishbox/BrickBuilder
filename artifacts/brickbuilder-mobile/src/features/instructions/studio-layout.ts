@@ -12,7 +12,7 @@ export interface StudioNode {
 export interface StudioLayoutField {
   attribute: string;
   label: string;
-  kind: "number" | "vector2" | "vector4" | "boolean" | "color";
+  kind: "number" | "vector2" | "vector4" | "boolean" | "color" | "text";
 }
 export interface StudioLayoutItem {
   nodeId: number;
@@ -31,6 +31,7 @@ export interface StudioLayoutView {
   pages: StudioLayoutPage[];
   calloutStyles: StudioLayoutItem[];
   unsupportedCount: number;
+  unsupportedDetails: string[];
 }
 
 export function validateStudioXml(xml: string) {
@@ -67,10 +68,20 @@ export function studioNodes(xml: string): StudioNode[] {
 
 const f = (attribute: string, label: string, kind: StudioLayoutField["kind"]): StudioLayoutField => ({ attribute, label, kind });
 
+function isInGlobalStyle(node: StudioNode, nodes: StudioNode[]): boolean {
+  let ancestor = node.parent === undefined ? undefined : nodes[node.parent];
+  while (ancestor) {
+    if (ancestor.name === "GlobalStyle") return true;
+    ancestor = ancestor.parent === undefined ? undefined : nodes[ancestor.parent];
+  }
+  return false;
+}
+
 /** Only fields observed in source fixtures are editable; no guessed native objects. */
 function fieldsFor(node: StudioNode, nodes: StudioNode[]): StudioLayoutField[] {
   const parent = node.parent === undefined ? undefined : nodes[node.parent];
   let fields: StudioLayoutField[] = [];
+  const inGlobalStyle = isInGlobalStyle(node, nodes);
   if (node.name === "Page" && parent?.name === "Pages") fields = [f("IsLocked", "Seite sperren", "boolean")];
   if (node.name === "Step" && parent?.name === "Slot") fields = [f("RectOffset", "Schrittversatz (Studio-Werte)", "vector4")];
   if (node.name === "Image" && parent?.name === "Slot") fields = [
@@ -78,22 +89,32 @@ function fieldsFor(node: StudioNode, nodes: StudioNode[]): StudioLayoutField[] {
     f("rotation", "Drehung (Grad)", "number"), f("opacity", "Deckkraft (0–1)", "number"),
     f("fliped_H", "Horizontal spiegeln", "boolean"), f("fliped_V", "Vertikal spiegeln", "boolean"),
   ];
-  if (parent?.name === "CallOut" && nodes[parent.parent ?? -1]?.name === "GlobalStyle") {
+  if (inGlobalStyle) {
     if (node.name === "Colors") fields = [
       f("IsUseBgColor", "Hintergrund verwenden", "boolean"), f("BgColor", "Hintergrund RGBA (0–1)", "color"),
       f("IsUseBorder", "Rahmen verwenden", "boolean"), f("BorderColor", "Rahmen RGBA (0–1)", "color"),
       f("BorderThickness", "Rahmenstärke", "number"), f("BorderRadius", "Eckenradius", "number"),
     ];
-    if (node.name === "ArrowStyle") fields = [f("Thickness", "Pfeilstärke", "number"), f("Color", "Pfeil RGBA (0–1)", "color")];
+    if (node.name === "ArrowStyle") fields = [f("Style", "Pfeilform", "text"), f("Thickness", "Pfeilstärke", "number"), f("Color", "Pfeil RGBA (0–1)", "color")];
     if (node.name === "Divider") fields = [f("IsVisible", "Trennlinie sichtbar", "boolean"), f("DividerThickness", "Linienstärke", "number"), f("DividerColor", "Linie RGBA (0–1)", "color")];
     if (node.name === "Padding") fields = [f("LRBT", "Innenabstand links / rechts / unten / oben", "vector4")];
-    if (node.name === "Margin") fields = [f("Horizontal", "Horizontaler Abstand", "number"), f("Vertical", "Vertikaler Abstand", "number")];
+    if (node.name === "Margin" || node.name === "Spacing" || node.name === "AssemblyMargin") fields = [
+      f("Horizontal", "Horizontaler Abstand", "number"), f("Vertical", "Vertikaler Abstand", "number"),
+    ];
+    if (["Font", "StepNumber", "PartCount", "Multiplier"].includes(node.name)) fields = [
+      f("FontFamily", "Schriftfamilie", "text"), f("FontStyle", "Schriftschnitt", "text"),
+      f("FontColor", "Schriftfarbe RGBA (0–1)", "color"), f("FontSize", "Schriftgröße", "number"),
+    ];
+    if (node.name === "Page" && parent?.name === "GlobalStyle") fields = [
+      f("SlotSpacing", "Abstand zwischen Schritten", "vector2"),
+    ];
   }
   return fields.filter(field => Object.hasOwn(node.attributes, field.attribute));
 }
 
 function checkValue(field: StudioLayoutField, value: string) {
   if (field.kind === "boolean") return value === "True" || value === "False";
+  if (field.kind === "text") return value.length <= 160 && !/[\u0000-\u001f]/.test(value);
   const tokens = value.trim().split(field.kind === "color" ? ":" : /\s+/);
   if (!tokens.every(token => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(token))) return false;
   const values = tokens.map(Number);
@@ -119,7 +140,10 @@ export function applyStudioLayout(layout: StudioLayout): string {
     const node = nodes[id];
     const text = xml.slice(node.start, node.end).replace(/([\w:.-]+)(\s*=\s*)(["'])(.*?)\3/g, (original, name, equals, quote) => {
       const value = attrs.get(name);
-      return value === undefined ? original : `${name}${equals}${quote}${value}${quote}`;
+      if (value === undefined) return original;
+      const escaped = value.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+      return `${name}${equals}${quote}${escaped}${quote}`;
     });
     xml = xml.slice(0, node.start) + text + xml.slice(node.end);
   }
@@ -141,10 +165,36 @@ export function inspectStudioLayout(layout: StudioLayout): StudioLayoutView {
   const pages: StudioLayoutPage[] = [], calloutStyles: StudioLayoutItem[] = [];
   const pageByNode = new Map<number, StudioLayoutPage>();
   let unsupportedCount = 0;
+  const unsupportedElementCounts = new Map<string, number>();
+  const unsupportedDetails: string[] = [];
+  const supportedFontFamilies = new Set(["arial", "helvetica", "times", "times new roman", "courier", "courier new"]);
+  const customLayoutsNode = nodes.find(node => node.name === "CustomLayouts");
+  const hasCustomRectTemplate = (template: string) => {
+    if (customLayoutsNode === undefined) return false;
+    const underCustomLayouts = (node: StudioNode) => {
+      let parent = node.parent === undefined ? undefined : nodes[node.parent];
+      while (parent) {
+        if (parent.id === customLayoutsNode.id) return true;
+        parent = parent.parent === undefined ? undefined : nodes[parent.parent];
+      }
+      return false;
+    };
+    const matches = nodes.filter(node => underCustomLayouts(node) &&
+      ["Name", "name", "template", "Template", "LayoutName", "ID", "GUID"].some(key => node.attributes[key] === template));
+    return matches.some(match => nodes.some(candidate => {
+      let parent = candidate.parent === undefined ? undefined : nodes[candidate.parent];
+      while (parent && parent.id !== match.id) parent = parent.parent === undefined ? undefined : nodes[parent.parent];
+      if (!parent) return false;
+      const raw = candidate.attributes.rect ?? candidate.attributes.Rect ?? candidate.attributes.LayoutRect ?? "";
+      const rect = raw.trim().split(/\s+/).map(Number);
+      return rect.length === 4 && rect.every(Number.isFinite) && rect[2] > 0 && rect[3] > 0;
+    }));
+  };
   for (const node of nodes) {
     const parent = node.parent === undefined ? undefined : nodes[node.parent];
     const fields = fieldsFor(node, nodes);
     const item = { nodeId: node.id, label: node.name, fields, attributes: node.attributes };
+    const inGlobalStyle = isInGlobalStyle(node, nodes);
     if (node.name === "Page" && parent?.name === "Pages") {
       const page = { nodeId: node.id, template: node.attributes.template ?? "Unbekannt", steps: [], items: [item] };
       pages.push(page); pageByNode.set(node.id, page);
@@ -157,9 +207,31 @@ export function inspectStudioLayout(layout: StudioLayout): StudioLayoutView {
         if (node.attributes.SerializedIndex !== undefined && Number.isInteger(index) && index >= 0) page.steps.push(index);
       }
       if (fields.length) page.items.push({ ...item, ...(node.name === "Image" ? { imagePath: node.attributes.imagePath } : {}) });
-      if (["CallOut", "Arrow", "ContentItem"].includes(node.name)) unsupportedCount++;
+      if (["CallOut", "Arrow", "ContentItem", "BrickBuilderNotes", "SizeGuide", "ColorGuide"].includes(node.name)) {
+        unsupportedCount++;
+        unsupportedElementCounts.set(node.name, (unsupportedElementCounts.get(node.name) ?? 0) + 1);
+      }
     }
-    if (parent?.name === "CallOut" && fields.length) calloutStyles.push(item);
+    if (inGlobalStyle && fields.length) calloutStyles.push(item);
+    if (inGlobalStyle) {
+      const family = node.attributes.FontFamily ?? "";
+      if (family && !supportedFontFamilies.has(family.toLowerCase()) &&
+          !unsupportedDetails.includes(`Font: ${family}`)) unsupportedDetails.push(`Font: ${family}`);
+      const fontStyle = node.attributes.FontStyle ?? "";
+      const styleParts = fontStyle.toLowerCase().match(/[a-z]+/g) ?? [];
+      const unknownStyle = styleParts.filter(part => !["normal", "regular", "plain", "bold", "italic"].includes(part));
+      if (unknownStyle.length && !unsupportedDetails.includes(`Font style: ${fontStyle}`)) {
+        unsupportedDetails.push(`Font style: ${fontStyle}`);
+      }
+    }
   }
-  return { pages, calloutStyles, unsupportedCount };
+  for (const [name, count] of unsupportedElementCounts) unsupportedDetails.push(`${name} × ${count}`);
+  const knownTemplates = /^(?:\d+|One|Two|Three|Four|Five|Six)By(?:\d+|One|Two|Three|Four|Five|Six)$/i;
+  for (const page of pages) {
+    if (!knownTemplates.test(page.template) && !/^\d+x\d+$/i.test(page.template) &&
+        !hasCustomRectTemplate(page.template) && !unsupportedDetails.includes(`Template: ${page.template}`)) {
+      unsupportedDetails.push(`Template: ${page.template}`);
+    }
+  }
+  return { pages, calloutStyles, unsupportedCount, unsupportedDetails };
 }

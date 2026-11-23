@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import { jsPDF } from "jspdf";
+import { GState, jsPDF } from "jspdf";
 import type { BuilderDocument } from "../editor/model";
 import { readZip } from "../formats/zip";
 import { instructionPartGroups } from "./parts";
@@ -12,9 +12,29 @@ import { effectiveInstructions } from "./model";
 
 type XmlRecord = Record<string, unknown>;
 type ComponentPlacement = "LeftTop" | "LeftBottom" | "RightTop" | "RightBottom" | "None";
-type StudioPageImage = { path: string; rect: [number, number, number, number]; rotation: number; depth: number };
-type StudioPdfPage = { source: XmlRecord; images: StudioPageImage[]; steps: {
-  source: XmlRecord; planStep: InstructionStep; planIndex: number; placements: Partial<Record<string, ComponentPlacement>>;
+type ComponentLayout = { quadrant: ComponentPlacement; padding?: [number, number] };
+type StudioPageImage = {
+  path: string; rect: [number, number, number, number]; rotation: number; depth: number;
+  opacity: number; flipH: boolean; flipV: boolean;
+};
+type StudioColor = { rgb: [number, number, number]; alpha: number };
+type StudioBoxStyle = {
+  useBackground?: boolean; background?: StudioColor; useBorder?: boolean; border?: StudioColor;
+  borderThickness?: number; radius?: number; padding?: [number, number, number, number];
+};
+type StudioFontStyle = {
+  family: "helvetica" | "times" | "courier"; style: "normal" | "bold" | "italic" | "bolditalic";
+  size?: number; color?: StudioColor;
+};
+type StudioPdfStyles = {
+  unitScale: number; page: StudioBoxStyle; stepNumber: StudioFontStyle;
+  partsList: StudioBoxStyle & { font: StudioFontStyle }; callout: StudioBoxStyle;
+  calloutMultiplier: StudioFontStyle; showCalloutMultiplier: boolean;
+  pageTitle: StudioFontStyle; stepSpacing?: [number, number];
+  showStepNumber: boolean; showPartsList: boolean; showSubmodelPreview: boolean;
+};
+type StudioPdfPage = { source: XmlRecord; images: StudioPageImage[]; slotRects?: [number, number, number, number][]; steps: {
+  source: XmlRecord; planStep: InstructionStep; planIndex: number; placements: Partial<Record<string, ComponentLayout>>;
 }[] };
 
 const asRecord = (value: unknown): XmlRecord | undefined =>
@@ -23,15 +43,143 @@ const asList = (value: unknown): XmlRecord[] =>
   (Array.isArray(value) ? value : value === undefined ? [] : [value]).map(asRecord).filter((item): item is XmlRecord => !!item);
 const text = (value: unknown): string => typeof value === "string" || typeof value === "number" ? String(value) : "";
 const attribute = (node: XmlRecord, name: string): string => text(node[`@_${name}`]);
+const child = (node: XmlRecord | undefined, name: string): XmlRecord | undefined => asRecord(node?.[name]);
 
-function componentPlacements(layout: unknown): Partial<Record<string, ComponentPlacement>> {
+function parsedColor(value: unknown): StudioColor | undefined {
+  const channels = text(value).trim().split(":").map(Number);
+  if (channels.length !== 4 || !channels.every(channel => Number.isFinite(channel) && channel >= 0 && channel <= 1)) return undefined;
+  return { rgb: channels.slice(0, 3).map(channel => Math.round(channel * 255)) as [number, number, number], alpha: channels[3] };
+}
+
+function studioFont(node: XmlRecord | undefined, fallbackSize: number, fallbackColor: StudioColor): StudioFontStyle {
+  const familyName = attribute(node ?? {}, "FontFamily").toLowerCase();
+  const family = familyName.includes("times") ? "times" : familyName.includes("courier") ? "courier" : "helvetica";
+  const rawStyle = attribute(node ?? {}, "FontStyle").toLowerCase();
+  const bold = rawStyle.includes("bold"), italic = rawStyle.includes("italic");
+  const size = Number(attribute(node ?? {}, "FontSize"));
+  return {
+    family,
+    style: bold ? (italic ? "bolditalic" : "bold") : (italic ? "italic" : "normal"),
+    size: Number.isFinite(size) && size > 0 ? size : fallbackSize,
+    color: parsedColor(attribute(node ?? {}, "FontColor")) ?? fallbackColor,
+  };
+}
+
+function studioBox(node: XmlRecord | undefined): StudioBoxStyle {
+  const colors = child(node, "Colors");
+  const padding = text(attribute(child(node, "Padding") ?? {}, "LRBT")).trim().split(/\s+/).map(Number);
+  const validPadding = padding.length === 4 && padding.every(value => Number.isFinite(value) && value >= 0)
+    ? padding as [number, number, number, number] : undefined;
+  const thickness = Number(attribute(colors ?? {}, "BorderThickness"));
+  const radius = Number(attribute(colors ?? {}, "BorderRadius"));
+  return {
+    useBackground: attribute(colors ?? {}, "IsUseBgColor").toLowerCase() !== "false",
+    background: parsedColor(attribute(colors ?? {}, "BgColor")),
+    useBorder: attribute(colors ?? {}, "IsUseBorder").toLowerCase() === "true",
+    border: parsedColor(attribute(colors ?? {}, "BorderColor")),
+    ...(Number.isFinite(thickness) && thickness >= 0 ? { borderThickness: thickness } : {}),
+    ...(Number.isFinite(radius) && radius >= 0 ? { radius } : {}),
+    ...(validPadding ? { padding: validPadding } : {}),
+  };
+}
+
+function studioStyles(globalStyle: XmlRecord | undefined, unitScale: number): StudioPdfStyles {
+  const ink = { rgb: [0, 0, 0] as [number, number, number], alpha: 1 };
+  const stepNumber = child(globalStyle, "StepNumber");
+  const partsList = child(globalStyle, "PartsList");
+  const callout = child(globalStyle, "CallOut");
+  const submodelPreview = child(globalStyle, "SubModelPreview");
+  const page = child(globalStyle, "Page");
+  const pageSize = child(page, "Colors");
+  const fallbackPartsBackground = { rgb: [250, 249, 244] as [number, number, number], alpha: 1 };
+  return {
+    unitScale,
+    page: {
+      useBackground: attribute(pageSize ?? {}, "IsUseBgColor").toLowerCase() === "true",
+      background: parsedColor(attribute(pageSize ?? {}, "BgColor")),
+      useBorder: attribute(pageSize ?? {}, "IsUseBorder").toLowerCase() === "true",
+      border: parsedColor(attribute(pageSize ?? {}, "BorderColor")),
+      borderThickness: Number(attribute(pageSize ?? {}, "BorderThickness")) || 0,
+      radius: Number(attribute(pageSize ?? {}, "BorderRadius")) || 0,
+    },
+    stepNumber: studioFont(child(stepNumber, "StepNumber"), 18, ink),
+    partsList: {
+      ...studioBox(partsList),
+      background: parsedColor(attribute(child(partsList, "Colors") ?? {}, "BgColor")) ?? fallbackPartsBackground,
+      font: studioFont(child(partsList, "PartCount"), 10, ink),
+    },
+    callout: studioBox(callout),
+    calloutMultiplier: studioFont(child(callout, "Multiplier") ?? child(submodelPreview, "Multiplier"), 12, ink),
+    showCalloutMultiplier: attribute(child(callout, "Multiplier") ?? child(submodelPreview, "Multiplier") ?? {}, "IsVisible").toLowerCase() !== "false",
+    pageTitle: studioFont(child(child(globalStyle, "PageTitle"), "Font"), 18, ink),
+    showStepNumber: attribute(stepNumber ?? {}, "IsVisible").toLowerCase() !== "false",
+    showPartsList: attribute(partsList ?? {}, "IsVisible").toLowerCase() !== "false",
+    showSubmodelPreview: attribute(child(globalStyle, "SubModelPreview") ?? {}, "IsVisible").toLowerCase() !== "false",
+    stepSpacing: (() => {
+      const values = text(attribute(page ?? {}, "SlotSpacing")).trim().split(/\s+/).map(Number);
+      return values.length === 2 && values.every(value => Number.isFinite(value) && value >= 0)
+        ? [values[0] * unitScale, values[1] * unitScale] as [number, number] : undefined;
+    })(),
+  };
+}
+
+function templateGrid(template: string): { columns: number; rows: number } | undefined {
+  const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+  const match = /^(one|two|three|four|five|six|\d+)(?:by|x)(one|two|three|four|five|six|\d+)$/i.exec(template);
+  if (!match) return undefined;
+  const columns = words[match[1].toLowerCase()] ?? Number(match[1]);
+  const rows = words[match[2].toLowerCase()] ?? Number(match[2]);
+  return columns > 0 && columns <= 8 && rows > 0 && rows <= 8 ? { columns, rows } : undefined;
+}
+
+function parseSlotRect(node: XmlRecord): [number, number, number, number] | undefined {
+  const raw = attribute(node, "rect") || attribute(node, "Rect") || attribute(node, "LayoutRect");
+  const values = raw.trim().split(/\s+/).map(Number);
+  if (values.length !== 4 || !values.every(Number.isFinite) || values[2] <= 0 || values[3] <= 0) return undefined;
+  return values as [number, number, number, number];
+}
+
+function walkRecords(value: unknown, visit: (record: XmlRecord) => void, depth = 0) {
+  if (depth > 32 || value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach(item => walkRecords(item, visit, depth + 1));
+    return;
+  }
+  const record = value as XmlRecord;
+  visit(record);
+  for (const [key, childValue] of Object.entries(record)) {
+    if (!key.startsWith("@_")) walkRecords(childValue, visit, depth + 1);
+  }
+}
+
+function customTemplateSlotRects(customLayouts: XmlRecord | undefined, template: string) {
+  let match: XmlRecord | undefined;
+  walkRecords(customLayouts, record => {
+    if (match) return;
+    const names = ["Name", "name", "template", "Template", "LayoutName", "ID", "GUID"]
+      .map(name => attribute(record, name));
+    if (names.includes(template)) match = record;
+  });
+  if (!match) return undefined;
+  const rects: [number, number, number, number][] = [];
+  walkRecords(match, record => {
+    const rect = parseSlotRect(record);
+    if (rect && rects.length < 64) rects.push(rect);
+  });
+  return rects.length ? rects : undefined;
+}
+
+function componentPlacements(layout: unknown): Partial<Record<string, ComponentLayout>> {
   const record = asRecord(layout);
-  const placements: Partial<Record<string, ComponentPlacement>> = {};
+  const placements: Partial<Record<string, ComponentLayout>> = {};
   for (const quadrant of ["LeftTop", "LeftBottom", "RightTop", "RightBottom", "None"] as const) {
     const elements = asList(asRecord(record?.[quadrant])?.StepCompLayoutElem);
     for (const element of elements) {
       const component = attribute(element, "ComponentT");
-      if (component) placements[component] = quadrant;
+      const rawPadding = attribute(element, "Padding").trim().split(/\s+/).map(Number);
+      const padding = rawPadding.length === 2 && rawPadding.every(value => Number.isFinite(value) && value >= 0)
+        ? rawPadding as [number, number] : undefined;
+      if (component) placements[component] = { quadrant, ...(padding ? { padding } : {}) };
     }
   }
   return placements;
@@ -45,19 +193,23 @@ function studioImageNodes(page: XmlRecord): XmlRecord[] {
 }
 
 function componentRect(
-  placement: ComponentPlacement | undefined,
+  placement: ComponentLayout | undefined,
   x: number,
   y: number,
   width: number,
   height: number,
+  scale: number,
 ): [number, number, number, number] {
   const boxWidth = width * 0.34;
   const boxHeight = height * 0.27;
-  if (placement === "None") return [x + (width - boxWidth) / 2, y + (height - boxHeight) / 2, boxWidth, boxHeight];
-  const quadrant = placement ?? "LeftTop";
+  const quadrant = placement?.quadrant ?? "LeftTop";
   const left = quadrant.startsWith("Left");
   const top = quadrant.endsWith("Top");
-  return [x + (left ? 0 : width - boxWidth), y + (top ? 0 : height - boxHeight), boxWidth, boxHeight];
+  const baseX = quadrant === "None" ? x + (width - boxWidth) / 2 : x + (left ? 0 : width - boxWidth);
+  const baseY = quadrant === "None" ? y + (height - boxHeight) / 2 : y + (top ? 0 : height - boxHeight);
+  const padX = Math.max(0, (placement?.padding?.[0] ?? 0) * scale);
+  const padY = Math.max(0, (placement?.padding?.[1] ?? 0) * scale);
+  return [baseX + padX, baseY + padY, Math.max(1, boxWidth - padX * 2), Math.max(1, boxHeight - padY * 2)];
 }
 
 const PAPER_SIZES: Record<string, [number, number]> = {
@@ -68,6 +220,7 @@ const PAPER_SIZES: Record<string, [number, number]> = {
 function studioPages(document: BuilderDocument, input: InstructionPlan): {
   pages: StudioPdfPage[]; size: [number, number]; margins: [number, number, number, number];
   scale: number; imageData: Record<string, { data: string; format: "PNG" | "JPEG" }>;
+  styles: StudioPdfStyles;
 } {
   const layout = input.studioLayout;
   if (document.imported?.format !== "io" || !layout) throw new Error("Für dieses Projekt gibt es kein importiertes Studio-Seitenlayout.");
@@ -76,6 +229,7 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
   const instruction = asRecord(parsed.Instruction);
   const settings = asRecord(asRecord(instruction?.GlobalSetting)?.PageSetup);
   const globalStyle = asRecord(asRecord(instruction?.GlobalSetting)?.GlobalStyle);
+  const customLayouts = asRecord(instruction?.CustomLayouts);
   const globalStepLayout = asRecord(globalStyle?.StepItemLayout)?.StepCompLayout;
   const paper = text(settings?.PaperType) || "A4";
   const paperSize = PAPER_SIZES[paper];
@@ -91,6 +245,10 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
 
   const pages = pageNodes.map(page => {
     const slots = asList(page.Slot);
+    const directSlotRects = slots.map(parseSlotRect);
+    const template = attribute(page, "template");
+    const slotRects = directSlotRects.length && directSlotRects.every((rect): rect is [number, number, number, number] => !!rect)
+      ? directSlotRects : customTemplateSlotRects(customLayouts, template);
     const pageSteps = slots.flatMap(slot => asList(slot.Step).map(source => {
       const sourceIndex = Number(attribute(source, "SerializedIndex"));
       const planIndex = input.steps.findIndex((step, index) => (step.sourceIndex ?? index) === sourceIndex);
@@ -110,9 +268,15 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
         path, rect: rect as [number, number, number, number],
         rotation: Number(attribute(node, "rotation")) || 0,
         depth: Number(attribute(node, "depth")) || 0,
+        opacity: (() => {
+          const value = Number(attribute(node, "opacity"));
+          return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+        })(),
+        flipH: attribute(node, "fliped_H").toLowerCase() === "true",
+        flipV: attribute(node, "fliped_V").toLowerCase() === "true",
       }];
     });
-    return { source: page, images, steps: pageSteps };
+    return { source: page, images, ...(slotRects ? { slotRects } : {}), steps: pageSteps };
   });
   const scale = pxToMm;
   const paths = [...new Set(pages.flatMap(page => page.images.map(image => image.path)))];
@@ -134,7 +298,7 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
       imageData[path] = { data: `data:image/${format.toLowerCase()};base64,${btoa(binary)}`, format };
     }
   }
-  return { pages, size, margins, scale, imageData };
+  return { pages, size, margins, scale, imageData, styles: studioStyles(globalStyle, pxToMm) };
 }
 
 function fitImage(data: string, x: number, y: number, width: number, height: number, page: jsPDF) {
@@ -145,11 +309,98 @@ function fitImage(data: string, x: number, y: number, width: number, height: num
     x + (width - renderedWidth) / 2, y + (height - renderedHeight) / 2, renderedWidth, renderedHeight, undefined, "FAST");
 }
 
-function renderStepNumber(pdf: jsPDF, step: InstructionStep, stepNumber: number, x: number, y: number, width: number) {
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(14);
-  pdf.setTextColor(30, 42, 38);
-  pdf.text(`${stepNumber}. ${step.title}`, x, y, { maxWidth: width });
+function placeStudioImage(
+  pdf: jsPDF,
+  data: string,
+  format: "PNG" | "JPEG",
+  rect: [number, number, number, number],
+  image: StudioPageImage,
+) {
+  const [x, y, width, height] = rect;
+  pdf.saveGraphicsState();
+  if (image.opacity < 1) pdf.setGState(new GState({ opacity: image.opacity, "stroke-opacity": image.opacity }));
+  if (image.flipH || image.flipV) {
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const bottom = pageHeight - y - height;
+    pdf.setCurrentTransformationMatrix(pdf.Matrix(
+      image.flipH ? -1 : 1, 0, 0, image.flipV ? -1 : 1,
+      image.flipH ? 2 * x + width : 0,
+      image.flipV ? 2 * bottom + height : 0,
+    ));
+  }
+  pdf.addImage(data, format, x, y, width, height, undefined, "FAST", image.rotation);
+  pdf.restoreGraphicsState();
+}
+
+function drawStyledBox(
+  pdf: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  style: StudioBoxStyle,
+  scale: number,
+  fallbackFill?: StudioColor,
+) {
+  const background = style.background ?? fallbackFill;
+  const fill = style.useBackground === true || (style.useBackground === undefined && !!fallbackFill);
+  const border = style.useBorder === true;
+  if (!fill && !border) return;
+  pdf.saveGraphicsState();
+  const fillAlpha = background?.alpha ?? 1, strokeAlpha = style.border?.alpha ?? 1;
+  if ((fill && fillAlpha < 1) || (border && strokeAlpha < 1)) {
+    pdf.setGState(new GState({
+      ...(fill ? { opacity: fillAlpha } : {}),
+      ...(border ? { "stroke-opacity": strokeAlpha } : {}),
+    }));
+  }
+  if (background && fill) pdf.setFillColor(...background.rgb);
+  if (style.border && border) pdf.setDrawColor(...style.border.rgb);
+  else if (border) pdf.setDrawColor(0);
+  const thickness = Math.max(0, (style.borderThickness ?? 0.4) * scale);
+  const radius = Math.min(width / 2, height / 2, Math.max(0, (style.radius ?? 0) * scale));
+  if (border) pdf.setLineWidth(thickness);
+  const mode = fill && border ? "FD" : fill ? "F" : "D";
+  if (radius > 0) pdf.roundedRect(x, y, width, height, radius, radius, mode);
+  else pdf.rect(x, y, width, height, mode);
+  pdf.restoreGraphicsState();
+}
+
+function withTextOpacity(pdf: jsPDF, color: StudioColor | undefined, draw: () => void) {
+  const alpha = color?.alpha ?? 1;
+  if (alpha < 1) {
+    pdf.saveGraphicsState();
+    pdf.setGState(new GState({ opacity: alpha }));
+    draw();
+    pdf.restoreGraphicsState();
+  } else draw();
+}
+
+function applyFont(pdf: jsPDF, font: StudioFontStyle, unitScale: number, minimum = 5, maximum = 42) {
+  pdf.setFont(font.family, font.style);
+  const sourceSize = font.size ?? 12;
+  const pointScale = unitScale < 0.5 ? 0.75 : 1;
+  pdf.setFontSize(Math.max(minimum, Math.min(maximum, sourceSize * pointScale)));
+  pdf.setTextColor(...(font.color?.rgb ?? [0, 0, 0]));
+}
+
+function paddingOf(style: StudioBoxStyle, scale: number): [number, number, number, number] {
+  return style.padding?.map(value => Math.max(0, Math.min(30, value * scale))) as
+    [number, number, number, number] ?? [0, 0, 0, 0];
+}
+
+function renderStepNumber(
+  pdf: jsPDF,
+  step: InstructionStep,
+  stepNumber: number,
+  x: number,
+  y: number,
+  width: number,
+  style: StudioFontStyle,
+  unitScale: number,
+) {
+  applyFont(pdf, style, unitScale, 6, 96);
+  withTextOpacity(pdf, style.color, () => pdf.text(`${stepNumber}. ${step.title}`, x, y, { maxWidth: width }));
 }
 
 function renderStudioPartList(
@@ -160,30 +411,38 @@ function renderStudioPartList(
   y: number,
   width: number,
   height: number,
+  style: StudioPdfStyles["partsList"],
+  unitScale: number,
+  locale: "en" | "de",
 ) {
   const groups = instructionPartGroups(document, step.partIds);
   if (height < 8) return;
-  pdf.setDrawColor(180, 184, 176);
-  pdf.setFillColor(250, 249, 244);
-  pdf.roundedRect(x, y, width, height, 1.5, 1.5, "FD");
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(8);
-  pdf.setTextColor(35, 55, 46);
-  pdf.text("Teile in diesem Schritt", x + 3, y + 4);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(Math.max(5.5, Math.min(7, 65 / Math.max(groups.length, 1))));
+  drawStyledBox(pdf, x, y, width, height, style, unitScale,
+    style.useBackground === undefined ? { rgb: [250, 249, 244], alpha: 1 } : undefined);
+  const [padLeft, padRight, padBottom, padTop] = paddingOf(style, unitScale);
+  const left = x + Math.max(2, padLeft), right = Math.max(2, padRight);
+  applyFont(pdf, style.font, unitScale, 5, 60);
+  withTextOpacity(pdf, style.font.color, () => pdf.text(locale === "en" ? "Parts in this step" : "Teile in diesem Schritt",
+    left, y + padTop + 3.5, { maxWidth: Math.max(10, width - left + x - right) }));
+  const contentTop = y + Math.max(7, padTop + 6);
+  const contentBottom = y + height - Math.max(2, padBottom);
+  pdf.setFont(style.font.family, "normal");
+  pdf.setFontSize(Math.max(5, Math.min(8, 65 / Math.max(groups.length, 1))));
+  pdf.setTextColor(...(style.font.color?.rgb ?? [0, 0, 0]));
   const columns = width > 130 ? 2 : 1;
-  const rowHeight = Math.max(3.5, Math.min(5, (height - 8) / Math.max(1, Math.ceil(groups.length / columns))));
-  groups.slice(0, Math.floor((height - 7) / rowHeight) * columns).forEach((entry, index) => {
+  const rowHeight = Math.max(3.5, Math.min(5, (contentBottom - contentTop) / Math.max(1, Math.ceil(groups.length / columns))));
+  groups.slice(0, Math.floor((contentBottom - contentTop) / rowHeight) * columns).forEach((entry, index) => {
     const col = Math.floor(index / Math.max(1, Math.ceil(groups.length / columns)));
     const row = index % Math.max(1, Math.ceil(groups.length / columns));
-    const cellWidth = width / columns;
+    const cellWidth = (width - left + x - right) / columns;
     const label = `${entry.count}× ${entry.number} · ${entry.colorName}`;
-    pdf.text(label, x + col * cellWidth + 3, y + 8 + row * rowHeight, { maxWidth: cellWidth - 6 });
+    withTextOpacity(pdf, style.font.color, () =>
+      pdf.text(label, left + col * cellWidth, contentTop + row * rowHeight, { maxWidth: cellWidth - 2 }));
   });
   if (groups.length === 0) {
-    pdf.setFontSize(7);
-    pdf.text("Keine neuen Teile", x + 3, y + 9);
+    pdf.setFontSize(6);
+    withTextOpacity(pdf, style.font.color, () =>
+      pdf.text(locale === "en" ? "No new parts" : "Keine neuen Teile", left, contentTop + 2));
   }
   pdf.setTextColor(0);
 }
@@ -196,7 +455,7 @@ export async function exportStudioLayoutPDF(
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
-  const { pages, size, margins, scale, imageData } = studioPages(document, plan);
+  const { pages, size, margins, scale, imageData, styles } = studioPages(document, plan);
   options.signal?.throwIfAborted();
   options.onProgress?.(0, pages.length);
   const renderer = await createRenderer(document, options.signal);
@@ -213,20 +472,27 @@ export async function exportStudioLayoutPDF(
     const pageHeight = pdf.internal.pageSize.getHeight();
     const contentX = left, contentWidth = Math.max(20, pageWidth - left - right);
     const contentHeight = Math.max(30, pageHeight - top - bottom);
+    const locale = options.locale ?? "de";
 
     for (const [pageIndex, sourcePage] of pages.entries()) {
       options.signal?.throwIfAborted();
       if (pageIndex) pdf.addPage(size, size[0] > size[1] ? "landscape" : "portrait");
+      drawStyledBox(pdf, 0, 0, pageWidth, pageHeight, styles.page, scale);
       const entries = sourcePage.steps;
-      const columns = Math.max(1, Math.ceil(Math.sqrt(entries.length)));
-      const rows = Math.max(1, Math.ceil(entries.length / columns));
-      const gap = 4;
-      const cellWidth = (contentWidth - gap * (columns - 1)) / columns;
-      const cellHeight = (contentHeight - gap * (rows - 1)) / rows;
+      const template = attribute(sourcePage.source, "template");
+      const grid = templateGrid(template);
+      const autoColumns = Math.max(1, Math.ceil(Math.sqrt(entries.length)));
+      const columns = grid?.columns ?? autoColumns;
+      const rows = Math.max(grid?.rows ?? 1, Math.ceil(entries.length / columns), 1);
+      const gapX = Math.min(styles.stepSpacing?.[0] ?? 4, contentWidth / (columns + 1));
+      const gapY = Math.min(styles.stepSpacing?.[1] ?? 4, contentHeight / (rows + 1));
+      const autoCellWidth = (contentWidth - gapX * (columns - 1)) / columns;
+      const autoCellHeight = (contentHeight - gapY * (rows - 1)) / rows;
       const pageTitle = text(sourcePage.source.BrickBuilderTitle);
       if (pageTitle) {
-        pdf.setFont("helvetica", "bold"); pdf.setFontSize(16); pdf.setTextColor(35, 55, 46);
-        pdf.text(pageTitle, contentX, top + 5, { maxWidth: contentWidth });
+        applyFont(pdf, styles.pageTitle, scale, 8, 60);
+        withTextOpacity(pdf, styles.pageTitle.color,
+          () => pdf.text(pageTitle, contentX, top + 5, { maxWidth: contentWidth }));
       }
 
       for (const [cellIndex, entry] of entries.entries()) {
@@ -234,39 +500,55 @@ export async function exportStudioLayoutPDF(
         const step = entry.planStep;
         const visible = new Set(plan.steps.slice(0, entry.planIndex + 1).flatMap(previous => previous.partIds));
         const col = cellIndex % columns, row = Math.floor(cellIndex / columns);
-        const x = contentX + col * (cellWidth + gap);
-        const y = top + row * (cellHeight + gap) + (pageTitle ? 8 : 0);
+        const slotRect = sourcePage.slotRects?.[cellIndex];
+        const x = slotRect ? slotRect[0] * scale : contentX + col * (autoCellWidth + gapX);
+        const y = slotRect ? slotRect[1] * scale : top + row * (autoCellHeight + gapY) + (pageTitle ? 8 : 0);
+        const cellWidth = slotRect ? slotRect[2] * scale : autoCellWidth;
+        const cellHeight = slotRect ? slotRect[3] * scale : autoCellHeight;
         const stepNode = entry.source;
-        const showNumber = attribute(stepNode, "IsVisibleStepNumber").toLowerCase() !== "false";
-        const showParts = attribute(stepNode, "IsVisiblePartsList").toLowerCase() !== "false";
-        const showCallouts = attribute(stepNode, "IsVisibleSubModelPreview").toLowerCase() !== "false";
+        const showNumber = styles.showStepNumber && attribute(stepNode, "IsVisibleStepNumber").toLowerCase() !== "false";
+        const showParts = styles.showPartsList && attribute(stepNode, "IsVisiblePartsList").toLowerCase() !== "false";
+        const showCallouts = styles.showSubmodelPreview && attribute(stepNode, "IsVisibleSubModelPreview").toLowerCase() !== "false";
         const stepNumber = Number(attribute(stepNode, "SerializedIndex")) + 1;
-        const previewHeight = cellHeight - (pageTitle ? 8 : 0);
-        const previewY = y + (pageTitle ? 8 : 0);
+        const previewHeight = cellHeight - (!slotRect && pageTitle ? 8 : 0);
+        const previewY = y + (!slotRect && pageTitle ? 8 : 0);
         const imageY = previewY;
         const highlightIds = options.highlight && entry.planIndex > 0 ? instructionHighlightIds(document, step) : undefined;
         fitImage(renderer.image(visible, step, highlightIds), x, imageY, cellWidth, previewHeight, pdf);
         if (showNumber) {
-          const [numberX, numberY, numberWidth] = componentRect(entry.placements.StepNumber, x, imageY, cellWidth, previewHeight);
+          const [numberX, numberY, numberWidth] = componentRect(entry.placements.StepNumber, x, imageY, cellWidth, previewHeight, scale);
           renderStepNumber(pdf, step, Number.isFinite(stepNumber) ? stepNumber : entry.planIndex + 1,
-            numberX + 2, numberY + 7, Math.max(10, numberWidth - 4));
+            numberX + 2, numberY + 7, Math.max(10, numberWidth - 4), styles.stepNumber, scale);
         }
         if (showParts) {
-          const [partsX, partsY, partsWidth, partsHeight] = componentRect(entry.placements.PartsList, x, imageY, cellWidth, previewHeight);
-          renderStudioPartList(pdf, document, step, partsX, partsY, partsWidth, partsHeight);
+          const [partsX, partsY, partsWidth, partsHeight] = componentRect(entry.placements.PartsList, x, imageY, cellWidth, previewHeight, scale);
+          renderStudioPartList(pdf, document, step, partsX, partsY, partsWidth, partsHeight,
+            styles.partsList, styles.unitScale, locale);
         }
         const callouts = step.callouts ?? [];
         if (showCallouts && callouts.length) {
           const [calloutX, calloutY, calloutWidth, calloutHeight] = componentRect(
-            entry.placements.SubModelPreview ?? entry.placements.SubmodelPreview, x, imageY, cellWidth, previewHeight,
+            entry.placements.SubModelPreview ?? entry.placements.SubmodelPreview, x, imageY, cellWidth, previewHeight, scale,
           );
           const count = Math.min(callouts.length, 4);
+          const [paddingLeft, paddingRight, paddingBottom, paddingTop] = paddingOf(styles.callout, scale);
           for (let calloutIndex = 0; calloutIndex < count; calloutIndex++) {
             const col = calloutIndex % 2, row = Math.floor(calloutIndex / 2);
             const thumbWidth = calloutWidth / 2, thumbHeight = calloutHeight / 2;
             const thumb = await instructionCalloutImage(document, callouts[calloutIndex], options.signal ?? new AbortController().signal);
             options.signal?.throwIfAborted();
-            fitImage(thumb, calloutX + col * thumbWidth, calloutY + row * thumbHeight, thumbWidth, thumbHeight, pdf);
+            const thumbX = calloutX + col * thumbWidth, thumbY = calloutY + row * thumbHeight;
+            drawStyledBox(pdf, thumbX, thumbY, thumbWidth, thumbHeight, styles.callout, scale);
+            fitImage(thumb, thumbX + paddingLeft, thumbY + paddingTop,
+              Math.max(1, thumbWidth - paddingLeft - paddingRight),
+              Math.max(1, thumbHeight - paddingTop - paddingBottom), pdf);
+            const multiplier = callouts[calloutIndex].occurrence.length;
+            if (styles.showCalloutMultiplier && multiplier > 1) {
+              const font = styles.calloutMultiplier;
+              applyFont(pdf, font, scale, 5, 60);
+              withTextOpacity(pdf, font.color, () =>
+                pdf.text(`${multiplier}×`, thumbX + thumbWidth - 2, thumbY + thumbHeight - 2, { align: "right" }));
+            }
           }
           if (callouts.length > count) {
             pdf.setFont("helvetica", "bold"); pdf.setFontSize(6); pdf.setTextColor(35, 55, 46);
@@ -278,7 +560,7 @@ export async function exportStudioLayoutPDF(
         options.signal?.throwIfAborted();
         const asset = imageData[image.path];
         const [x, y, width, height] = image.rect.map(value => value * scale);
-        pdf.addImage(asset.data, asset.format, x, y, width, height, undefined, "FAST", image.rotation);
+        placeStudioImage(pdf, asset.data, asset.format, [x, y, width, height], image);
       }
       options.onProgress?.(pageIndex + 1, pages.length);
       await new Promise(resolve => setTimeout(resolve, 0));

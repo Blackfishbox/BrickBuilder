@@ -746,7 +746,7 @@ function App() {
             const [{ exportStudioLayoutPDF }, { exportFile }] = await Promise.all([
               import('@/features/instructions/studio-pdf'), import('@/platform/export-file'),
             ]);
-            const bytes = await exportStudioLayoutPDF(editor.document, plan, { onProgress, signal, highlight });
+            const bytes = await exportStudioLayoutPDF(editor.document, plan, { onProgress, signal, highlight, locale });
             signal.throwIfAborted();
             const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
             const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");

@@ -18,11 +18,17 @@ const sourceText = [
 it("exports one PDF page per imported Studio page with the source format and step mapping", async () => {
   const imageBytes = readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url));
   const xml = `<Instruction>
-    <GlobalSetting><PageSetup><PaperType>A4</PaperType><LengthUnit>Pixels</LengthUnit><IsPortrait>False</IsPortrait><Margins>40 40 40 40</Margins></PageSetup></GlobalSetting>
+    <GlobalSetting><PageSetup><PaperType>A4</PaperType><LengthUnit>Pixels</LengthUnit><IsPortrait>False</IsPortrait><Margins>40 40 40 40</Margins></PageSetup>
+    <GlobalStyle><Page SlotSpacing="5 6"><Colors IsUseBgColor="True" BgColor="1:1:1:1" IsUseBorder="True" BorderColor="0:0:0:1" BorderThickness="1"/></Page>
+    <StepNumber><StepNumber FontFamily="Times New Roman" FontStyle="Italic" FontColor="0.2:0.3:0.4:1" FontSize="24"/></StepNumber>
+    <PartsList><Colors IsUseBgColor="True" BgColor="0.7:0.8:0.9:1" IsUseBorder="True" BorderColor="0:0:0:1" BorderThickness="2" BorderRadius="3"/>
+    <PartCount FontFamily="Arial" FontStyle="Bold" FontColor="0:0:0:1" FontSize="12"/><Padding LRBT="2 3 4 5"/></PartsList>
+    </GlobalStyle></GlobalSetting>
     <Pages>
-      <Page template="OneByOne"><Slot><Step SerializedIndex="0" IsVisibleStepNumber="True" IsVisiblePartsList="True" IsVisibleSubModelPreview="False"/><Image rect="10 20 30 40" rotation="0" imagePath="ImageResource/guide.png"/></Slot></Page>
-      <Page template="OneByOne"><Slot><Step SerializedIndex="1" IsVisibleStepNumber="True" IsVisiblePartsList="True" IsVisibleSubModelPreview="True"/></Slot></Page>
+      <Page template="CustomExample"><Slot><Step SerializedIndex="0" IsVisibleStepNumber="True" IsVisiblePartsList="True" IsVisibleSubModelPreview="False"/><Image rect="10 20 30 40" rotation="0" opacity="0.5" fliped_H="True" fliped_V="True" imagePath="ImageResource/guide.png"/></Slot></Page>
+      <Page template="CustomExample"><Slot><Step SerializedIndex="1" IsVisibleStepNumber="True" IsVisiblePartsList="True" IsVisibleSubModelPreview="True"/></Slot></Page>
     </Pages>
+    <CustomLayouts><Layout Name="CustomExample"><Slot rect="10 20 300 200"/><Slot rect="400 20 300 200"/></Layout></CustomLayouts>
   </Instruction>`;
   const encode = (value: string) => new TextEncoder().encode(value);
   const imported = {
@@ -53,6 +59,8 @@ it("exports one PDF page per imported Studio page with the source format and ste
   expect(mediaBox).not.toBeNull();
   expect(Number(mediaBox![1])).toBeCloseTo(841.89, 1);
   expect(Number(mediaBox![2])).toBeCloseTo(595.28, 1);
+  expect(pdfText).toMatch(/\/Times-Italic\b/);
+  expect(pdfText).toMatch(/\/ca 0\.5\b/);
   expect(imageCalls).toEqual(document.instructions.steps.map(step => step.id));
   expect(progress).toEqual([[0, 2], [1, 2], [2, 2]]);
   expect(renderer.dispose).toHaveBeenCalledOnce();

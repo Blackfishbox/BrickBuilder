@@ -55,6 +55,24 @@ describe("source-preserving Studio layout edits", () => {
     expect(view.calloutStyles.map(item => item.label)).toEqual(["Colors", "ArrowStyle"]);
   });
 
+  it("exposes editable typography and reports PDF template and element fallbacks", () => {
+    const markup = `<Instruction><GlobalSetting><GlobalStyle>
+      <StepNumber><StepNumber FontFamily="Comic Sans" FontStyle="Bold" FontColor="0:0:0:1" FontSize="24"/></StepNumber>
+      <PartsList><Colors IsUseBgColor="True" BgColor="1:1:1:1" IsUseBorder="True" BorderColor="0:0:0:1" BorderThickness="2"/>
+      <PartCount FontFamily="Arial" FontStyle="Normal" FontColor="0:0:0:1" FontSize="12"/><Padding LRBT="2 2 2 2"/></PartsList>
+      </GlobalStyle></GlobalSetting><Pages><Page template="CustomExample"><Slot><Step SerializedIndex="0"/>
+      <CallOut/><Arrow/><ContentItem/></Slot></Page></Pages></Instruction>`;
+    const layout = fixture(markup).instructions!.studioLayout!;
+    const view = inspectStudioLayout(layout);
+    const partCount = view.calloutStyles.find(item => item.label === "PartCount")!;
+    expect(partCount.fields.map(field => field.attribute)).toEqual(["FontFamily", "FontStyle", "FontColor", "FontSize"]);
+    expect(view.unsupportedDetails).toEqual(expect.arrayContaining([
+      "Font: Comic Sans", "CallOut × 1", "Arrow × 1", "ContentItem × 1", "Template: CustomExample",
+    ]));
+    const changed = editStudioLayout(layout, partCount.nodeId, "FontFamily", "Times New Roman");
+    expect(applyStudioLayout(changed)).toContain('FontFamily="Times New Roman"');
+  });
+
   it("patches only requested attributes, keeping comments, CDATA, whitespace and unknown content exact", () => {
     const original = fixture().instructions!.studioLayout!;
     const view = inspectStudioLayout(original), page = view.pages[0], image = page.items.find(item => item.imagePath)!;

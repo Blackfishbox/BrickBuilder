@@ -24,6 +24,7 @@ const hint: Record<StudioLayoutField["kind"], MessageId | ""> = {
   vector2: "studio.vector2Hint",
   vector4: "studio.vector4Hint",
   color: "studio.colorHint",
+  text: "",
 };
 
 type ImageState = { status: "loading" } | { status: "none" } | { status: "error"; message: string } | { status: "ready"; urls: Record<string, string>; skipped: number };
@@ -63,6 +64,8 @@ function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem
     Thickness: "studio.field.arrowThickness", Color: "studio.field.arrowColor", IsVisible: "studio.field.dividerVisible",
     DividerThickness: "studio.field.lineThickness", DividerColor: "studio.field.lineColor", LRBT: "studio.field.padding",
     Horizontal: "studio.field.horizontalMargin", Vertical: "studio.field.verticalMargin",
+    FontFamily: "studio.field.fontFamily", FontStyle: "studio.field.fontStyle", FontColor: "studio.field.fontColor",
+    FontSize: "studio.field.fontSize", Style: "studio.field.arrowShape", SlotSpacing: "studio.field.slotSpacing",
   };
   const label = t(labels[field.attribute] ?? "studio.layoutTitle");
   const value = item.attributes[field.attribute] ?? "";
@@ -123,6 +126,9 @@ function itemName(item: StudioLayoutItem, t: ReturnType<typeof useI18n>["t"]): s
   const keys: Record<string, MessageId> = {
     Page: "studio.name.page", Step: "studio.name.step", Image: "studio.name.image", Colors: "studio.name.colors",
     ArrowStyle: "studio.name.arrow", Divider: "studio.name.divider", Padding: "studio.name.padding", Margin: "studio.name.margin",
+    StepNumber: "studio.name.stepNumber", PartCount: "studio.name.partCount", PartsList: "studio.name.partsList",
+    Multiplier: "studio.name.multiplier", Font: "studio.name.font", SubModelPreview: "studio.name.submodelPreview",
+    Spacing: "studio.name.spacing", AssemblyMargin: "studio.name.margin",
   };
   return keys[item.label] ? t(keys[item.label]) : item.label;
 }
@@ -209,7 +215,7 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
       {view.calloutStyles.length > 0 && (
         <div className="sle-styles">
           <button className="ins-ghost ins-more" onClick={() => setShowStyles(s => !s)} aria-expanded={showStyles} data-testid="button-studio-layout-toggle-styles">
-            {t("studio.globalCalloutStyles", { count: view.calloutStyles.length })} {showStyles ? t("studio.hide") : t("studio.show")}
+            {t("studio.globalStyles", { count: view.calloutStyles.length })} {showStyles ? t("studio.hide") : t("studio.show")}
           </button>
           {showStyles && (
             <ul className="sle-items">
@@ -223,8 +229,24 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
           )}
         </div>
       )}
-      {view.unsupportedCount > 0 && (
-        <p className="ins-hint" data-testid="text-studio-layout-unsupported">{t("studio.unsupported", { count: view.unsupportedCount })}</p>
+      {view.unsupportedDetails.length > 0 && (
+        <p className="ins-hint" data-testid="text-studio-layout-unsupported">
+          {t("studio.unsupportedDetails", { details: view.unsupportedDetails.map(detail => {
+            const element = /^(CallOut|Arrow|ContentItem|BrickBuilderNotes|SizeGuide|ColorGuide) × (\d+)$/.exec(detail);
+            if (element) {
+              const key = ({
+                CallOut: "studio.unsupported.callouts", Arrow: "studio.unsupported.arrows",
+                ContentItem: "studio.unsupported.content", BrickBuilderNotes: "studio.unsupported.notes",
+                SizeGuide: "studio.unsupported.sizeGuide", ColorGuide: "studio.unsupported.colorGuide",
+              } as const)[element[1] as "CallOut" | "Arrow" | "ContentItem" | "BrickBuilderNotes" | "SizeGuide" | "ColorGuide"];
+              return t(key, { count: Number(element[2]) });
+            }
+            if (detail.startsWith("Template: ")) return t("studio.unsupported.template", { name: detail.slice(10) });
+            if (detail.startsWith("Font: ")) return t("studio.unsupported.font", { name: detail.slice(6) });
+            if (detail.startsWith("Font style: ")) return t("studio.unsupported.fontStyle", { name: detail.slice(12) });
+            return detail;
+          }).join(", ") })}
+        </p>
       )}
     </section>
   );

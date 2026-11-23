@@ -12,6 +12,7 @@ export interface InstructionPdfOptions {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
   highlight?: boolean;
+  locale?: "en" | "de";
 }
 
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
