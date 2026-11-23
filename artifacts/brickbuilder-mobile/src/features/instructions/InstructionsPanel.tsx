@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model";
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
 import { effectiveInstructions, instructionView } from "./model";
@@ -13,6 +13,7 @@ import StudioLayoutEditor from "./StudioLayoutEditor";
 import StepPartsBox from "./StepPartsBox";
 import { instructionHighlightIds } from "./callouts";
 import { hasStudioPdfLayout } from "./studio-pdf";
+import { generateAutomaticInstructionSteps, type AutoInstructionProgress } from "./auto-generate";
 import "./instructions.css";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -58,12 +59,19 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
+  const [autoProgress, setAutoProgress] = useState<AutoInstructionProgress | null>(null);
+  const [showAutoConfirm, setShowAutoConfirm] = useState(false);
+  const [autoError, setAutoError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [retryStudioExport, setRetryStudioExport] = useState(false);
   const [angleDrafts, setAngleDrafts] = useState<Record<string, string>>({});
   const angleDraftRef = useRef<{ stepId: string; axis: number; value: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const autoAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    autoAbortRef.current?.abort();
+  }, []);
 
   // Lookup tables are built once per document, not per render of each row.
   const parts = useMemo(() => {
@@ -186,6 +194,51 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       return i === target ? { ...s, partIds: [...kept, ...ids] } : { ...s, partIds: kept };
     }));
     setSelected(new Set());
+  };
+  const generateSteps = async () => {
+    setShowAutoConfirm(false);
+    setAutoError(null);
+    const controller = new AbortController();
+    autoAbortRef.current = controller;
+    setAutoProgress({ completed: 0, total: parts.size });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const result = await generateAutomaticInstructionSteps(document, controller.signal, setAutoProgress);
+      controller.signal.throwIfAborted();
+      const warnings = [
+        t("instruction.autoSequenceHeuristic"),
+        ...(result.unconnectedPartIds.length && parts.size > 1
+          ? [t("instruction.autoUnconnected", { count: result.unconnectedPartIds.length })] : []),
+        ...(result.missingGeometryPartIds.length
+          ? [t("instruction.autoMissingGeometry", { count: result.missingGeometryPartIds.length })] : []),
+        ...(result.fallbackPartIds.length
+          ? [t("instruction.autoFallback", { count: result.fallbackPartIds.length })] : []),
+        ...(plan.studioLayout
+          ? [t("instruction.autoStudioLayoutReplaced")] : []),
+      ];
+      onChange({
+        ...plan,
+        source: "manual",
+        edited: true,
+        steps: result.steps.map((generated, index) => ({
+          ...generated,
+          title: t("instruction.stepNumber", { number: index + 1 }),
+        })),
+        warnings,
+        studioLayout: undefined,
+      });
+      setIndex(0);
+      setSelected(new Set());
+      setScope("step");
+      setLimit(PAGE);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setAutoError(error instanceof Error ? error.message : t("instruction.autoGenerateFailed"));
+      }
+    } finally {
+      autoAbortRef.current = null;
+      setAutoProgress(null);
+    }
   };
   const toggle = (id: string) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
@@ -373,6 +426,8 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             <p className="ins-hint">{t("instruction.cameraInfo")}</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> {t("instruction.addStep")}</button>
+              <button className="ins-ghost" onClick={() => setShowAutoConfirm(true)} disabled={!total || !!exporting || !!autoProgress}
+                data-testid="button-instructions-auto-generate"><Sparkles size={15} /> {t("instruction.autoGenerate")}</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label={t("instruction.moveEarlier")} data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
               <button className="ins-ghost" onClick={() => moveStep(1)} disabled={current === plan.steps.length - 1} aria-label={t("instruction.moveLater")} data-testid="button-instructions-move-down"><ArrowDown size={15} /></button>
               {confirmDelete ? (
@@ -385,6 +440,23 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
                   aria-label={t("instruction.deleteStep")} data-testid="button-instructions-delete-step"><Trash2 size={15} /></button>
               )}
             </div>
+            {showAutoConfirm && (
+              <div className="ins-auto-confirm" role="alertdialog" aria-label={t("instruction.autoGenerate")} data-testid="dialog-instructions-auto-generate">
+                <p>{t("instruction.autoGenerateConfirm")}</p>
+                <div>
+                  <button className="ins-ghost" onClick={() => setShowAutoConfirm(false)} data-testid="button-instructions-auto-cancel">{t("inventory.cancel")}</button>
+                  <button className="ins-primary" onClick={() => void generateSteps()} data-testid="button-instructions-auto-confirm">{t("instruction.autoGenerateProceed")}</button>
+                </div>
+              </div>
+            )}
+            {autoProgress && (
+              <div className="ins-auto-progress" role="status" data-testid="status-instructions-auto-generate">
+                <LoaderCircle size={15} className="spin" />
+                <span>{t("instruction.autoGenerating", { done: autoProgress.completed, total: autoProgress.total })}</span>
+                <button className="ins-ghost" onClick={() => autoAbortRef.current?.abort()} data-testid="button-instructions-auto-stop">{t("inventory.cancel")}</button>
+              </div>
+            )}
+            {autoError && <p className="ins-note is-error" role="alert" data-testid="status-instructions-auto-error">{autoError}</p>}
             {confirmDelete && <p className="ins-hint">{t("instruction.deleteParts", { count: step.partIds.length, target: current > 0 ? t("instruction.stepNumber", { number: current }) : t("instruction.followingStep") })}</p>}
           </div>
 

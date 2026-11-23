@@ -73,6 +73,12 @@
 .ins-rot .ins-field { flex: 1; }
 .ins-hint { margin: 0; font-size: 11px; color: #6c7a72; line-height: 1.45; }
 .ins-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ins-auto-confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #c8b68b; border-radius: 10px; background: #fff9e8; color: #51462f; font-size: 12px; line-height: 1.45; }
+.ins-auto-confirm p { margin: 0; }
+.ins-auto-confirm > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.ins-auto-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px solid #d5d8ca; border-radius: 10px; background: #f0efe6; color: #394c43; font-size: 11px; }
+.ins-auto-progress span { flex: 1; min-width: 120px; }
+.ins-note.is-error { color: #8e3a27; background: #fbefe8; border-color: #e7b6a2; }
 .ins-confirm { display: inline-flex; gap: 6px; }
 .ins-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #ebe8dc; }
 .ins-tabs button { flex: 1; min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: #5f7068; font-size: 12px; font-weight: 600; }

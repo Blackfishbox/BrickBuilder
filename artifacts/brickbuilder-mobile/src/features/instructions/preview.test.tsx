@@ -39,6 +39,41 @@ it("uses English default step names and singular instruction summary", () => {
   expect(host.querySelector('[data-testid="text-instructions-summary"]')!.textContent).toBe("1 step · 1 part");
 });
 
+it("requires confirmation before replacing a sequence and then generates a support-first plan", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [
+    { id: "base", type: "brick-2x4", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 },
+    { id: "top", type: "brick-1x2", color: "#0000ff", x: 0, y: 1.2, z: 0, rotation: 0 },
+  ];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "old", title: "Old order", notes: "", partIds: ["top", "base"] },
+  ] };
+  let saved = source;
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(current => {
+      const next = updateInstructions(current, plan);
+      saved = next;
+      return next;
+    })} onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-auto-generate"]')!.click());
+  expect(host.querySelector('[data-testid="dialog-instructions-auto-generate"]')).not.toBeNull();
+  expect(saved.instructions?.steps[0].title).toBe("Old order");
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-auto-confirm"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 5));
+  });
+  expect(saved.instructions?.source).toBe("manual");
+  expect(saved.instructions?.edited).toBe(true);
+  expect(saved.instructions?.steps.map(step => step.partIds)).toEqual([["base"], ["top"]]);
+  expect(host.querySelector('[data-testid="dialog-instructions-auto-generate"]')).toBeNull();
+});
+
 it("persists manual preview camera changes independently for each step", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();
