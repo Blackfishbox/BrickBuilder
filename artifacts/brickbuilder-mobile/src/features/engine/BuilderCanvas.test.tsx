@@ -8,7 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import * as instructionOutlines from "../instructions/outlines";
-import { THICK_EDGE_WIDTH_PX } from "./wide-lines";
+import { THICK_EDGE_CORE_WIDTH_PX, THICK_EDGE_WIDTH_PX } from "./wide-lines";
 import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
@@ -66,13 +66,17 @@ let root: Root, element: HTMLDivElement, host: HTMLElement;
 let frames: Map<number, FrameRequestCallback>, nextFrame: number;
 let resizeCallbacks: ResizeObserverCallback[], canvasHeight: number;
 let observedLineWidths: number[];
+let observedStrokes: { width: number; color: string }[], contextLineWidth: number, contextStrokeStyle: string;
 let observedPaints: { fillStyle: string; globalAlpha: number }[], contextFillStyle: string, contextGlobalAlpha: number;
 const context = new Proxy({}, {
   get: (_target, key) => key === "fill"
     ? vi.fn(() => observedPaints.push({ fillStyle: contextFillStyle, globalAlpha: contextGlobalAlpha }))
+    : key === "stroke"
+      ? vi.fn(() => observedStrokes.push({ width: contextLineWidth, color: contextStrokeStyle }))
     : vi.fn(),
   set: (_target, key, value) => {
-    if (key === "lineWidth") observedLineWidths.push(value as number);
+    if (key === "lineWidth") { observedLineWidths.push(value as number); contextLineWidth = value as number; }
+    if (key === "strokeStyle") contextStrokeStyle = value as string;
     if (key === "fillStyle") contextFillStyle = value as string;
     if (key === "globalAlpha") contextGlobalAlpha = value as number;
     return true;
@@ -128,6 +132,7 @@ beforeEach(() => {
   observed.camera = undefined; observed.cameraPose = undefined; observed.webglEnabled = false; observed.preparations = 0;
   resizeCallbacks = []; canvasHeight = 600;
   observedLineWidths = [];
+  observedStrokes = []; contextLineWidth = 1; contextStrokeStyle = "";
   observedPaints = []; contextFillStyle = ""; contextGlobalAlpha = 1;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
@@ -442,6 +447,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(30);
   expect(edgeMaterial.uniforms.edgeOpacity.value).toBe(1);
+  expect(edgeMaterial.fragmentShader).toContain("abs(vLineSide) > 0.5625");
   expect(localEdge.visible).toBe(true);
   expect(localEdge.renderOrder).toBeGreaterThan(0);
   expect(importedEdge.visible).toBe(true);
@@ -463,6 +469,23 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(localEdge.visible).toBe(false);
 });
 
+it("draws the enabled thick edges on the current local brick preview", async () => {
+  observed.webglEnabled = true;
+  const props = {
+    projectId: "thick-edge-preview", bricks: [], imported: undefined, selectedId: null,
+    selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "build" as const,
+    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), thickEdges: true,
+  };
+  await act(async () => root.render(<BuilderCanvas {...props} />));
+  flushFrame();
+
+  const preview = observed.scene3d!.getObjectByName("placement-preview") as Mesh;
+  const edges = preview.getObjectByName("brick-edges-brick-2x2") as Mesh;
+  expect(edges).toBeDefined();
+  expect(edges.visible).toBe(true);
+  expect((edges.material as ShaderMaterial).uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
+});
+
 it("draws bounded thicker source edges in the compatibility renderer", async () => {
   const model = engineFixture(1, 1);
   const software = await softwareRendering.createSoftwareScene(model);
@@ -477,6 +500,8 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
   expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
+  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_WIDTH_PX, color: "rgba(255, 255, 255, 0.96)" });
+  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_CORE_WIDTH_PX, color: "rgba(4, 8, 6, 0.98)" });
   expect(software.records.size).toBe(1);
 });
 

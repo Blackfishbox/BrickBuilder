@@ -61,7 +61,9 @@ import type { Affine, ImportedModel } from "../formats/types";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
-import { expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, wideLineMaterial } from "./wide-lines";
+import {
+  expandWideLines, setWideLineResolution, THICK_EDGE_CORE_WIDTH_PX, THICK_EDGE_WIDTH_PX, wideLineMaterial,
+} from "./wide-lines";
 
 import {
   BRICK_DEFINITIONS,
@@ -310,7 +312,6 @@ export class FallbackRenderer {
     let remainingEdgeSegments = 12_000;
     if (thickEdges) {
       context.beginPath();
-      context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
       context.lineWidth = THICK_EDGE_WIDTH_PX;
       const drawSegments = (positions: Float32Array, transform: import("three").Matrix4, yOffset = 0) => {
         const a = new Vector3(), b = new Vector3();
@@ -337,6 +338,10 @@ export class FallbackRenderer {
           drawSegments(surface.edges, transform);
         }
       }
+      context.strokeStyle = "rgba(255, 255, 255, 0.96)";
+      context.stroke();
+      context.strokeStyle = "rgba(4, 8, 6, 0.98)";
+      context.lineWidth = THICK_EDGE_CORE_WIDTH_PX;
       context.stroke();
     }
 
@@ -385,7 +390,6 @@ export class FallbackRenderer {
       if (thickEdges && remainingEdgeSegments > 0) {
         const edges = localBrickEdges(brick.type);
         context.beginPath();
-        context.strokeStyle = darkMode ? "rgba(205, 220, 211, 0.72)" : "rgba(15, 20, 16, 0.76)";
         context.lineWidth = THICK_EDGE_WIDTH_PX;
         const point = new Vector3();
         for (let index = 0; index + 5 < edges.length && remainingEdgeSegments > 0; index += 6) {
@@ -397,6 +401,10 @@ export class FallbackRenderer {
           if (first.depth < 0.1 || second.depth < 0.1) continue;
           context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
         }
+        context.strokeStyle = "rgba(255, 255, 255, 0.96)";
+        context.stroke();
+        context.strokeStyle = "rgba(4, 8, 6, 0.98)";
+        context.lineWidth = THICK_EDGE_CORE_WIDTH_PX;
         context.stroke();
       }
 
@@ -1043,11 +1051,7 @@ export function BuilderCanvas({
       }
       if (placementRootRef.current) {
         scene.remove(placementRootRef.current);
-        if (placementRootRef.current instanceof Group) disposeImportedScene(placementRootRef.current);
-        else {
-          placementRootRef.current.geometry.dispose();
-          disposeMaterial(placementRootRef.current.material);
-        }
+        disposePlacementRoot(placementRootRef.current);
         placementRootRef.current = null;
       }
       placementIndexRef.current = null;
@@ -1109,11 +1113,7 @@ export function BuilderCanvas({
     if (!scene) return;
     if (placementRootRef.current) {
       scene.remove(placementRootRef.current);
-      if (placementRootRef.current instanceof Group) disposeImportedScene(placementRootRef.current);
-      else {
-        placementRootRef.current.geometry.dispose();
-        disposeMaterial(placementRootRef.current.material);
-      }
+      disposePlacementRoot(placementRootRef.current);
     }
     placementRootRef.current = null;
     placementIndexRef.current = null;
@@ -1183,6 +1183,7 @@ export function BuilderCanvas({
         mesh.name = "placement-preview";
         mesh.position.set(target.x, target.y, target.z);
         mesh.renderOrder = 5;
+        mesh.add(localPreviewEdgeMesh(selectedType));
         scene.add(mesh);
         placementRootRef.current = mesh;
       }
@@ -2389,6 +2390,39 @@ export function BuilderCanvas({
 
 function geometryCacheHas(geometry: InstancedMesh["geometry"]): boolean {
   return [...geometryCache.values()].some((cached) => cached === geometry);
+}
+
+function localPreviewEdgeMesh(type: BrickType): Mesh {
+  const expanded = expandWideLines(localBrickEdges(type));
+  const geometry = new InstancedBufferGeometry();
+  for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
+  expanded.dispose();
+  geometry.setAttribute("instanceRow0", new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0]), 4));
+  geometry.setAttribute("instanceRow1", new InstancedBufferAttribute(new Float32Array([0, 1, 0, 0]), 4));
+  geometry.setAttribute("instanceRow2", new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0]), 4));
+  geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array([0]), 1));
+  geometry.instanceCount = 1;
+  const edges = new Mesh(geometry, wideLineMaterial());
+  edges.name = `brick-edges-${type}`;
+  edges.userData.isWideEdgeMesh = true;
+  edges.userData.brickIds = ["placement-preview-brick"];
+  edges.frustumCulled = false;
+  edges.renderOrder = 10;
+  return edges;
+}
+
+function disposePlacementRoot(root: Mesh | Group): void {
+  if (root instanceof Group) {
+    disposeImportedScene(root);
+    return;
+  }
+  root.traverse(child => {
+    if (!(child instanceof Mesh) || child === root) return;
+    disposeMaterial(child.material);
+    child.geometry.dispose();
+  });
+  root.geometry.dispose();
+  disposeMaterial(root.material);
 }
 
 function disposeImported(root: Group): void {

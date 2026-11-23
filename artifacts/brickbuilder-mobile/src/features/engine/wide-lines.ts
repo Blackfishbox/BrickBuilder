@@ -5,6 +5,7 @@ import {
 
 /** A deliberately obvious outline width when the user enables thick edges. */
 export const THICK_EDGE_WIDTH_PX = 32;
+export const THICK_EDGE_CORE_WIDTH_PX = 18;
 
 /**
  * Expand each source segment into two triangles. The endpoints are repeated
@@ -65,8 +66,10 @@ export function wideLineMaterial(): ShaderMaterial {
       attribute float lineSide;
       uniform float lineWidth;
       uniform vec2 resolution;
+      varying float vLineSide;
       void main() {
         ${FOCUS_VERTEX}
+        vLineSide = lineSide;
         vec4 p = vec4(position, 1.0);
         vec4 q = vec4(lineEnd, 1.0);
         vec3 a = vec3(dot(instanceRow0, p), dot(instanceRow1, p), dot(instanceRow2, p));
@@ -88,8 +91,16 @@ export function wideLineMaterial(): ShaderMaterial {
       uniform bool instructionFocusEnabled;
       uniform float edgeOpacity;
       uniform vec3 edgeColor;
+      varying float vLineSide;
       void main() {
-        gl_FragColor = vec4(edgeColor, edgeOpacity);
+        if (edgeOpacity > 0.5) {
+          // A light outer band plus dark center remains visible on both dark and light parts.
+          gl_FragColor = abs(vLineSide) > 0.5625
+            ? vec4(1.0, 1.0, 1.0, 1.0)
+            : vec4(0.015, 0.02, 0.018, 1.0);
+        } else {
+          gl_FragColor = vec4(edgeColor, edgeOpacity);
+        }
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
             ? vec4(0.6, 0.015, 0.01, 0.95)
