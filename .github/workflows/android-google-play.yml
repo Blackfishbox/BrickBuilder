@@ -1,6 +1,8 @@
 name: Build and publish closed Google Play test
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       version_name:
@@ -16,11 +18,12 @@ on:
         required: false
         type: string
 
-# Only main can publish, and only to closed testing alpha.
+# Every main push builds and publishes to closed testing alpha; manual runs can
+# still override the displayed version and localized release notes.
 permissions:
   contents: read
 
-# Manual runs remain independent so every build has its own downloadable artifacts.
+# Every run keeps its own downloadable build artifacts.
 jobs:
   android:
     runs-on: ubuntu-24.04

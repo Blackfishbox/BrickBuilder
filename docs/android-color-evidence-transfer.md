@@ -2,7 +2,7 @@
 
 > Historical transfer record. The separate `android/google-play` branch has
 > since been retired. `main` is now the only Android source, and Play releases
-> are started manually from `main`; use [the current release guide](android-google-play.md).
+> start automatically on pushes to `main`; use [the current release guide](android-google-play.md).
 
 ## Branch boundary
 

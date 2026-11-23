@@ -31,7 +31,7 @@ The native import helper, model picker, geometry request handling, application
 ID, signing configuration, native insets, launcher icons, dependency lockfile
 and release preparation scripts are preserved.
 
-The current signed-release workflow is started manually from `main` and
+The signed-release workflow now starts automatically on pushes to `main` and
 publishes only to the closed `alpha` test. It validates the packaged catalog,
 offline building assets, privacy policy and R8 mapping. Downloads remain
 exclusively the signed AAB and matching `mapping.txt`; no emulator or screenshot

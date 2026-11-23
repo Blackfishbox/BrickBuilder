@@ -186,8 +186,8 @@ python3 -m unittest discover -s scripts/android -p 'test_*.py'
 
 The separate `android/google-play` source branch has been retired. Android and
 web application changes now use `main`; do not cherry-pick updates into a
-separate Android branch. Start Play releases manually from `main` using the
-procedure in [the Android and Google Play guide](android-google-play.md).
+separate Android branch. Every push to `main` now starts the Play release
+workflow. See [the Android and Google Play guide](android-google-play.md).
 
 The Android-specific checks and preservation requirements described in older
 transfer notes remain relevant to the native app, but the old branch-transfer
