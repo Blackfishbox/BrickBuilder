@@ -1,11 +1,11 @@
 import {
   Box3, BufferAttribute, BufferGeometry, Color, DoubleSide, Group,
   InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh,
-  LineSegments, Material, Mesh, MeshLambertMaterial,
+  LineSegments, Material, Mesh, MeshLambertMaterial, SRGBColorSpace,
 } from "three";
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
-import { compilePart, visibleEdgeLines, worldMatrix, type Surface } from "./ldraw-geometry";
+import { compilePart, visibleEdgeData, worldMatrix, type Surface } from "./ldraw-geometry";
 import { installInstructionFocus, FOCUS_ATTRIBUTE } from "./instruction-focus";
 import { expandWideLines, wideLineMaterial } from "./wide-lines";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
@@ -101,14 +101,27 @@ function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[
 
 /** One instanced line draw per part, never one Object3D per brick. */
 function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[]): void {
-  const source = visibleEdgeLines(surfaces);
-  const length = source.length;
+  const source = visibleEdgeData(surfaces);
+  const length = source.positions.length;
   if (!length) return;
   if (length / 6 > MAX_WIDE_EDGE_SEGMENTS) throw new SceneBudgetExceeded();
-  const expanded = expandWideLines(source);
+  const expanded = expandWideLines(source.positions, source.normals);
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
   expanded.dispose();
+  const edgeBaseColors = new Float32Array(source.positions.length * 3);
+  const edgeUseInstanceColor = new Float32Array(source.positions.length);
+  const color = new Color();
+  source.colorCodes.forEach((code, segment) => {
+    const inherited = code === "16";
+    const base = color.set(inherited ? "#ffffff" : resolveColor(code)?.hex ?? "#ff00ff");
+    for (let vertex = 0; vertex < 6; vertex++) {
+      edgeBaseColors.set([base.r, base.g, base.b], (segment * 6 + vertex) * 3);
+      edgeUseInstanceColor[segment * 6 + vertex] = inherited ? 1 : 0;
+    }
+  });
+  geometry.setAttribute("edgeBaseColor", new BufferAttribute(edgeBaseColors, 3));
+  geometry.setAttribute("edgeUseInstanceColor", new BufferAttribute(edgeUseInstanceColor, 1));
   const rows = [new Float32Array(instances.length * 4), new Float32Array(instances.length * 4), new Float32Array(instances.length * 4)];
   const bounds = new Box3(), transformed = new Box3();
   geometry.computeBoundingBox();
@@ -120,12 +133,12 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
     bounds.union(transformed.copy(local).applyMatrix4(matrix));
   });
   rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
-  const edgeColors = new Float32Array(instances.length * 3);
+  const edgeColors = new Uint8Array(instances.length * 3);
   instances.forEach((instance, index) => {
-    const color = new Color(resolveColor(instance.colorCode)?.hex ?? "#ff00ff");
-    edgeColors.set([color.r, color.g, color.b], index * 3);
+    const encoded = new Color(resolveColor(instance.colorCode)?.hex ?? "#ff00ff").getHex(SRGBColorSpace);
+    edgeColors.set([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff], index * 3);
   });
-  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3));
+  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3, true));
   geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(instances.length), 1));
   geometry.instanceCount = instances.length;
   geometry.boundingBox = bounds;

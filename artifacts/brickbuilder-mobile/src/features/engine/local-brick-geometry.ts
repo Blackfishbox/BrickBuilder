@@ -1,6 +1,7 @@
 import { BoxGeometry, BufferGeometry, CylinderGeometry, EdgesGeometry } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BRICK_DEFINITIONS, BRICK_HEIGHT, type BrickType } from "../editor/model";
+import { deriveLineNormals } from "./wide-lines";
 
 // Rendering dimensions only. Construction spacing and collision bounds still
 // use BRICK_HEIGHT and the nominal stud footprint.
@@ -45,6 +46,7 @@ export function createLocalBrickGeometry(type: BrickType): BufferGeometry {
 
 const triangleCache = new Map<BrickType, Float32Array>();
 const edgeCache = new Map<BrickType, Float32Array>();
+const edgeNormalCache = new Map<BrickType, Float32Array>();
 
 /** Read-only sharp edges for the compatibility renderer and GPU outline batches. */
 export function localBrickEdges(type: BrickType): Float32Array {
@@ -58,6 +60,27 @@ export function localBrickEdges(type: BrickType): Float32Array {
     return positions;
   } finally {
     edges.dispose();
+    geometry.dispose();
+  }
+}
+
+/** Flat edge normals sampled from the corresponding local brick surface. */
+export function localBrickEdgeNormals(type: BrickType): Float32Array {
+  const cached = edgeNormalCache.get(type);
+  if (cached) return cached;
+  const geometry = createLocalBrickGeometry(type);
+  const edges = localBrickEdges(type);
+  const flat = geometry.toNonIndexed();
+  try {
+    const normals = deriveLineNormals(
+      edges,
+      flat.getAttribute("position").array as Float32Array,
+      flat.getAttribute("normal").array as Float32Array,
+    );
+    edgeNormalCache.set(type, normals);
+    return normals;
+  } finally {
+    flat.dispose();
     geometry.dispose();
   }
 }

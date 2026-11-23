@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Color, DoubleSide, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, Vector2, Vector3 } from "three";
+import { Box3, Color, DoubleSide, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, SRGBColorSpace, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -441,15 +441,25 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(importedEdge.renderOrder).toBeGreaterThan(0);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
   expect(importedEdge.geometry.getAttribute("instanceEdgeColor").count).toBe(imported.instances.length);
+  expect(importedEdge.geometry.getAttribute("edgeNormal").count).toBe(
+    importedEdge.geometry.getAttribute("position").count,
+  );
+  expect(importedEdge.geometry.getAttribute("edgeBaseColor").count).toBe(
+    importedEdge.geometry.getAttribute("position").count,
+  );
+  expect([...importedEdge.geometry.getAttribute("edgeUseInstanceColor").array]).toContain(1);
+  expect([...importedEdge.geometry.getAttribute("edgeUseInstanceColor").array]).toContain(0);
   const originalEdgeColor = [...importedEdge.geometry.getAttribute("instanceEdgeColor").array];
   expect(localEdge.visible).toBe(false);
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
-  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThanOrEqual(6);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThan(1);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBeLessThan(6);
   expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
-  expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(vEdgeColor, 1.0);");
+  expect(edgeMaterial.fragmentShader).toContain("vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);");
+  expect(edgeMaterial.fragmentShader).toContain("gl_FragColor = vec4(baseColor * (hemisphere + sunlight), 1.0);");
   expect(edgeMaterial.vertexShader).toContain("vec4 clip = clipA;");
   expect(edgeMaterial.vertexShader).not.toContain("clip.z -=");
   expect(edgeMaterial.vertexShader).not.toContain("mix(clipA, clipB, lineEndpoint)");
@@ -489,21 +499,27 @@ it("draws the enabled thick edges on the current local brick preview", async () 
   expect(edges).toBeDefined();
   expect(edges.visible).toBe(true);
   expect(edges.geometry.getAttribute("instanceEdgeColor").array).toHaveLength(3);
+  expect(edges.geometry.getAttribute("edgeNormal").count).toBe(edges.geometry.getAttribute("position").count);
   expect((edges.material as ShaderMaterial).transparent).toBe(false);
   expect((edges.material as ShaderMaterial).uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect((preview.material as MeshLambertMaterial).opacity).toBe(1);
   expect((preview.material as MeshLambertMaterial).transparent).toBe(false);
   const previewColor = edges.geometry.getAttribute("instanceEdgeColor").array;
   const faceColor = new Color("#B40000");
-  expect(previewColor[0]).toBeCloseTo(faceColor.r);
-  expect(previewColor[1]).toBeCloseTo(faceColor.g);
-  expect(previewColor[2]).toBeCloseTo(faceColor.b);
+  const encoded = faceColor.getHex(SRGBColorSpace);
+  expect(previewColor[0] / 255).toBeCloseTo(((encoded >> 16) & 0xff) / 255);
+  expect(previewColor[1] / 255).toBeCloseTo(((encoded >> 8) & 0xff) / 255);
+  expect(previewColor[2] / 255).toBeCloseTo((encoded & 0xff) / 255);
 });
 
 it("draws bounded thicker source edges in the compatibility renderer", async () => {
   const model = engineFixture(1, 1);
   const software = await softwareRendering.createSoftwareScene(model);
   expect([...software.records.values()].some(record => record.localEdges.length > 0)).toBe(true);
+  const record = [...software.records.values()][0];
+  expect(record.localEdgeColorCodes).toContain("16");
+  expect(record.localEdgeColorCodes).toContain("2");
+  expect(record.localEdgeNormals).toHaveLength(record.localEdges.length);
   expect(software.edgeRecords.length).toBeLessThanOrEqual(software.records.size);
   const local: Brick = { id: "compat-local", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };
   const renderer = new FallbackRenderer();
@@ -514,7 +530,9 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
   expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
-  expect(observedStrokes).toContainEqual({ width: THICK_EDGE_WIDTH_PX, color: "#B40000" });
+  expect(observedStrokes.some(stroke =>
+    stroke.width === THICK_EDGE_WIDTH_PX && stroke.color.startsWith("rgb(") && stroke.color !== "#B40000",
+  )).toBe(true);
   expect(observedPaints.some(item => item.globalAlpha === 1 && item.fillStyle.startsWith("rgb("))).toBe(true);
   expect(software.records.size).toBe(1);
 });

@@ -1,7 +1,7 @@
 import { Box3, Color, Vector3 } from "three";
 import type { Affine, ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
-import { compilePart, reuseGeometryCache, sameSceneSources, visibleEdgeLines, worldMatrix } from "./ldraw-geometry";
+import { compilePart, reuseGeometryCache, sameSceneSources, visibleEdgeData, worldMatrix } from "./ldraw-geometry";
 import type { SceneBuildOptions } from "./imported-scene";
 import { instructionDisplayColor } from "./instruction-focus";
 
@@ -42,6 +42,8 @@ interface SoftwareRecord {
   slots: number[];
   local: Float32Array;
   localEdges: Float32Array;
+  localEdgeNormals: Float32Array;
+  localEdgeColorCodes: string[];
   currentMatrix: Affine;
   codes: string[];
   localBounds: Box3;
@@ -58,7 +60,7 @@ export async function createSoftwareScene(model: ImportedModel, options: SceneBu
   const triangleIds: string[] = [];
   const instanceBounds = new Map<string, Box3>();
   const bounds = new Box3(), boxes = new Map<string, Box3>();
-  const edgeBuffers = new Map<string, Float32Array>();
+  const edgeBuffers = new Map<string, ReturnType<typeof visibleEdgeData>>();
   const records = new Map<string, SoftwareRecord>();
   const vertex = new Vector3(), a = new Vector3(), b = new Vector3(), c = new Vector3();
   const light = new Vector3(-0.4, 0.8, 0.5).normalize();
@@ -86,21 +88,27 @@ export async function createSoftwareScene(model: ImportedModel, options: SceneBu
     const referenceKey = instance.reference.toLowerCase();
     let partEdges = edgeBuffers.get(referenceKey);
     if (!partEdges) {
-      partEdges = visibleEdgeLines(surfaces);
+      partEdges = visibleEdgeData(surfaces);
       edgeBuffers.set(referenceKey, partEdges);
     }
-    const edgeSegments = partEdges.length / 6;
+    const edgeSegments = partEdges.positions.length / 6;
     const edgeLimit = Math.floor(SOFTWARE_EDGE_BUDGET / Math.max(1, instances.length));
     const edgeCount = Math.min(edgeSegments, edgeLimit);
     const localEdges = new Float32Array(edgeCount * 6);
+    const localEdgeNormals = new Float32Array(edgeCount * 6);
+    const localEdgeColorCodes: string[] = [];
     let edgeIndex = 0;
     const take = Math.min(edgeSegments, edgeCount);
     for (let sample = 0; sample < take; sample++) {
       const sourceIndex = Math.floor((sample + 0.5) * edgeSegments / Math.max(1, take));
-      localEdges.set(partEdges.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex++ * 6);
+      localEdges.set(partEdges.positions.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex * 6);
+      localEdgeNormals.set(partEdges.normals.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex * 6);
+      localEdgeColorCodes.push(partEdges.colorCodes[sourceIndex]);
+      edgeIndex++;
     }
     const record: SoftwareRecord = {
-      instance, slots: [], local: new Float32Array(count * 9), localEdges, currentMatrix: [...instance.matrix],
+      instance, slots: [], local: new Float32Array(count * 9), localEdges, localEdgeNormals, localEdgeColorCodes,
+      currentMatrix: [...instance.matrix],
       codes: [], localBounds: box, total,
     };
     records.set(instance.id, record);
@@ -184,21 +192,25 @@ export function updateSoftwareScene(scene: SoftwareScene, next: ImportedModel): 
       const surface = surfaces[surfaceIndex], offset = (index - base) * 9;
       local.set(surface.positions.subarray(offset, offset + 9), sample * 9); codes.push(surface.colorCode);
     }
-    const edgeSegments = surfaces.reduce((sum, surface) => sum + surface.edges.length / 6, 0);
+    const edgeData = visibleEdgeData(surfaces);
+    const edgeSegments = edgeData.positions.length / 6;
     const edgeLimit = Math.floor(SOFTWARE_EDGE_BUDGET / Math.max(1, next.instances.length));
     const edgeCount = Math.min(edgeSegments, edgeLimit);
     const localEdges = new Float32Array(edgeCount * 6);
+    const localEdgeNormals = new Float32Array(edgeCount * 6);
+    const localEdgeColorCodes: string[] = [];
     let edgeIndex = 0;
-    for (const surface of surfaces) {
-      const segmentCount = surface.edges.length / 6;
-      const take = Math.min(segmentCount, Math.max(0, edgeCount - edgeIndex));
-      for (let sample = 0; sample < take; sample++) {
-        const sourceIndex = Math.floor((sample + 0.5) * segmentCount / Math.max(1, take));
-        localEdges.set(surface.edges.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex++ * 6);
-      }
-      if (edgeIndex >= edgeCount) break;
+    for (let sample = 0; sample < edgeCount; sample++) {
+      const sourceIndex = Math.floor((sample + 0.5) * edgeSegments / Math.max(1, edgeCount));
+      localEdges.set(edgeData.positions.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex * 6);
+      localEdgeNormals.set(edgeData.normals.subarray(sourceIndex * 6, sourceIndex * 6 + 6), edgeIndex * 6);
+      localEdgeColorCodes.push(edgeData.colorCodes[sourceIndex]);
+      edgeIndex++;
     }
-    prepared.set(instance.id, { instance, slots: [], local, localEdges, currentMatrix: [...instance.matrix], codes, localBounds, total });
+    prepared.set(instance.id, {
+      instance, slots: [], local, localEdges, localEdgeNormals, localEdgeColorCodes,
+      currentMatrix: [...instance.matrix], codes, localBounds, total,
+    });
   }
   const nextIds = new Set(next.instances.filter(i => i.part.status === "resolved").map(i => i.id));
   for (const [id, record] of scene.records) if (!nextIds.has(id) || prepared.has(id)) {

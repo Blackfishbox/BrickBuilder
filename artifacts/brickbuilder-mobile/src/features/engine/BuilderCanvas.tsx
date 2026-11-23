@@ -30,7 +30,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { createLocalBrickGeometry, localBrickEdges, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
+import { createLocalBrickGeometry, localBrickEdges, localBrickEdgeNormals, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -63,6 +63,7 @@ import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
 import {
   expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, wideLineMaterial,
+  deriveLineNormals,
 } from "./wide-lines";
 
 import {
@@ -310,11 +311,19 @@ export class FallbackRenderer {
     }
 
     let remainingEdgeSegments = 12_000;
-    if (thickEdges) {
-      context.beginPath();
-      context.lineWidth = THICK_EDGE_WIDTH_PX;
-      const drawSegments = (positions: Float32Array, transform: import("three").Matrix4, yOffset = 0) => {
-        const a = new Vector3(), b = new Vector3();
+    const drawSegments = (
+        positions: Float32Array,
+        transform: import("three").Matrix4,
+        yOffset: number,
+        normals: Float32Array,
+        colorForSegment: (segment: number) => string,
+        light: Vector3,
+        ambient: number,
+        direct: number,
+        focused?: boolean,
+      ) => {
+        const a = new Vector3(), b = new Vector3(), normal = new Vector3();
+        const strokes = new Map<string, ProjectedPoint[][]>();
         for (let index = 0; index + 5 < positions.length && remainingEdgeSegments > 0; index += 6) {
           remainingEdgeSegments--;
           a.fromArray(positions, index).applyMatrix4(transform);
@@ -322,29 +331,54 @@ export class FallbackRenderer {
           const first = project(a.x, a.y + yOffset, a.z);
           const second = project(b.x, b.y + yOffset, b.z);
           if (first.depth < 0.1 || second.depth < 0.1) continue;
-          context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
+          normal.fromArray(normals, index).transformDirection(transform);
+          const shade = ambient + direct * Math.abs(normal.dot(light));
+          const base = new Color(colorForSegment(index / 6));
+          if (focused !== undefined) instructionDisplayColor(base, focused);
+          const color = base.multiplyScalar(shade).getStyle();
+          const segments = strokes.get(color) ?? [];
+          segments.push([first, second]);
+          strokes.set(color, segments);
+        }
+        for (const [color, segments] of strokes) {
+          context.beginPath();
+          for (const [first, second] of segments) {
+            context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
+          }
+          context.strokeStyle = color;
+          context.stroke();
         }
       };
+    if (thickEdges) {
+      context.lineWidth = THICK_EDGE_WIDTH_PX;
       if (imported) {
+        const light = new Vector3(-0.4, 0.8, 0.5).normalize();
         for (const record of imported.edgeRecords) {
           if (remainingEdgeSegments <= 0) break;
           if (record.localEdges.length) {
-            context.beginPath();
-            drawSegments(record.localEdges, worldMatrix(record.currentMatrix), importOffset);
-            context.strokeStyle = resolveColor(record.instance.colorCode)?.hex ?? "#ff00ff";
-            context.stroke();
+            drawSegments(
+              record.localEdges, worldMatrix(record.currentMatrix), importOffset,
+              record.localEdgeNormals,
+              segment => resolveColor(record.localEdgeColorCodes[segment] === "16"
+                ? record.instance.colorCode : record.localEdgeColorCodes[segment])?.hex ?? "#ff00ff",
+              light, 0.6, 0.4,
+              instructionFocusIds === undefined ? undefined : instructionFocusIds.has(record.instance.id),
+            );
           }
         }
       }
       if (placementGeometry) {
         const transform = worldMatrix(placementGeometry.matrix);
+        const light = new Vector3(0.4, 0.8, 0.5).normalize();
         for (const surface of placementGeometry.surfaces) {
           if (remainingEdgeSegments <= 0) break;
-          context.beginPath();
-          drawSegments(surface.edges, transform);
           const colorCode = surface.colorCode === "16" ? placementGeometry.colorCode : surface.colorCode;
-          context.strokeStyle = resolveColor(colorCode)?.hex ?? "#ff00ff";
-          context.stroke();
+          drawSegments(
+            surface.edges, transform, 0,
+            deriveLineNormals(surface.edges, surface.positions, surface.normals),
+            () => resolveColor(colorCode)?.hex ?? "#ff00ff",
+            light, 0.58, 0.42,
+          );
         }
       }
     }
@@ -393,20 +427,11 @@ export class FallbackRenderer {
 
       if (thickEdges && remainingEdgeSegments > 0) {
         const edges = localBrickEdges(brick.type);
-        context.beginPath();
         context.lineWidth = THICK_EDGE_WIDTH_PX;
-        const point = new Vector3();
-        for (let index = 0; index + 5 < edges.length && remainingEdgeSegments > 0; index += 6) {
-          remainingEdgeSegments--;
-          const a = point.fromArray(edges, index).applyMatrix4(transform);
-          const first = project(a.x, a.y, a.z);
-          const b = point.fromArray(edges, index + 3).applyMatrix4(transform);
-          const second = project(b.x, b.y, b.z);
-          if (first.depth < 0.1 || second.depth < 0.1) continue;
-          context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
-        }
-        context.strokeStyle = brick.color;
-        context.stroke();
+        drawSegments(
+          edges, transform, 0, localBrickEdgeNormals(brick.type),
+          () => color.getStyle(), new Vector3(0.4, 0.8, 0.5).normalize(), 0.58, 0.42,
+        );
       }
 
       if (selectedId === brick.id) {
@@ -1441,7 +1466,7 @@ export function BuilderCanvas({
       localEdgeGroups.set(brick.type, group);
     }
     for (const [type, groupBricks] of localEdgeGroups) {
-      const expanded = expandWideLines(localBrickEdges(type));
+      const expanded = expandWideLines(localBrickEdges(type), localBrickEdgeNormals(type));
       const geometry = new InstancedBufferGeometry();
       for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
       expanded.dispose();
@@ -1457,12 +1482,12 @@ export function BuilderCanvas({
         bounds.union(transformed.copy(local).applyMatrix4(matrix));
       });
       rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
-      const edgeColors = new Float32Array(groupBricks.length * 3);
+      const edgeColors = new Uint8Array(groupBricks.length * 3);
       groupBricks.forEach((brick, index) => {
-        const color = new Color(brick.color);
-        edgeColors.set([color.r, color.g, color.b], index * 3);
+        const encoded = new Color(brick.color).getHex(SRGBColorSpace);
+        edgeColors.set([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff], index * 3);
       });
-      geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3));
+      geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3, true));
       geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array(groupBricks.length), 1));
       geometry.instanceCount = groupBricks.length;
       geometry.boundingBox = bounds;
@@ -2392,7 +2417,7 @@ function geometryCacheHas(geometry: InstancedMesh["geometry"]): boolean {
 }
 
 function localPreviewEdgeMesh(type: BrickType, brickColor: string): Mesh {
-  const expanded = expandWideLines(localBrickEdges(type));
+  const expanded = expandWideLines(localBrickEdges(type), localBrickEdgeNormals(type));
   const geometry = new InstancedBufferGeometry();
   for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
   expanded.dispose();
@@ -2400,7 +2425,10 @@ function localPreviewEdgeMesh(type: BrickType, brickColor: string): Mesh {
   geometry.setAttribute("instanceRow1", new InstancedBufferAttribute(new Float32Array([0, 1, 0, 0]), 4));
   geometry.setAttribute("instanceRow2", new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0]), 4));
   const color = new Color(brickColor);
-  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(new Float32Array([color.r, color.g, color.b]), 3));
+  const encoded = color.getHex(SRGBColorSpace);
+  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(
+    new Uint8Array([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff]), 3, true,
+  ));
   geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array([0]), 1));
   geometry.instanceCount = 1;
   const edges = new Mesh(geometry, wideLineMaterial());
