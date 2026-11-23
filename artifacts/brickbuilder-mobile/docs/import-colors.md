@@ -61,7 +61,7 @@ chrome, pearl, glitter, glow or translucent material simulation.
   This normalized factual color table is **not** a certification that every
   downloadable geometry file has that license. Existing per-file geometry
   validation rules remain unchanged.
-- Normalization/selection: BrickBuilder Mobile. Attribution, source version,
+- Normalization/selection: BrickBuilder. Attribution, source version,
   exact source hash and this distinction are also retained in local projects.
   No endorsement by LDraw, BrickLink or LEGO is claimed.
 

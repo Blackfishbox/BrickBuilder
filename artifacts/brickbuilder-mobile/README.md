@@ -1,4 +1,4 @@
-# BrickBuilder Mobile
+# BrickBuilder
 
 An independent, local-first, installable building PWA with an LDraw-only parts
 picker and individually editable imported model instances. This is

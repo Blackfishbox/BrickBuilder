@@ -1,8 +1,8 @@
-# BrickBuilder Mobile — architecture and foundation
+# BrickBuilder — architecture and foundation
 
 ## Product boundary
 
-BrickBuilder Mobile is an independent, offline-oriented PWA. The foundation
+BrickBuilder is an independent, offline-oriented PWA. The foundation
 release is a local 3D editor with three simple brick types. No server, account
 or paid runtime dependency is required. Foundation geometry is procedural, not
 a replacement for the LDraw library.

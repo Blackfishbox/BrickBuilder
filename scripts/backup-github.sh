@@ -11,7 +11,7 @@ if (( ${#COMMIT_SUBJECT} < 12 )) || [[ "$COMMIT_SUBJECT" == *$'\n'* || "$COMMIT_
   exit 2
 fi
 case "${COMMIT_SUBJECT,,}" in
-  'back up brickbuilder mobile'*|'git commit prior to merge'*|'checkpoint'*|'autosave'*|backup|update|updates|changes|wip|'chore: updates'|'chore: backup')
+  'back up brickbuilder'*|'git commit prior to merge'*|'checkpoint'*|'autosave'*|backup|update|updates|changes|wip|'chore: updates'|'chore: backup')
     echo "GitHub backup stopped: replace the generic commit subject with the actual changes." >&2
     exit 2
     ;;

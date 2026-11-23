@@ -29,7 +29,7 @@ nor disposed or reparented. PNG and PDF rendering are unchanged.
 
 ## Reproducible evidence
 
-Start the existing BrickBuilder Mobile development workflow and open
+Start the existing BrickBuilder development workflow and open
 `/visual-fixtures/svg-comparison.html` (relative to the artifact's base path).
 The dev-only comparison is not a production entry point. It shows a public,
 deterministic vehicle on white and dark backgrounds with one camera:

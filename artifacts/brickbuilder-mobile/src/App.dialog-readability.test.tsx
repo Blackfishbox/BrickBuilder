@@ -406,7 +406,7 @@ it.each(["light", "dark"] as const)(
     const privacy = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(privacy.textContent).toContain("Datenschutz · Android-Fassung");
     expect(privacy.querySelector('input[type="checkbox"]')).not.toBeNull();
-    expect(privacy.querySelector("iframe")?.title).toBe("Datenschutzerklärung für BrickBuilder Mobile");
+    expect(privacy.querySelector("iframe")?.title).toBe("Datenschutzerklärung für BrickBuilder");
     act(() => privacy.querySelector<HTMLButtonElement>("button")!.click());
 
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-parts"]')!.click());

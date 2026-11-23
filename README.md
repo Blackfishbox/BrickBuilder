@@ -7,7 +7,7 @@ Console/signing/device-test requirements. Pushes to `android/google-play` build
 signed bundles and publish to the closed `alpha` test once the GitHub publishing
 secret and Play Console permissions are configured. `main` does not publish.
 
-# BrickBuilder Mobile
+# BrickBuilder
 
 A local-first, installable 3D brick-building PWA with a **German application
 interface**. Build with verified LDraw geometry, save projects in your browser,

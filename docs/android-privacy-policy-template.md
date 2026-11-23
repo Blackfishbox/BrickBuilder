@@ -1,4 +1,4 @@
-# BrickBuilder Mobile — privacy policy template
+# BrickBuilder — privacy policy template
 
 **Not publication-ready:** Replace `[PUBLISHER NAME]`, `[CONTACT EMAIL]` and
 `[EFFECTIVE DATE]`, verify the actual release binary/SDKs and publish the finalized

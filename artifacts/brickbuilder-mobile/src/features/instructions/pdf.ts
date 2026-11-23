@@ -32,7 +32,7 @@ export async function exportInstructionPDF(
   const renderer = await createRenderer(document, options.signal);
   try {
     const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
-    pdf.setProperties({ title: `${document.name} – Bauanleitung`, creator: "BrickBuilder Mobile" });
+    pdf.setProperties({ title: `${document.name} – Bauanleitung`, creator: "BrickBuilder" });
     const visible = new Set<string>();
     for (const [index, step] of plan.steps.entries()) {
       options.signal?.throwIfAborted();
@@ -94,7 +94,7 @@ export async function exportInstructionPDF(
     const count = pdf.getNumberOfPages();
     for (let page = 1; page <= count; page++) {
       pdf.setPage(page); pdf.setFontSize(8); pdf.setTextColor(95);
-      pdf.text(`BrickBuilder Mobile · ${document.name}`, 16, 290, { maxWidth: 150 });
+      pdf.text(`BrickBuilder · ${document.name}`, 16, 290, { maxWidth: 150 });
       pdf.text(`${page} / ${count}`, 194, 290, { align: "right" });
     }
     return new Uint8Array(pdf.output("arraybuffer"));

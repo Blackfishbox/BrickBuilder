@@ -41,7 +41,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/brickbuilder-192.png', 'icons/brickbuilder-512.png'],
       manifest: {
-        name: 'BrickBuilder Mobile',
+        name: 'BrickBuilder',
         short_name: 'BrickBuilder',
         description: 'Offlinefähige 3D-Bau-App für Klemmbausteinmodelle auf Android.',
         lang: 'de',

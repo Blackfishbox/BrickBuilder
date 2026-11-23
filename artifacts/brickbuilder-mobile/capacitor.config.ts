@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "brickbuilder.blackfishbox.de",
-  appName: "BrickBuilder Mobile",
+  appName: "BrickBuilder",
   webDir: "dist/public",
   server: { androidScheme: "https" },
   android: { allowMixedContent: false, webContentsDebuggingEnabled: false },

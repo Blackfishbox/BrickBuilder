@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Datenschutzhinweise für die Website und Browser-App BrickBuilder Mobile.">
-  <title>Datenschutz – BrickBuilder Mobile</title>
+  <meta name="description" content="Datenschutzhinweise für die Website und Browser-App BrickBuilder.">
+  <title>Datenschutz – BrickBuilder</title>
   <style>
     :root{font-family:system-ui,sans-serif;line-height:1.65;color:#243d37;background:#faf9f4;color-scheme:light dark}
     *{box-sizing:border-box}body{margin:0}main{max-width:820px;margin:auto;padding:26px 22px 64px;overflow-wrap:anywhere}
@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <div class="top"><a href="index.html">BrickBuilder Mobile</a><button id="language-toggle" type="button" aria-label="Switch language to German">Deutsch</button></div>
+  <div class="top"><a href="index.html">BrickBuilder</a><button id="language-toggle" type="button" aria-label="Switch language to German">Deutsch</button></div>
   <main data-language="en">
     <header><h1>Privacy information</h1><p class="date">Updated: 20 November 2026</p></header>
     <section>
@@ -26,7 +26,7 @@
     </section>
     <section>
       <h2>2. Local processing in the browser</h2>
-      <p>BrickBuilder Mobile is a 3D building application for brick models. The browser app does not require an account. Projects, imported files, settings, and installed part data are processed and stored locally in your browser, including IndexedDB and the browser cache. The app does not automatically upload your models or parts lists and does not provide automatic cloud synchronization.</p>
+      <p>BrickBuilder is a 3D building application for brick models. The browser app does not require an account. Projects, imported files, settings, and installed part data are processed and stored locally in your browser, including IndexedDB and the browser cache. The app does not automatically upload your models or parts lists and does not provide automatic cloud synchronization.</p>
       <p>The app does not include advertising, analytics, or tracking SDKs. Data stored in the browser remains on your device until you delete it or clear the browser's site data. Browser storage may be removed by the browser or operating system.</p>
     </section>
     <section>
@@ -38,7 +38,7 @@
     <section>
       <h2>4. Website and external links</h2>
       <p>When you access the website, the server may process technical request data such as your IP address, request time, requested path, response status, and browser or network information. The server is hosted by Ultahost in Frankfurt am Main, Germany. Access and error logs are retained for 30 days and then deleted.</p>
-      <p>Opening the Google Play link or another external link connects your browser to that provider. The provider may receive technical connection data such as your IP address and applies its own privacy policy. No model data is attached to these links by BrickBuilder Mobile.</p>
+      <p>Opening the Google Play link or another external link connects your browser to that provider. The provider may receive technical connection data such as your IP address and applies its own privacy policy. No model data is attached to these links by BrickBuilder.</p>
       <p>The web app does not send models to a cloud service operated by the app. If you choose to share an exported file through another app, email service, or cloud provider, that provider handles the transfer under its own terms.</p>
     </section>
     <section>
@@ -55,7 +55,7 @@
     </section>
     <section>
       <h2>2. Lokale Verarbeitung im Browser</h2>
-      <p>BrickBuilder Mobile ist eine 3D-Konstruktionsanwendung für Klemmbausteinmodelle. Die Browser-App benötigt kein Benutzerkonto. Projekte, importierte Dateien, Einstellungen und installierte Teiledaten werden lokal in deinem Browser verarbeitet und gespeichert, unter anderem in IndexedDB und im Browser-Cache. Die App lädt Modelle oder Teilelisten nicht automatisch hoch und bietet keine automatische Cloud-Synchronisierung.</p>
+      <p>BrickBuilder ist eine 3D-Konstruktionsanwendung für Klemmbausteinmodelle. Die Browser-App benötigt kein Benutzerkonto. Projekte, importierte Dateien, Einstellungen und installierte Teiledaten werden lokal in deinem Browser verarbeitet und gespeichert, unter anderem in IndexedDB und im Browser-Cache. Die App lädt Modelle oder Teilelisten nicht automatisch hoch und bietet keine automatische Cloud-Synchronisierung.</p>
       <p>Die App enthält keine Werbe-, Analyse- oder Tracking-SDKs. Im Browser gespeicherte Daten bleiben auf deinem Gerät, bis du sie löschst oder die Websitedaten im Browser entfernst. Der Browser oder das Betriebssystem kann Speicherdaten ebenfalls entfernen.</p>
     </section>
     <section>
@@ -67,7 +67,7 @@
     <section>
       <h2>4. Website und externe Links</h2>
       <p>Beim Aufruf der Website kann der Server technische Anfragedaten wie deine IP-Adresse, den Zeitpunkt, den angefragten Pfad, den Antwortstatus sowie Browser- oder Netzwerkinformationen verarbeiten. Der Server wird von Ultahost in Frankfurt am Main, Deutschland, gehostet. Zugriffs- und Fehlerprotokolle werden 30 Tage aufbewahrt und anschließend gelöscht.</p>
-      <p>Wenn du den Google-Play-Link oder einen anderen externen Link öffnest, verbindet sich dein Browser mit diesem Anbieter. Er kann technische Verbindungsdaten wie deine IP-Adresse erhalten und wendet seine eigenen Datenschutzhinweise an. BrickBuilder Mobile übermittelt über diese Links keine Modelldaten.</p>
+      <p>Wenn du den Google-Play-Link oder einen anderen externen Link öffnest, verbindet sich dein Browser mit diesem Anbieter. Er kann technische Verbindungsdaten wie deine IP-Adresse erhalten und wendet seine eigenen Datenschutzhinweise an. BrickBuilder übermittelt über diese Links keine Modelldaten.</p>
       <p>Die Web-App sendet Modelle nicht an einen von der App betriebenen Cloud-Dienst. Wenn du eine exportierte Datei mit einer anderen App, einem E-Mail-Dienst oder einem Cloud-Anbieter teilst, verarbeitet dieser Anbieter die Übertragung nach seinen eigenen Bedingungen.</p>
     </section>
     <section>
@@ -84,8 +84,8 @@
         document.documentElement.lang = language;
         document.querySelectorAll("main[data-language]").forEach(main => { main.hidden = main.dataset.language !== language; });
         document.querySelector('meta[name="description"]').content = language === "en"
-          ? "Privacy information for the BrickBuilder Mobile website and browser app."
-          : "Datenschutzhinweise für die Website und Browser-App BrickBuilder Mobile.";
+          ? "Privacy information for the BrickBuilder website and browser app."
+          : "Datenschutzhinweise für die Website und Browser-App BrickBuilder.";
         button.textContent = language === "en" ? "Deutsch" : "English";
         button.setAttribute("aria-label", language === "en" ? "Switch language to German" : "Sprache auf Englisch umstellen");
       };

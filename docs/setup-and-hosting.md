@@ -185,7 +185,7 @@ general Studio compatibility.
 
 Root `pnpm run typecheck` and `pnpm run build` cover **all** workspace packages,
 including development previews and optional services. Use the filtered commands
-above when installing or hosting only BrickBuilder Mobile.
+above when installing or hosting only BrickBuilder.
 
 ## Static hosting at the domain root
 

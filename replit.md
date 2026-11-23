@@ -1,4 +1,4 @@
-# BrickBuilder Mobile
+# BrickBuilder
 
 A local-first 3D brick editor and installable PWA with a German interface.
 

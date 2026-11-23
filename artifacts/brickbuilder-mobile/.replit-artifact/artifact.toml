@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "BrickBuilder Mobile"
+title = "BrickBuilder"
 description = "Eine offlinefähige, installierbare mobile 3D-Konstruktions-App für LEGO-kompatible Bausteinmodelle mit lokaler Projektspeicherung und touchoptimierter Bedienung."
 version = "1.0.0"
 id = "artifacts/brickbuilder-mobile"
