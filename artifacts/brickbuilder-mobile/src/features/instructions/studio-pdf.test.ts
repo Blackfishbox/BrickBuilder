@@ -66,3 +66,30 @@ it("exports one PDF page per imported Studio page with the source format and ste
   expect(renderer.dispose).toHaveBeenCalledOnce();
 });
 
+it("exports the Studio custom paper size using its configured units and orientation", async () => {
+  const imageBytes = readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url));
+  const xml = `<Instruction>
+    <GlobalSetting><PageSetup><PaperType>Custom</PaperType><LengthUnit>Pixels</LengthUnit><CustomSize>1190 1684</CustomSize><IsPortrait>False</IsPortrait><Margins>40 40 40 40</Margins></PageSetup></GlobalSetting>
+    <Pages><Page template="OneByTwo"><Slot><Step SerializedIndex="0"/></Slot><Slot><Step SerializedIndex="1"/></Slot></Page></Pages>
+    <CustomLayouts/>
+  </Instruction>`;
+  const imported = {
+    version: 1 as const, format: "io" as const, sourceName: "custom-paper.io",
+    originalBytes: Array.from(writeZip({ "model.ldr": new TextEncoder().encode(sourceText), "model.ins": new TextEncoder().encode(xml) })),
+    sourceText, ...parseLDraw(sourceText), resources: {}, legalDocuments: [],
+  };
+  const document = createEmptyDocument("Custom paper");
+  document.imported = imported;
+  document.instructions = readStudioInstructions(xml, sourceInstructionPlan(imported));
+  const image = `data:image/png;base64,${imageBytes.toString("base64")}`;
+  const renderer: InstructionImageRenderer = { image: () => image, dispose: vi.fn() };
+
+  const bytes = await exportStudioLayoutPDF(document, document.instructions, {}, async () => renderer);
+  const mediaBox = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(new TextDecoder().decode(bytes));
+
+  expect(mediaBox).not.toBeNull();
+  expect(Number(mediaBox![1])).toBeCloseTo(1263, 1);
+  expect(Number(mediaBox![2])).toBeCloseTo(892.5, 1);
+  expect(renderer.dispose).toHaveBeenCalledOnce();
+});
+

@@ -217,6 +217,25 @@ const PAPER_SIZES: Record<string, [number, number]> = {
   Letter: [215.9, 279.4], Legal: [215.9, 355.6], Tabloid: [279.4, 431.8],
 };
 
+function studioUnitToMm(unit: unknown): number {
+  switch (text(unit).trim().toLowerCase()) {
+    case "pixel": case "pixels": case "px": return 25.4 / 96;
+    case "inch": case "inches": case "in": return 25.4;
+    case "centimeter": case "centimeters": case "cm": return 10;
+    case "point": case "points": case "pt": return 25.4 / 72;
+    case "millimeter": case "millimeters": case "mm": return 1;
+    default: return 1;
+  }
+}
+
+function customPaperSize(value: unknown, unitScale: number): [number, number] | undefined {
+  const dimensions = text(value).trim().split(/[\s,;]+/).map(Number);
+  if (dimensions.length !== 2 || !dimensions.every(dimension => Number.isFinite(dimension) && dimension > 0)) return undefined;
+  const millimeters = dimensions.map(dimension => dimension * unitScale);
+  if (millimeters.some(dimension => dimension > 5000)) return undefined;
+  return millimeters as [number, number];
+}
+
 function studioPages(document: BuilderDocument, input: InstructionPlan): {
   pages: StudioPdfPage[]; size: [number, number]; margins: [number, number, number, number];
   scale: number; imageData: Record<string, { data: string; format: "PNG" | "JPEG" }>;
@@ -232,14 +251,21 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
   const customLayouts = asRecord(instruction?.CustomLayouts);
   const globalStepLayout = asRecord(globalStyle?.StepItemLayout)?.StepCompLayout;
   const paper = text(settings?.PaperType) || "A4";
-  const paperSize = PAPER_SIZES[paper];
-  if (!paperSize) throw new Error(`Das Studio-Papierformat „${paper}“ wird für den PDF-Export nicht unterstützt.`);
+  const unitScale = studioUnitToMm(settings?.LengthUnit);
+  const paperSize = paper.toLowerCase() === "custom"
+    ? customPaperSize(settings?.CustomSize, unitScale)
+    : PAPER_SIZES[paper];
+  if (!paperSize) {
+    if (paper.toLowerCase() === "custom") {
+      throw new Error("Das benutzerdefinierte Studio-Papierformat enthält keine gültigen Maße.");
+    }
+    throw new Error(`Das Studio-Papierformat „${paper}“ wird für den PDF-Export nicht unterstützt.`);
+  }
   const portrait = text(settings?.IsPortrait).toLowerCase() !== "false";
   const size: [number, number] = portrait ? paperSize : [paperSize[1], paperSize[0]];
   const rawMargins = text(settings?.Margins).trim().split(/\s+/).map(Number);
   const marginValues = rawMargins.length === 4 && rawMargins.every(Number.isFinite) ? rawMargins : [40, 40, 40, 40];
-  const pxToMm = text(settings?.LengthUnit).toLowerCase() === "pixels" ? 25.4 / 96 : 1;
-  const margins = marginValues.map(value => Math.max(0, Math.min(size[0] / 3, value * pxToMm))) as [number, number, number, number];
+  const margins = marginValues.map(value => Math.max(0, Math.min(size[0] / 3, value * unitScale))) as [number, number, number, number];
   const pageNodes = asList(asRecord(instruction?.Pages)?.Page);
   if (!pageNodes.length) throw new Error("Das importierte Studio-Seitenlayout enthält keine Seiten.");
 
@@ -278,7 +304,7 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
     });
     return { source: page, images, ...(slotRects ? { slotRects } : {}), steps: pageSteps };
   });
-  const scale = pxToMm;
+  const scale = unitScale;
   const paths = [...new Set(pages.flatMap(page => page.images.map(image => image.path)))];
   const imageData: Record<string, { data: string; format: "PNG" | "JPEG" }> = Object.create(null);
   if (paths.length) {
@@ -298,7 +324,7 @@ function studioPages(document: BuilderDocument, input: InstructionPlan): {
       imageData[path] = { data: `data:image/${format.toLowerCase()};base64,${btoa(binary)}`, format };
     }
   }
-  return { pages, size, margins, scale, imageData, styles: studioStyles(globalStyle, pxToMm) };
+  return { pages, size, margins, scale, imageData, styles: studioStyles(globalStyle, unitScale) };
 }
 
 function fitImage(data: string, x: number, y: number, width: number, height: number, page: jsPDF) {
