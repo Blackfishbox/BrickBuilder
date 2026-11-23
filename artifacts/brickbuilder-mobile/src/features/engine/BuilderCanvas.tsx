@@ -65,6 +65,7 @@ import { expandWideLines, setWideLineResolution, wideLineMaterial } from "./wide
 import {
   BRICK_DEFINITIONS,
   BRICK_HEIGHT,
+  snapPosition,
   type Brick,
   type BrickType,
   type Position3,
@@ -107,7 +108,7 @@ interface BuilderCanvasProps {
   selectedColorCode?: string;
   placementPreview?: PreparedPart | null;
   toolMode: ToolMode;
-  onPlace: (position: Position3, transform?: Affine, options?: { stayInBuildMode?: boolean }) => void;
+  onPlace: (position: Position3, transform?: Affine, options?: { stayInBuildMode?: boolean; floorSnap?: boolean }) => void;
   onSelect: (id: string | null) => void;
   onViewPartTap?: (id: string) => void;
   onOpenRotationControls?: (id: string) => void;
@@ -1620,7 +1621,7 @@ export function BuilderCanvas({
             x: destination.x,
             y: destination.y - importedOffsetRef.current - prepared.bottom,
             z: destination.z,
-          }, placementLatch);
+          }, placementLatch, Math.abs(destination.y) < 0.01);
           placementLatch = snapped.latch;
           matrix = [...snapped.transform.matrix] as Affine;
           if (overlayRef.current) overlayRef.current.contacts = snapped.transform.contacts;
@@ -1686,9 +1687,15 @@ export function BuilderCanvas({
       if (!drag.destination || !drag.needsSnap) return;
       if (drag.matrix && propsRef.current.imported) {
         const offset = importedOffsetRef.current;
+        const instance = propsRef.current.imported.instances.find(item => item.id === drag.id);
+        const bounds = stackingBounds(propsRef.current.imported).get(drag.id);
+        const originY = instance ? -instance.matrix[7] / 20 + offset : drag.origin.y;
+        const onConstructionFloor = !!bounds &&
+          Math.abs(bounds.min.y + offset + drag.destination.y - originY) < 0.05;
         const requested = { ...drag.destination, y: drag.destination.y - offset };
-        const magnetic = magneticConstructionTransform(propsRef.current.imported, drag.id,
-          requested, drag.magneticLatch);
+        const magnetic = onConstructionFloor
+          ? magneticConstructionTransform(propsRef.current.imported, drag.id, requested, drag.magneticLatch, true)
+          : magneticConstructionTransform(propsRef.current.imported, drag.id, requested, drag.magneticLatch);
         drag.magneticLatch = magnetic.latch;
         const result = magnetic.transform;
         drag.connection = result;
@@ -1701,8 +1708,18 @@ export function BuilderCanvas({
         const position = { x: result.matrix[3] / 20, y: -result.matrix[7] / 20, z: result.matrix[11] / 20 };
         drag.destination = { ...position, y: position.y + offset };
       } else {
-        drag.destination.x = Math.round(drag.destination.x * 2) / 2;
-        drag.destination.z = Math.round(drag.destination.z * 2) / 2;
+        const brick = drag.members.find(member => member.id === drag.id)?.brick;
+        const originalBounds = brick ? brickConstructionBounds(brick) : null;
+        const onConstructionFloor = !!originalBounds &&
+          Math.abs(originalBounds.min.y + drag.destination.y - drag.origin.y) < 0.05;
+        if (brick && onConstructionFloor) {
+          const snapped = snapPosition(drag.destination, brick.type, brick.rotation);
+          drag.destination.x = snapped.x;
+          drag.destination.z = snapped.z;
+        } else {
+          drag.destination.x = Math.round(drag.destination.x * 2) / 2;
+          drag.destination.z = Math.round(drag.destination.z * 2) / 2;
+        }
       }
       drag.needsSnap = false;
     };
@@ -1789,9 +1806,13 @@ export function BuilderCanvas({
       pendingTapActionRef.current = null;
       if (propsRef.current.projectId === pending.projectId) pending.action();
     };
-    const placementOptions = () => autoSelectAfterPlacementRef.current
-      ? undefined
-      : { stayInBuildMode: true };
+    const placementOptions = (destination: Position3 | null) => {
+      const options = {
+        ...(!autoSelectAfterPlacementRef.current ? { stayInBuildMode: true } : {}),
+        ...(destination && Math.abs(destination.y) < 0.01 ? { floorSnap: true } : {}),
+      };
+      return Object.keys(options).length ? options : undefined;
+    };
     const placeAtCanvasPoint = (point: PointerPoint) => {
       if (propsRef.current.toolMode !== "build" || propsRef.current.emptyDoubleTapZoomEnabled === false) return false;
       const destination = projectToPlane(point, 0);
@@ -1800,7 +1821,7 @@ export function BuilderCanvas({
       propsRef.current.onPlace(
         { ...destination, y: destination.y - importedOffsetRef.current },
         transform,
-        placementOptions(),
+        placementOptions(destination),
       );
       placementLatch = undefined;
       return true;
@@ -2085,13 +2106,13 @@ export function BuilderCanvas({
                 previousPartTapRef.current = null;
                 if (propsRef.current.projectId !== projectAtTap) return;
                 updatePlacementPreview(destination);
-                propsRef.current.onPlace(adjusted, undefined, placementOptions());
+                propsRef.current.onPlace(adjusted, undefined, placementOptions(destination));
               }, PART_TAP_ACTION_DELAY_MS);
               pendingTapActionRef.current = {
                 timer, projectId: projectAtTap,
                 action: () => {
                   updatePlacementPreview(destination);
-                  propsRef.current.onPlace(adjusted, undefined, placementOptions());
+                  propsRef.current.onPlace(adjusted, undefined, placementOptions(destination));
                 },
               };
               suppressTapAction = true;
@@ -2155,7 +2176,7 @@ export function BuilderCanvas({
           }
           if (destination) {
             const transform = updatePlacementPreview(destination);
-            current.onPlace({ ...destination, y: destination.y - importedOffsetRef.current }, transform, placementOptions());
+            current.onPlace({ ...destination, y: destination.y - importedOffsetRef.current }, transform, placementOptions(destination));
             placementLatch = undefined;
           }
         } else if (current.toolMode === "delete" && click && !click.moved) {

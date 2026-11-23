@@ -100,7 +100,7 @@ describe("oriented connection transactions", () => {
   it("snaps free placement on the construction floor to whole studs, keeping half studs above it", () => {
     const model = connectionFixture(partLine("3001"));
     const id = model.instances[0].id;
-    const onFloor = constructionTransform(model, id, { x: 0.28, y: 0, z: 0.72 });
+    const onFloor = constructionTransform(model, id, { x: 0.28, y: 0, z: 0.72 }, true);
     const connectors = describeConnections("3001.dat", model).connectors.filter(connector =>
       connector.family === "cylinder" && connector.gender === "M" && connector.clearId === "studC",
     );
@@ -261,7 +261,7 @@ describe("oriented connection transactions", () => {
     const id = model.instances[1].id;
     const result = constructionTransform(model, id, { x: 12.1, y: 1.2, z: 0 });
     expect(result.contacts).toHaveLength(0);
-    expect(result.matrix[3]).toBe(250);
+    expect(result.matrix[3]).toBe(240);
     expect(activeConnections(model, id)).toHaveLength(0);
   });
   it("uses the next free layer and rejects an occupied socket", () => {

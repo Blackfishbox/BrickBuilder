@@ -19,7 +19,6 @@ const MAX_PREVIEWS = 12;
 interface Entry { id: string; instance: ImportedInstance; connectors: Connector[]; box: Box3 }
 interface Index { entries: Map<string, Entry>; cells: Map<string, Set<Entry>>; wide: Entry[] }
 const indexes = new WeakMap<ImportedModel, Index>();
-const constructionFloors = new WeakMap<ImportedModel, number>();
 const selectedCache = new WeakMap<ImportedModel, Map<string, Contact[]>>();
 const lduPoint = (p: Vector3): [number, number, number] => [p.x / 20, -p.y / 20, p.z / 20];
 // Studio stores transforms as rounded decimal floats. A few thousandths of an
@@ -399,25 +398,13 @@ export function snapConnection(model: ImportedModel, id: string, desired: Positi
   return best;
 }
 
-export function constructionTransform(model: ImportedModel, id: string, desired: Position3): ConnectionTransform {
+export function constructionTransform(
+  model: ImportedModel, id: string, desired: Position3, snapToWholeStudFloor = false,
+): ConnectionTransform {
   const snap = snapConnection(model, id, desired);
   if (snap) return snap;
   const instance = indexFor(model).entries.get(id)!.instance;
-  const bounds = stackingBounds(model);
-  let floor = constructionFloors.get(model);
-  if (floor === undefined) {
-    floor = Infinity;
-    for (const box of bounds.values()) floor = Math.min(floor, box.min.y);
-    if (!Number.isFinite(floor)) floor = 0;
-    constructionFloors.set(model, floor);
-  }
-  const currentBounds = bounds.get(id);
-  const currentOriginY = -instance.matrix[7] / 20;
-  const proposedBottom = currentBounds
-    ? currentBounds.min.y + desired.y - currentOriginY
-    : desired.y;
-  const onFloor = proposedBottom <= floor + 0.05;
-  const stud = onFloor
+  const stud = snapToWholeStudFloor
     ? indexFor(model).entries.get(id)?.connectors.find(connector =>
       connector.family === "cylinder" && connector.gender === "M" && connector.clearId === "studC",
     )
@@ -434,10 +421,10 @@ export function constructionTransform(model: ImportedModel, id: string, desired:
   const position = instance.tiltX || instance.tiltZ ? desired :
     localStackedPosition(model, id, {
       ...desired,
-      x: onFloor
+      x: snapToWholeStudFloor
         ? studPosition ? snapThroughStud(desired.x, studPosition.x, currentOriginX) : Math.round(desired.x)
         : Math.round(desired.x * 2) / 2,
-      z: onFloor
+      z: snapToWholeStudFloor
         ? studPosition ? snapThroughStud(desired.z, studPosition.z, currentOriginZ) : Math.round(desired.z)
         : Math.round(desired.z * 2) / 2,
     });
@@ -456,7 +443,7 @@ export interface MagneticLatch {
   transform: ConnectionTransform;
 }
 export function magneticConstructionTransform(
-  model: ImportedModel, id: string, desired: Position3, latch?: MagneticLatch,
+  model: ImportedModel, id: string, desired: Position3, latch?: MagneticLatch, snapToWholeStudFloor = false,
 ): { transform: ConnectionTransform; latch?: MagneticLatch } {
   if (latch?.model === model && latch.id === id) {
     const matrix = latch.transform.matrix;
@@ -465,6 +452,6 @@ export function magneticConstructionTransform(
       return { transform: latch.transform, latch };
     }
   }
-  const transform = constructionTransform(model, id, desired);
+  const transform = constructionTransform(model, id, desired, snapToWholeStudFloor);
   return { transform, latch: transform.contacts.length ? { model, id, anchor: { ...desired }, transform } : undefined };
 }

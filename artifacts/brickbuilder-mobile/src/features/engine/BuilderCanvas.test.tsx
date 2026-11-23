@@ -1243,7 +1243,7 @@ describe("frame-coalesced drag transactions", () => {
     pointer("pointermove", end.x, end.y);
     flushFrame();
     expect(search).toHaveBeenCalledOnce();
-    expect(search.mock.calls[0]).toEqual([model, id, expect.any(Object), undefined]);
+    expect(search.mock.calls[0]).toEqual([model, id, expect.any(Object), undefined, true]);
     const transform = search.mock.results[0].value.transform;
     expect(transform.contacts).toHaveLength(2);
     expect(transform.matrix).toEqual([1, 0, 0, 0, 0, 1, 0, -16, 0, 0, 1, 10]);
@@ -1710,7 +1710,7 @@ describe("frame-coalesced drag transactions", () => {
     pointer("pointerup", empty.x, empty.y);
 
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true, floorSnap: true });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
     expect(props.onPlace).toHaveBeenCalledOnce();
   });
@@ -1725,7 +1725,7 @@ describe("frame-coalesced drag transactions", () => {
     pointer("pointerdown", empty.x, empty.y);
     pointer("pointerup", empty.x, empty.y);
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toBeUndefined();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ floorSnap: true });
   });
   it("keeps a single empty-space tap in build mode as the normal placement action", async () => {
     const { props } = await mount("build");
@@ -1737,7 +1737,7 @@ describe("frame-coalesced drag transactions", () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
 
     expect(props.onPlace).toHaveBeenCalledOnce();
-    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true, floorSnap: true });
   });
   it("treats a build-mode part double tap as one normal placement", async () => {
     const { props, point } = await mount("build");

@@ -632,7 +632,7 @@ export function useBuilder() {
   }, [t, updateDocument]);
 
   const place = useCallback(
-    (position: Position3, previewTransform?: Affine, options?: { stayInBuildMode?: boolean }) => {
+    (position: Position3, previewTransform?: Affine, options?: { stayInBuildMode?: boolean; floorSnap?: boolean }) => {
       if (toolMode === "delete" || partLoading) return;
       const selection = placementRef.current;
        if (!selection) { setPartError(t("inventory.chooseFirst")); return; }
@@ -646,7 +646,7 @@ export function useBuilder() {
           inheritStackingBounds(document.imported, next.imported!);
           const instance = next.imported!.instances.at(-1)!;
           const origin = { x: position.x, y: -instance.matrix[7] / 20, z: position.z };
-           const matrix = previewTransform ?? constructionTransform(next.imported!, id, origin).matrix;
+           const matrix = previewTransform ?? constructionTransform(next.imported!, id, origin, options?.floorSnap).matrix;
            next = moveImported(next, id, { x: matrix[3] / 20, y: -matrix[7] / 20, z: matrix[11] / 20 }, false, matrix);
           return next;
         });
