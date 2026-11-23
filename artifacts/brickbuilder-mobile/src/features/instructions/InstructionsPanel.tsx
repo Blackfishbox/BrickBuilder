@@ -58,6 +58,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
   const [autoProgress, setAutoProgress] = useState<AutoInstructionProgress | null>(null);
   const [showAutoConfirm, setShowAutoConfirm] = useState(false);
@@ -179,6 +180,31 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
     const steps = saveAngleDraft(plan.steps).map((s, i) => (i === target ? { ...s, partIds: target < current ? [...s.partIds, ...step.partIds] : [...step.partIds, ...s.partIds] } : s));
     steps.splice(current, 1);
     commit(steps); setConfirmDelete(false); setIndex(Math.max(0, current - 1));
+  };
+  const deleteAllSteps = () => {
+    const layoutWarning = t("instruction.deleteAllStepsLayoutRemoved");
+    onChange({
+      ...plan,
+      source: "manual",
+      edited: true,
+      steps: [{
+        id: crypto.randomUUID(),
+        title: t("instruction.stepNumber", { number: 1 }),
+        notes: "",
+        partIds: [],
+      }],
+      warnings: plan.studioLayout && !plan.warnings.includes(layoutWarning)
+        ? [...plan.warnings, layoutWarning].slice(-100)
+        : plan.warnings,
+      studioLayout: undefined,
+    });
+    setIndex(0);
+    setSelected(new Set());
+    setScope("all");
+    setLimit(PAGE);
+    setConfirmDelete(false);
+    setConfirmDeleteAll(false);
+    setShowAutoConfirm(false);
   };
   const moveStep = (dir: -1 | 1) => {
     const to = current + dir;
@@ -426,8 +452,11 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             <p className="ins-hint">{t("instruction.cameraInfo")}</p>
             <div className="ins-actions">
               <button className="ins-ghost" onClick={addStep} data-testid="button-instructions-add-step"><Plus size={15} /> {t("instruction.addStep")}</button>
-              <button className="ins-ghost" onClick={() => setShowAutoConfirm(true)} disabled={!total || !!exporting || !!autoProgress}
+              <button className="ins-ghost" onClick={() => { setConfirmDeleteAll(false); setShowAutoConfirm(true); }} disabled={!total || !!exporting || !!autoProgress}
                 data-testid="button-instructions-auto-generate"><Sparkles size={15} /> {t("instruction.autoGenerate")}</button>
+              <button className="ins-ghost is-danger" onClick={() => { setConfirmDelete(false); setShowAutoConfirm(false); setConfirmDeleteAll(true); }}
+                disabled={!!exporting || !!autoProgress} aria-label={t("instruction.deleteAllSteps")} title={t("instruction.deleteAllSteps")}
+                data-testid="button-instructions-delete-all"><Trash2 size={15} /> {t("instruction.deleteAllSteps")}</button>
               <button className="ins-ghost" onClick={() => moveStep(-1)} disabled={current === 0} aria-label={t("instruction.moveEarlier")} data-testid="button-instructions-move-up"><ArrowUp size={15} /></button>
               <button className="ins-ghost" onClick={() => moveStep(1)} disabled={current === plan.steps.length - 1} aria-label={t("instruction.moveLater")} data-testid="button-instructions-move-down"><ArrowDown size={15} /></button>
               {confirmDelete ? (
@@ -446,6 +475,15 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
                 <div>
                   <button className="ins-ghost" onClick={() => setShowAutoConfirm(false)} data-testid="button-instructions-auto-cancel">{t("inventory.cancel")}</button>
                   <button className="ins-primary" onClick={() => void generateSteps()} data-testid="button-instructions-auto-confirm">{t("instruction.autoGenerateProceed")}</button>
+                </div>
+              </div>
+            )}
+            {confirmDeleteAll && (
+              <div className="ins-auto-confirm ins-delete-all-confirm" role="alertdialog" aria-label={t("instruction.deleteAllSteps")} data-testid="dialog-instructions-delete-all">
+                <p>{t(plan.studioLayout ? "instruction.deleteAllStepsConfirmStudio" : "instruction.deleteAllStepsConfirm")}</p>
+                <div>
+                  <button className="ins-ghost" onClick={() => setConfirmDeleteAll(false)} data-testid="button-instructions-delete-all-cancel">{t("inventory.cancel")}</button>
+                  <button className="ins-danger" onClick={deleteAllSteps} data-testid="button-instructions-delete-all-confirm">{t("instruction.deleteAllStepsProceed")}</button>
                 </div>
               </div>
             )}

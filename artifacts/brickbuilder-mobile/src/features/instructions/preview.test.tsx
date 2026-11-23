@@ -74,6 +74,45 @@ it("requires confirmation before replacing a sequence and then generates a suppo
   expect(host.querySelector('[data-testid="dialog-instructions-auto-generate"]')).toBeNull();
 });
 
+it("confirms clearing all steps while preserving model parts", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
+  const source = createEmptyDocument();
+  source.bricks = [
+    { id: "one", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 },
+    { id: "two", type: "brick-2x2", color: "#0000ff", x: 2, y: 0, z: 0, rotation: 0 },
+  ];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [], steps: [
+    { id: "first", title: "Step 1", notes: "Start", partIds: ["one"] },
+    { id: "second", title: "Step 2", notes: "", partIds: ["two"] },
+  ] };
+  let saved = source;
+  function Harness() {
+    const [doc, setDoc] = useState(source);
+    return <InstructionsPanel document={doc} onChange={plan => setDoc(current => {
+      const next = updateInstructions(current, plan);
+      saved = next;
+      return next;
+    })} onClose={() => {}} onExportPDF={async () => {}} />;
+  }
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<Harness />));
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-delete-all"]')!.click());
+  expect(host.querySelector('[data-testid="dialog-instructions-delete-all"]')).not.toBeNull();
+  expect(saved.instructions?.steps).toHaveLength(2);
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-delete-all-cancel"]')!.click());
+  expect(host.querySelector('[data-testid="dialog-instructions-delete-all"]')).toBeNull();
+  expect(saved.instructions?.steps).toHaveLength(2);
+
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-delete-all"]')!.click());
+  act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-delete-all-confirm"]')!.click());
+  expect(saved.instructions?.source).toBe("manual");
+  expect(saved.instructions?.steps).toHaveLength(1);
+  expect(saved.instructions?.steps[0]).toMatchObject({ title: "Step 1", partIds: [], notes: "" });
+  expect(saved.bricks.map(part => part.id)).toEqual(["one", "two"]);
+});
+
 it("persists manual preview camera changes independently for each step", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();

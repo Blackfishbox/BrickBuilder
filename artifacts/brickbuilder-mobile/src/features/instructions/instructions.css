@@ -74,6 +74,7 @@
 .ins-hint { margin: 0; font-size: 11px; color: #6c7a72; line-height: 1.45; }
 .ins-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ins-auto-confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #c8b68b; border-radius: 10px; background: #fff9e8; color: #51462f; font-size: 12px; line-height: 1.45; }
+.ins-delete-all-confirm { border-color: #cc8d7b; background: #fff1ec; color: #773421; }
 .ins-auto-confirm p { margin: 0; }
 .ins-auto-confirm > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .ins-auto-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px solid #d5d8ca; border-radius: 10px; background: #f0efe6; color: #394c43; font-size: 11px; }
