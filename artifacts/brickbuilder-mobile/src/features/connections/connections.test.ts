@@ -97,18 +97,12 @@ describe("genuine source profile families", () => {
 });
 
 describe("oriented connection transactions", () => {
-  it("snaps free placement on the construction floor to whole studs, keeping half studs above it", () => {
+  it("snaps the part anchor to floor-grid intersections, keeping half steps above it", () => {
     const model = connectionFixture(partLine("3001"));
     const id = model.instances[0].id;
     const onFloor = constructionTransform(model, id, { x: 0.28, y: 0, z: 0.72 }, true);
-    const connectors = describeConnections("3001.dat", model).connectors.filter(connector =>
-      connector.family === "cylinder" && connector.gender === "M" && connector.clearId === "studC",
-    );
-    expect(connectors).toHaveLength(8);
-    const alignedStudX = connectors[0].frame[3] / 20 + onFloor.matrix[3] / 20;
-    const alignedStudZ = connectors[0].frame[11] / 20 + onFloor.matrix[11] / 20;
-    expect(alignedStudX).toBeCloseTo(Math.round(alignedStudX));
-    expect(alignedStudZ).toBeCloseTo(Math.round(alignedStudZ));
+    expect(onFloor.matrix[3] / 20).toBe(0);
+    expect(onFloor.matrix[11] / 20).toBe(1);
 
     const raised = constructionTransform(model, id, { x: 0.28, y: 1.2, z: 0.72 });
     expect(raised.matrix[3] / 20).toBe(0.5);

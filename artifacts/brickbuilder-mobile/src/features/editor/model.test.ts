@@ -3,21 +3,16 @@ import { describe, expect, it } from "vitest";
 import { rotateQuarterTurn, snapPosition } from "./model";
 
 describe("snapPosition", () => {
-  it("snaps parts on the floor to whole-stud positions", () => {
+  it("snaps the part anchor onto floor-grid intersections, regardless of part size", () => {
     expect(snapPosition({ x: 0.26, y: 0, z: -1.24 })).toEqual({
       x: 0,
       y: 0,
       z: -1,
     });
-    expect(snapPosition({ x: 0.26, y: 0, z: 0.26 }, "brick-2x4")).toEqual({
-      x: 0.5,
-      y: 0,
-      z: 0.5,
-    });
-    expect(snapPosition({ x: 0.26, y: 0, z: 0.26 }, "brick-1x2")).toEqual({
+    expect(snapPosition({ x: 0.26, y: 0, z: 0.26 })).toEqual({
       x: 0,
       y: 0,
-      z: 0.5,
+      z: 0,
     });
   });
 

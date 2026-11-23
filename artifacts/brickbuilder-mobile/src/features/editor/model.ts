@@ -84,24 +84,15 @@ export function createEmptyDocument(name = "Neues Modell"): BuilderDocument {
   };
 }
 
-export function snapPosition(position: Position3, type?: BrickType, rotation = 0): Position3 {
+export function snapPosition(position: Position3): Position3 {
   const y = Math.max(0, Math.round(position.y / BRICK_HEIGHT) * BRICK_HEIGHT);
-  const quarterTurn = Math.round(rotation / 90);
-  const swapped = Math.abs(rotation - quarterTurn * 90) < 1e-6 && Math.abs(quarterTurn) % 2 === 1;
-  const definition = type ? BRICK_DEFINITIONS[type] : undefined;
-  const phaseX = y === 0 && definition
-    ? ((swapped ? definition.studsZ : definition.studsX) % 2 === 0 ? 0.5 : 0)
-    : 0;
-  const phaseZ = y === 0 && definition
-    ? ((swapped ? definition.studsX : definition.studsZ) % 2 === 0 ? 0.5 : 0)
-    : 0;
-  const snapHorizontal = (value: number, phase: number) => y === 0
-    ? Math.round(value - phase) + phase
+  const snapHorizontal = (value: number) => y === 0
+    ? Math.round(value)
     : Math.round(value / GRID_STEP) * GRID_STEP;
   return {
-    x: snapHorizontal(position.x, phaseX),
+    x: snapHorizontal(position.x),
     y,
-    z: snapHorizontal(position.z, phaseZ),
+    z: snapHorizontal(position.z),
   };
 }
 

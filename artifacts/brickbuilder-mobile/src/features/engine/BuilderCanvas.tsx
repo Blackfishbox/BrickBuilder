@@ -1713,7 +1713,7 @@ export function BuilderCanvas({
         const onConstructionFloor = !!originalBounds &&
           Math.abs(originalBounds.min.y + drag.destination.y - drag.origin.y) < 0.05;
         if (brick && onConstructionFloor) {
-          const snapped = snapPosition(drag.destination, brick.type, brick.rotation);
+          const snapped = snapPosition(drag.destination);
           drag.destination.x = snapped.x;
           drag.destination.z = snapped.z;
         } else {

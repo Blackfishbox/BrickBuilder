@@ -404,29 +404,13 @@ export function constructionTransform(
   const snap = snapConnection(model, id, desired);
   if (snap) return snap;
   const instance = indexFor(model).entries.get(id)!.instance;
-  const stud = snapToWholeStudFloor
-    ? indexFor(model).entries.get(id)?.connectors.find(connector =>
-      connector.family === "cylinder" && connector.gender === "M" && connector.clearId === "studC",
-    )
-    : undefined;
-  const studPosition = stud ? axes(stud).position : undefined;
-  const currentOriginX = instance.matrix[3] / 20;
-  const currentOriginZ = instance.matrix[11] / 20;
-  const snapThroughStud = (coordinate: number, connectorCoordinate: number, origin: number) => {
-    const proposedStudCoordinate = connectorCoordinate / 20 + coordinate - origin;
-    return coordinate + Math.round(proposedStudCoordinate) - proposedStudCoordinate;
-  };
   // A missed connection must not replace deliberate tilted placement with
   // axis-aligned grid rounding or whole-box automatic lifting.
   const position = instance.tiltX || instance.tiltZ ? desired :
     localStackedPosition(model, id, {
       ...desired,
-      x: snapToWholeStudFloor
-        ? studPosition ? snapThroughStud(desired.x, studPosition.x, currentOriginX) : Math.round(desired.x)
-        : Math.round(desired.x * 2) / 2,
-      z: snapToWholeStudFloor
-        ? studPosition ? snapThroughStud(desired.z, studPosition.z, currentOriginZ) : Math.round(desired.z)
-        : Math.round(desired.z * 2) / 2,
+      x: snapToWholeStudFloor ? Math.round(desired.x) : Math.round(desired.x * 2) / 2,
+      z: snapToWholeStudFloor ? Math.round(desired.z) : Math.round(desired.z * 2) / 2,
     });
   const matrix = [...instance.matrix] as Affine;
   matrix[3] = position.x * 20; matrix[7] = -position.y * 20; matrix[11] = position.z * 20;

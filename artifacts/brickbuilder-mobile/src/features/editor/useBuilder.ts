@@ -684,7 +684,7 @@ export function useBuilder() {
       updateDocument(document => {
         const existing = document.bricks.find(brick => brick.id === id);
         if (!existing) return document;
-        const snapped = snapPosition(position, existing.type, existing.rotation);
+        const snapped = snapPosition(position);
         const next = clampBrickToGround({ ...existing, ...snapped });
         if (next.x === existing.x && next.y === existing.y && next.z === existing.z) return document;
         return {

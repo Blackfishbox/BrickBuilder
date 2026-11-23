@@ -1033,10 +1033,10 @@ describe("frame-coalesced drag transactions", () => {
         return [preview.matrix[3], preview.matrix[7], preview.matrix[11]];
       };
       if (webgl) {
-        expect(visiblePosition()[0]).toBeCloseTo(0.5);
+        expect(visiblePosition()[0]).toBeCloseTo(1);
         expect(visiblePosition()[2]).toBeCloseTo(1);
       } else {
-        expect(visiblePosition()[0]).toBeCloseTo(10);
+        expect(visiblePosition()[0]).toBeCloseTo(20);
         expect(visiblePosition()[2]).toBeCloseTo(20);
       }
       const positionBeforeColorChange = visiblePosition();
@@ -1575,8 +1575,8 @@ describe("frame-coalesced drag transactions", () => {
       const startOnGround = pointOnGround(start), endOnGround = pointOnGround(end);
       const previewBrick = {
         ...original,
-        x: Math.round((original.x + endOnGround.x - startOnGround.x) * 2) / 2,
-        z: Math.round((original.z + endOnGround.z - startOnGround.z) * 2) / 2,
+        x: Math.round(original.x + endOnGround.x - startOnGround.x),
+        z: Math.round(original.z + endOnGround.z - startOnGround.z),
       };
       pointer("pointerdown", start.x, start.y);
       expect(props.onSelect).toHaveBeenCalledWith(original.id);
