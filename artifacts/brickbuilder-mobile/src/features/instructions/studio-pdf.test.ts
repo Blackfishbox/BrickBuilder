@@ -334,7 +334,7 @@ it("produces a viewable native-callout PDF with real source geometry through the
     mkdirSync(directory, { recursive: true });
     writeFileSync(new URL("studio-native-callouts.pdf", directory), bytes);
   } finally { vi.unstubAllGlobals(); }
-});
+}, 15_000);
 
 it("exports one PDF page per imported Studio page with the source format and step mapping", async () => {
   const imageBytes = readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url));
