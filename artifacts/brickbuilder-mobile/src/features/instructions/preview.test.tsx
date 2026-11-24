@@ -504,6 +504,60 @@ it("passes the enabled highlight option to PDF export", async () => {
   expect(onExportPDF.mock.calls[0][3]).toBe(true);
 });
 
+it("retries sharing the prepared PDF without rendering it again", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "new", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, source: "manual", edited: true, warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["new"] },
+  ] };
+  const onExportPDF = vi.fn(async () => { throw new Error("Share failed"); });
+  const onRetryExport = vi.fn(async () => true);
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}}
+    onExportPDF={onExportPDF} onRetryExport={onRetryExport} />));
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-pdf"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(onExportPDF).toHaveBeenCalledOnce();
+  expect(host.querySelector('[data-testid="status-instructions-export-error"]')).not.toBeNull();
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-retry"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+  expect(onRetryExport).toHaveBeenCalledOnce();
+  expect(onExportPDF).toHaveBeenCalledOnce();
+  expect(host.querySelector('[data-testid="status-instructions-export-error"]')).toBeNull();
+});
+
+it("rebuilds the PDF on retry only when no prepared share file exists", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "new", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, source: "manual", edited: true, warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["new"] },
+  ] };
+  const onExportPDF = vi.fn().mockRejectedValueOnce(new Error("PDF generation failed")).mockResolvedValue(undefined);
+  const onRetryExport = vi.fn(async () => false);
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}}
+    onExportPDF={onExportPDF} onRetryExport={onRetryExport} />));
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-pdf"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-retry"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+  expect(onRetryExport).toHaveBeenCalledOnce();
+  expect(onExportPDF).toHaveBeenCalledTimes(2);
+  expect(host.querySelector('[data-testid="status-instructions-export-error"]')).toBeNull();
+});
+
 it("shows the Studio-layout PDF export only when a page groups multiple steps", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();

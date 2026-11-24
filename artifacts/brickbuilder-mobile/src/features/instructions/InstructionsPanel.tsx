@@ -24,6 +24,7 @@ interface Props {
   onClose: () => void;
   onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
   onExportStudioPDF?: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
+  onRetryExport?: () => Promise<boolean>;
 }
 
 interface PartInfo { id: string; label: string; color: string }
@@ -32,7 +33,7 @@ const PAGE = 60;
 const STEP_WINDOW = 30;
 const noop = () => undefined;
 
-export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF, onExportStudioPDF }: Props) {
+export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF, onExportStudioPDF, onRetryExport }: Props) {
   const { t } = useI18n();
   const plan = useMemo(() => {
     const source = effectiveInstructions(document);
@@ -65,6 +66,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
   const [autoError, setAutoError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [retryStudioExport, setRetryStudioExport] = useState(false);
+  const [retryingShare, setRetryingShare] = useState(false);
   const [angleDrafts, setAngleDrafts] = useState<Record<string, string>>({});
   const angleDraftRef = useRef<{ stepId: string; axis: number; value: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -312,6 +314,22 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       setExporting(null);
     }
   };
+  const retryShare = async () => {
+    if (!onRetryExport || exporting || retryingShare) return;
+    setExportError(null);
+    setRetryingShare(true);
+    try {
+      const sharedExistingFile = await onRetryExport();
+      if (!sharedExistingFile) {
+        setRetryingShare(false);
+        await exportPdf(retryStudioExport);
+      }
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : t("format.exportError"));
+    } finally {
+      setRetryingShare(false);
+    }
+  };
 
   const total = parts.size;
   const from = Math.max(0, Math.min(current - STEP_WINDOW / 2, plan.steps.length - STEP_WINDOW));
@@ -341,18 +359,19 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
         <button className="ins-icon" onClick={onClose} aria-label={t("instruction.close")} data-testid="button-instructions-close"><X size={18} /></button>
       </header>
 
-      {exporting && (
+      {(exporting || retryingShare) && (
         <div className="ins-banner" role="status" data-testid="status-instructions-export">
           <LoaderCircle size={15} className="spin" />
-          <span>{t("instruction.exporting", { done: exporting.done, total: exporting.total })}</span>
-          <div className="ins-bar"><i style={{ transform: `scaleX(${exporting.total ? exporting.done / exporting.total : 0})` }} /></div>
-          <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">{t("inventory.cancel")}</button>
+          <span>{retryingShare ? t("instruction.retryingShare") : t("instruction.exporting", { done: exporting!.done, total: exporting!.total })}</span>
+          {!retryingShare && <div className="ins-bar"><i style={{ transform: `scaleX(${exporting!.total ? exporting!.done / exporting!.total : 0})` }} /></div>}
+          {!retryingShare && <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">{t("inventory.cancel")}</button>}
         </div>
       )}
       {exportError && (
         <div className="ins-banner is-error" role="alert" data-testid="status-instructions-export-error">
           <span>{exportError}</span>
-          <button className="ins-ghost" onClick={() => void exportPdf(retryStudioExport)} data-testid="button-instructions-export-retry">{t("inventory.retry")}</button>
+          <button className="ins-ghost" onClick={() => void (onRetryExport ? retryShare() : exportPdf(retryStudioExport))} disabled={!!exporting || retryingShare}
+            data-testid="button-instructions-export-retry">{t("inventory.retry")}</button>
           <button className="ins-ghost" onClick={() => setExportError(null)} aria-label={t("common.close")} data-testid="button-instructions-export-dismiss"><X size={14} /></button>
         </div>
       )}

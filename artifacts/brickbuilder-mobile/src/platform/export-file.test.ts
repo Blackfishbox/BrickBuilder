@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { exportFile } from "./export-file";
+import { exportFile, isShareCancelled, prepareExportFile, sharePreparedExport } from "./export-file";
 import { renderSvgView } from "../features/engine/svg-view-export";
 import { SVG_LIMITS } from "../features/engine/svg-export-buffer";
 import { svgCompatibilityFixture } from "../../test-fixtures/svg-compatibility";
@@ -24,6 +24,40 @@ afterEach(() => {
   vi.mocked(Filesystem.deleteFile).mockReset();
 });
 describe("local Android exports", () => {
+  it("reopens the existing PDF share target without writing the file again", async () => {
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    const prepared = await prepareExportFile(new Uint8Array([1, 2, 3]), "instructions.pdf", "application/pdf");
+    expect(Filesystem.writeFile).toHaveBeenCalledOnce();
+    await prepared.share();
+    await prepared.share();
+    expect(Filesystem.writeFile).toHaveBeenCalledOnce();
+    expect(Filesystem.getUri).toHaveBeenCalledOnce();
+    expect(Share.share).toHaveBeenCalledTimes(2);
+    expect(Share.share).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      title: "instructions.pdf",
+      files: ["file:///cache/project.json"],
+    }));
+  });
+
+  it.each(["Share canceled", "Share cancelled", "Sharing canceled by user"])(
+    "recognizes Capacitor share dismissal (%s) without mistaking file-write errors for cancellation",
+    message => {
+      expect(isShareCancelled(new Error(message))).toBe(true);
+      expect(isShareCancelled(new Error("Storage full"))).toBe(false);
+    },
+  );
+
+  it("treats a dismissed Android share chooser as a completed handoff", async () => {
+    const prepared = { share: vi.fn().mockRejectedValue(new Error("Share canceled")) };
+    await expect(sharePreparedExport(prepared)).resolves.toBeUndefined();
+    expect(prepared.share).toHaveBeenCalledOnce();
+  });
+
+  it("keeps genuine sharing errors available for the prepared-file retry", async () => {
+    const prepared = { share: vi.fn().mockRejectedValue(new Error("No app can open this file")) };
+    await expect(sharePreparedExport(prepared)).rejects.toThrow("No app can open this file");
+  });
+
   it("reopens exact multi-megabyte SVG bytes after a paused native append", async () => {
     vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
     const fixture = largeSvgModel(80_001);

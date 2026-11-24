@@ -1,8 +1,26 @@
 import { Capacitor } from "@capacitor/core";
 import { byteChunks, isByteArray, type ByteSource } from "../types/byte-source";
 
-/** Browser download or Android's document-sharing sheet; no remote upload. */
-export async function exportFile(bytes: ByteSource, filename: string, mime: string): Promise<void> {
+export interface PreparedExport {
+  /** Re-open the share sheet for the already-written file or browser Blob. */
+  share(): Promise<void>;
+}
+
+/** Recognize the Android share sheet's dismissal result, not file-write failures. */
+export function isShareCancelled(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bshare(?:\s+activity)?\s+cancell?ed\b/i.test(message) ||
+    /\bsharing\s+cancell?ed\b/i.test(message);
+}
+
+/** Android reports a dismissed chooser as a rejection even when its target saved the file. */
+export async function sharePreparedExport(prepared: PreparedExport): Promise<void> {
+  try { await prepared.share(); }
+  catch (error) { if (!isShareCancelled(error)) throw error; }
+}
+
+/** Write an export once and retain a reusable local share target for retries. */
+export async function prepareExportFile(bytes: ByteSource, filename: string, mime: string): Promise<PreparedExport> {
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await import("@capacitor/filesystem");
     const { Share } = await import("@capacitor/share");
@@ -48,8 +66,11 @@ export async function exportFile(bytes: ByteSource, filename: string, mime: stri
       throw error;
     }
     const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
-    await Share.share({ title: name, files: [uri], dialogTitle: "Projekt speichern oder teilen" });
-    return;
+    return {
+      share: async () => {
+        await Share.share({ title: name, files: [uri], dialogTitle: "Projekt speichern oder teilen" });
+      },
+    };
   }
   let blob: Blob;
   if (isByteArray(bytes)) blob = new Blob([bytes as BlobPart], { type: mime });
@@ -67,9 +88,19 @@ export async function exportFile(bytes: ByteSource, filename: string, mime: stri
     });
     blob = await new Response(stream, { headers: { "Content-Type": mime } }).blob();
   }
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url; anchor.download = filename; anchor.click();
-  // Large mobile downloads may take longer to start reading the Blob URL.
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return {
+    share: async () => {
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = filename; anchor.click();
+      // Large mobile downloads may take longer to start reading the Blob URL.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    },
+  };
+}
+
+/** Browser download or Android's document-sharing sheet; no remote upload. */
+export async function exportFile(bytes: ByteSource, filename: string, mime: string): Promise<void> {
+  const prepared = await prepareExportFile(bytes, filename, mime);
+  await prepared.share();
 }

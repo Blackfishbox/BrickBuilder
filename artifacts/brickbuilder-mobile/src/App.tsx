@@ -57,6 +57,8 @@ import { rotationAnchors } from '@/features/connections/rotation-anchors';
 import { importedControlAngles, importedRotationOffset, importedTiltOffset } from '@/features/editor/imported-control-angles';
 import { displayColorName } from '@/features/catalog/color-evidence';
 import type { InstructionPart } from '@/features/instructions/parts';
+import type { PreparedExport } from '@/platform/export-file';
+import { sharePreparedExport } from '@/platform/export-file';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -91,6 +93,7 @@ function App() {
   const [saveMessage, setSaveMessage] = useState('');
   const [formatsOpen, setFormatsOpen] = useState(false);
   const viewExporterRef = useRef<ViewExporter | null>(null);
+  const instructionExportRef = useRef<PreparedExport | null>(null);
   const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [finePositionOpen, setFinePositionOpen] = useState(false);
@@ -774,24 +777,34 @@ function App() {
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal, highlight) => {
-            const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
+            const [{ exportInstructionPDF }, { prepareExportFile }] = await Promise.all([
               import('@/features/instructions/pdf'), import('@/platform/export-file'),
             ]);
+            instructionExportRef.current = null;
             const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal, highlight, locale });
             signal.throwIfAborted();
             const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
             const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");
-            await exportFile(bytes, `${name}-${t("instruction.pdf.filename")}.pdf`, "application/pdf");
+            instructionExportRef.current = await prepareExportFile(bytes, `${name}-${t("instruction.pdf.filename")}.pdf`, "application/pdf");
+            await sharePreparedExport(instructionExportRef.current);
           }}
           onExportStudioPDF={async (plan, onProgress, signal, highlight) => {
-            const [{ exportStudioLayoutPDF }, { exportFile }] = await Promise.all([
+            const [{ exportStudioLayoutPDF }, { prepareExportFile }] = await Promise.all([
               import('@/features/instructions/studio-pdf'), import('@/platform/export-file'),
             ]);
+            instructionExportRef.current = null;
             const bytes = await exportStudioLayoutPDF(editor.document, plan, { onProgress, signal, highlight, locale });
             signal.throwIfAborted();
             const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
             const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");
-            await exportFile(bytes, `${name}-Studio-Layout.pdf`, "application/pdf");
+            instructionExportRef.current = await prepareExportFile(bytes, `${name}-Studio-Layout.pdf`, "application/pdf");
+            await sharePreparedExport(instructionExportRef.current);
+          }}
+          onRetryExport={async () => {
+            const prepared = instructionExportRef.current;
+            if (!prepared) return false;
+            await sharePreparedExport(prepared);
+            return true;
           }} />
       </Suspense>}
       {storageOpen && <StorageManager currentProjectId={editor.document.id} onClose={() => setStorageOpen(false)} onProjectsChanged={editor.refreshProjects} />}
