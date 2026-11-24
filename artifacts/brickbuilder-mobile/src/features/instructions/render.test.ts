@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { BufferGeometry, Color, InstancedMesh, Mesh, Vector3, type Camera, type Scene } from "three";
+import { BufferGeometry, Color, InstancedMesh, Mesh, ShaderMaterial, Vector3, type Camera, type Scene } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { brickTransformMatrix } from "../editor/brick-transform";
@@ -285,6 +285,14 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
       expect(context.stroke).toHaveBeenCalledTimes(3); // Two imported clusters + one local cluster.
       expect(context.lineTo).toHaveBeenCalledTimes(36);
     }
+    let configuredEdges = 0;
+    (frames.mock.lastCall![0] as Scene).traverse(object => {
+      if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
+        !(object.material instanceof ShaderMaterial)) return;
+      expect(object.material.uniforms.resolution.value.toArray()).toEqual([2000, 1520]);
+      configuredEdges++;
+    });
+    expect(configuredEdges).toBeGreaterThan(0);
     let batches = 0;
     (frames.mock.lastCall![0] as Scene).traverse(object => {
       if (object instanceof InstancedMesh) batches++;

@@ -1,12 +1,13 @@
 import {
   AmbientLight, Box3, BufferGeometry, Color, DirectionalLight,
   Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Matrix4,
-  Mesh, MeshLambertMaterial, OrthographicCamera, Scene, Vector3, WebGLRenderer,
+  Mesh, MeshLambertMaterial, OrthographicCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from "three";
 import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
+import { setWideLineResolution } from "../engine/wide-lines";
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer, INSTRUCTION_RENDER_SIZE } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
@@ -59,6 +60,15 @@ function applyPdfInstructionFocus(root: Group | undefined, highlightIds?: Readon
   });
 }
 
+/** LDraw edge quads are expanded in screen space and need the actual render size. */
+function configureInstructionEdges(root: Group, width: number, height: number): void {
+  root.traverse(object => {
+    if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
+      !(object.material instanceof ShaderMaterial)) return;
+    setWideLineResolution(object.material, width, height);
+  });
+}
+
 export interface InstructionImageRenderer {
   image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>): string;
   dispose(): void;
@@ -102,6 +112,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
+      configureInstructionEdges(imported, INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
       assembly.add(imported);
     }
     const bounds = imported ? new Box3().setFromObject(imported) : new Box3();
