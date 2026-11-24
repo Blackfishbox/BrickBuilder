@@ -67,6 +67,7 @@ function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem
     MultiplierPosition: "studio.field.multiplierPosition", CalloutGridMaxPerLine: "studio.field.calloutGrid",
     IsCalloutAsRows: "studio.field.calloutRows", ArrowPosition: "studio.field.arrowPosition",
     PointList: "studio.field.arrowPoints", StartStyle: "studio.field.arrowStart", EndStyle: "studio.field.arrowEnd",
+    Depth: "studio.field.layerDepth", depth: "studio.field.layerDepth",
     DividerThickness: "studio.field.lineThickness", DividerColor: "studio.field.lineColor", LRBT: "studio.field.padding",
     Horizontal: "studio.field.horizontalMargin", Vertical: "studio.field.verticalMargin",
     FontFamily: "studio.field.fontFamily", FontStyle: "studio.field.fontStyle", FontColor: "studio.field.fontColor",

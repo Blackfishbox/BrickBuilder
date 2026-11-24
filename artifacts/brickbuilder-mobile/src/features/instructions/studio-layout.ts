@@ -68,6 +68,9 @@ export function studioNodes(xml: string): StudioNode[] {
 }
 
 const f = (attribute: string, label: string, kind: StudioLayoutField["kind"]): StudioLayoutField => ({ attribute, label, kind });
+const depthFields = (node: StudioNode) => ["Depth", "depth"]
+  .filter(attribute => Object.hasOwn(node.attributes, attribute))
+  .map(attribute => f(attribute, "Layer depth (Studio value)", "number"));
 
 function isInGlobalStyle(node: StudioNode, nodes: StudioNode[]): boolean {
   let ancestor = node.parent === undefined ? undefined : nodes[node.parent];
@@ -92,21 +95,25 @@ function fieldsFor(node: StudioNode, nodes: StudioNode[]): StudioLayoutField[] {
     f("MultiplierPosition", "Anzahlversatz", "vector2"),
     f("CalloutGridMaxPerLine", "Schritte pro Zeile", "number"),
     f("IsCalloutAsRows", "Zeilenweise anordnen", "boolean"),
+    ...depthFields(node),
   ];
   if (node.name === "CallOutArrowItemData") fields = [
     f("ArrowPosition", "Pfeilanfang und Ziel (Studio-Werte)", "vector4"),
     f("IsVisible", "Pfeil sichtbar", "boolean"),
+    ...depthFields(node),
   ];
   if (node.name === "Arrow" && ["Page", "Slot"].includes(parent?.name ?? "")) fields = [
     f("PointList", "Pfeilanfang und Ziel (Studio-Werte)", "vector4"),
     f("IsVisible", "Pfeil sichtbar", "boolean"),
     f("StartStyle", "Pfeilanfang", "text"), f("EndStyle", "Pfeilspitze", "text"),
     f("Thickness", "Pfeilstärke", "number"),
+    ...depthFields(node),
   ];
   if (node.name === "Image" && parent?.name === "Slot") fields = [
     f("rect", "Position X / Y und Breite / Höhe (Studio-Werte)", "vector4"),
     f("rotation", "Drehung (Grad)", "number"), f("opacity", "Deckkraft (0–1)", "number"),
     f("fliped_H", "Horizontal spiegeln", "boolean"), f("fliped_V", "Vertikal spiegeln", "boolean"),
+    ...depthFields(node),
   ];
   if (inGlobalStyle) {
     if (["CallOut", "Multiplier"].includes(node.name)) fields = [f("IsVisible", "Sichtbar", "boolean")];

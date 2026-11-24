@@ -85,6 +85,33 @@ describe("source-preserving Studio layout edits", () => {
     expect(original.edits).toEqual([]);
   });
 
+  it("edits native layer depth on images, callout items and arrows without changing attribute spelling", () => {
+    const markup = `<Instruction><GlobalSetting><GlobalStyle/></GlobalSetting><Pages><Page template="OneByOne"><Slot>
+      <Step SerializedIndex="0"><CallOut><CallOutItemData Rect="0 0 1 1" Depth="0">
+      <CallOutArrowItemData ArrowPosition="0 0 1 1" depth="-2"/></CallOutItemData></CallOut></Step>
+      <Image rect="1 2 20 30" depth="-5" imagePath="ImageResource/rotation.png"/>
+      <Arrow PointList="0 0 1 1" Depth="-3"/></Slot></Page></Pages></Instruction>`;
+    const layout = fixture(markup).instructions!.studioLayout!;
+    const page = inspectStudioLayout(layout).pages[0];
+    const item = page.items.find(candidate => candidate.label === "CallOutItemData")!;
+    const calloutArrow = page.items.find(candidate => candidate.label === "CallOutArrowItemData")!;
+    const image = page.items.find(candidate => candidate.label === "Image")!;
+    const arrow = page.items.find(candidate => candidate.label === "Arrow")!;
+    expect(item.fields.map(field => field.attribute)).toContain("Depth");
+    expect(calloutArrow.fields.map(field => field.attribute)).toContain("depth");
+    expect(image.fields.map(field => field.attribute)).toContain("depth");
+    expect(arrow.fields.map(field => field.attribute)).toContain("Depth");
+
+    let edited = editStudioLayout(layout, item.nodeId, "Depth", "-10");
+    edited = editStudioLayout(edited, calloutArrow.nodeId, "depth", "0");
+    edited = editStudioLayout(edited, image.nodeId, "depth", "-7");
+    edited = editStudioLayout(edited, arrow.nodeId, "Depth", "4");
+    expect(applyStudioLayout(edited)).toContain('Rect="0 0 1 1" Depth="-10"');
+    expect(applyStudioLayout(edited)).toContain('ArrowPosition="0 0 1 1" depth="0"');
+    expect(applyStudioLayout(edited)).toContain('rect="1 2 20 30" depth="-7"');
+    expect(applyStudioLayout(edited)).toContain('PointList="0 0 1 1" Depth="4"');
+  });
+
   it("rejects malformed XML, unrecognized attributes, invalid numeric and oversized layouts", () => {
     const layout = fixture().instructions!.studioLayout!, image = inspectStudioLayout(layout).pages[0].items.find(item => item.imagePath)!;
     for (const [attribute, value] of [["opacity", "2"], ["rotation", "NaN"], ["rotation", "0x10"], ["rect", "0 0 -1 3"], ["imagePath", "https://example.invalid/remote.png"], ["fliped_H", "true"]]) {
@@ -129,6 +156,40 @@ describe("source-preserving Studio layout edits", () => {
     expect(decode(exportMPD(next))).toBe(source);
     const restored = readStudioInstructions(decode(after["model.ins"]), sourceInstructionPlan(doc.imported!));
     expect(inspectStudioLayout(restored.studioLayout!).pages[0].items.find(item => item.imagePath)!.attributes.rect).toBe("4 5 25 35");
+  });
+
+  it("keeps native depth edits when the Studio layout is saved and exported", () => {
+    const markup = `<Instruction><GlobalSetting><GlobalStyle/></GlobalSetting><Pages><Page template="OneByOne"><Slot>
+      <Step SerializedIndex="0"><CallOut><CallOutItemData Rect="0 0 1 1" Depth="0">
+      <CallOutArrowItemData ArrowPosition="0 0 1 1" depth="-2"/></CallOutItemData></CallOut></Step>
+      <Image rect="1 2 20 30" depth="-5" imagePath="ImageResource/rotation.png"/>
+      <Arrow PointList="0 0 1 1" Depth="-3"/></Slot></Page></Pages></Instruction>`;
+    const doc = fixture(markup), layout = doc.instructions!.studioLayout!;
+    const items = inspectStudioLayout(layout).pages[0].items;
+    const edits = [
+      ["CallOutItemData", "Depth", "-10"],
+      ["CallOutArrowItemData", "depth", "0"],
+      ["Image", "depth", "-7"],
+      ["Arrow", "Depth", "4"],
+    ] as const;
+    let nextLayout = layout;
+    for (const [name, attribute, value] of edits) {
+      const item = items.find(candidate => candidate.label === name)!;
+      nextLayout = editStudioLayout(nextLayout, item.nodeId, attribute, value);
+    }
+    const next = updateInstructions(doc, { ...doc.instructions!, studioLayout: nextLayout });
+    const exported = readZip(exportIO(next));
+    const exportedXml = decode(exported["model.ins"]);
+    expect(exportedXml).toContain('Rect="0 0 1 1" Depth="-10"');
+    expect(exportedXml).toContain('ArrowPosition="0 0 1 1" depth="0"');
+    expect(exportedXml).toContain('rect="1 2 20 30" depth="-7"');
+    expect(exportedXml).toContain('PointList="0 0 1 1" Depth="4"');
+    const restored = readStudioInstructions(exportedXml, sourceInstructionPlan(doc.imported!));
+    const restoredItems = inspectStudioLayout(restored.studioLayout!).pages[0].items;
+    expect(restoredItems.find(item => item.label === "CallOutItemData")!.attributes.Depth).toBe("-10");
+    expect(restoredItems.find(item => item.label === "CallOutArrowItemData")!.attributes.depth).toBe("0");
+    expect(restoredItems.find(item => item.label === "Image")!.attributes.depth).toBe("-7");
+    expect(restoredItems.find(item => item.label === "Arrow")!.attributes.Depth).toBe("4");
   });
 
   it("keeps patches through JSON remapping and refuses mixed changes instead of discarding layouts", () => {
