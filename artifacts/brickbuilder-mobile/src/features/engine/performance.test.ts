@@ -124,6 +124,22 @@ describe("bounded large-model rendering", () => {
       expect(root.getObjectByName("ldraw:instanced-edges")).toBeInstanceOf(LineSegments);
     } finally { disposeImportedScene(root); }
   });
+  it("keeps the historical uniform-color line shader and simplifies only its edges under budget pressure", async () => {
+    const model = fixture(7_000);
+    model.resources["parts/test.dat"].content += "\n" + "2 24 0 0 0 0 20 0\n".repeat(80);
+    const budget = 2 * 1024 * 1024;
+    const group = await createImportedGroupAsync(model, { viewport: "legacy", maxGeometryBytes: budget });
+    try {
+      expect(importedSceneDetail(group)).toEqual({ compactFaces: false, edges: "legacy", legacyEdgeStride: 2 });
+      const edge = group.getObjectByName("ldraw:instanced-edges") as Mesh;
+      expect(edge.userData.legacyEdges).toBe(true);
+      expect(edge.geometry.getAttribute("lineEnd").count).toBeGreaterThan(0);
+      expect(edge.geometry.hasAttribute("edgeNormal")).toBe(false);
+      expect(edge.geometry.hasAttribute("edgeBaseColor")).toBe(false);
+      expect(measureImportedScene(group).bufferBytes).toBeLessThanOrEqual(budget);
+      expect(drawnFaces(group)).toBe(1_407_000);
+    } finally { disposeImportedScene(group); }
+  });
   it("bounds the software preview while preserving the full model and source", async () => {
     const model = fixture(10_000);
     const source = model.sourceText, started = performance.now();
@@ -198,7 +214,7 @@ it.skipIf(!largeModelPath)("keeps every resolved triangle of a local Studio mode
       }
     }
     const budget = 32 * 1024 * 1024;
-    for (const viewport of ["standard", "recovery"] as const) {
+    for (const viewport of ["standard", "legacy", "legacy-faces"] as const) {
       const group = await createImportedGroupAsync(model, { maxGeometryBytes: budget, viewport });
       try {
         const stats = measureImportedScene(group);

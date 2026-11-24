@@ -11,8 +11,6 @@ import {
   EdgesGeometry,
   Group,
   InstancedMesh,
-  InstancedBufferAttribute,
-  InstancedBufferGeometry,
   LineBasicMaterial,
   LineSegments,
   Material,
@@ -30,7 +28,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { createLocalBrickGeometry, localBrickEdges, localBrickEdgeNormals, localBrickEdgeNormalPairs, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
+import { createLocalBrickGeometry, localBrickEdges, localBrickEdgeNormals, localBrickShape, localBrickTriangles } from "./local-brick-geometry";
 import {
   applyInstructionCameraRotation,
   DEFAULT_INSTRUCTION_PHI,
@@ -38,7 +36,7 @@ import {
   instructionRotationFromCameraPose,
 } from "./instruction-camera";
 import { applyInstructionFocus, installInstructionFocus, instructionDisplayColor } from "./instruction-focus";
-import { createImportedGroup, createImportedGroupAsync, disposeImportedScene, importedSceneDetail, SceneBudgetExceeded } from "./imported-scene";
+import { createImportedGroup, createImportedGroupAsync, disposeImportedScene, importedSceneDetail, SceneBudgetExceeded, type SceneViewport } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
 import { compilePart, reuseGeometryCache, worldMatrix } from "./ldraw-geometry";
 import { createLocalBrickEdgeBatches } from "./local-brick-edge-batches";
@@ -63,7 +61,7 @@ import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-ge
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
 import {
-  expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX, wideLineMaterial,
+  setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX,
   deriveLineNormals,
 } from "./wide-lines";
 
@@ -163,7 +161,13 @@ interface PlacementPreviewGeometry {
 
 const PLACEMENT_PREVIEW_ID = "placement-preview";
 
-type GraphicsProfile = "standard" | "recovery" | "faces" | "software";
+type GraphicsProfile = SceneViewport | "software";
+
+function nextGraphicsProfile(profile: GraphicsProfile): GraphicsProfile {
+  if (profile === "standard") return "legacy";
+  if (profile === "legacy") return "legacy-faces";
+  return "software";
+}
 
 export class FallbackRenderer {
   readonly domElement = document.createElement("canvas");
@@ -643,6 +647,7 @@ export function BuilderCanvas({
   const [rendererVersion, setRendererVersion] = useState(0);
   const rendererProfileRef = useRef<GraphicsProfile>("standard");
   const requestedProfileRef = useRef<GraphicsProfile>("standard");
+  const renderingProjectRef = useRef(projectId);
   const replaceRendererRef = useRef<((profile: GraphicsProfile) => void) | null>(null);
   const pendingPreviewRef = useRef<(() => void) | null>(null);
   const rollbackRef = useRef<(() => void) | null>(null);
@@ -848,10 +853,7 @@ export function BuilderCanvas({
       if (rendererRef.current !== renderer || failedRenderer === renderer) return;
       failedRenderer = renderer;
       buildControllerRef.current?.abort();
-      // Restore normal edges first, then keep solid surfaces without edges if
-      // the device loses WebGL again. Software is the last resort.
-      const profile = rendererProfileRef.current;
-      setGraphicsProfile(profile === "standard" ? "recovery" : profile === "recovery" ? "faces" : "software");
+      setGraphicsProfile(nextGraphicsProfile(rendererProfileRef.current));
     };
     const contextLost = (event: Event) => {
       const renderer = rendererRef.current;
@@ -873,11 +875,21 @@ export function BuilderCanvas({
     const replaceRenderer = (profile: GraphicsProfile) => {
       removeRenderer();
       failedRenderer = null;
-      rendererProfileRef.current = profile;
-      const renderer = createViewportRenderer(profile);
+      let activeProfile = profile;
+      let renderer: WebGLRenderer | FallbackRenderer | null = createViewportRenderer(profile);
+      if (!renderer && profile === "standard") {
+        activeProfile = "legacy";
+        renderer = createViewportRenderer(activeProfile);
+      }
+      if (!renderer) {
+        activeProfile = "software";
+        renderer = new FallbackRenderer();
+      }
+      rendererProfileRef.current = activeProfile;
       const canvas = renderer.domElement;
       canvas.className = "builder-webgl-canvas";
       canvas.setAttribute("data-renderer", renderer instanceof WebGLRenderer ? "webgl" : "canvas-fallback");
+      if (renderer instanceof WebGLRenderer) canvas.dataset.webglProfile = activeProfile;
       canvas.setAttribute("aria-label", renderer instanceof WebGLRenderer
         ? "Interactive 3D brick building area" : translateRef.current("canvas.fallbackAria"));
       canvas.setAttribute("role", "application");
@@ -991,7 +1003,8 @@ export function BuilderCanvas({
         const activeRenderer = rendererRef.current;
         if (!activeRenderer || activeRenderer === failedRenderer) return;
         if (activeRenderer instanceof WebGLRenderer) {
-          const ratio = interactive || rendererProfileRef.current !== "standard" ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
+          const profile = rendererProfileRef.current;
+          const ratio = interactive || profile !== "standard" ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
           if (ratio !== lastPixelRatio || lastWebGLRenderer !== activeRenderer) {
             activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; lastWebGLRenderer = activeRenderer;
           }
@@ -999,10 +1012,19 @@ export function BuilderCanvas({
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
             const enabled = propsRef.current.thickEdges;
-            object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX * ratio;
-            object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
-            object.material.uniforms.blackLineWidth.value = enabled ? NORMAL_EDGE_WIDTH_PX * ratio : 0;
-            if (object.name.startsWith("brick-edges-")) object.visible = true;
+            if (object.userData.legacyEdges && profile === "legacy") {
+              object.material.uniforms.lineWidth.value = enabled ? 18 : 1;
+              object.material.uniforms.edgeOpacity.value = enabled ? 1 : 0.25;
+              object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#ffffff" : "#000000");
+              object.visible = enabled || (!interactive && !object.name.startsWith("brick-edges-"));
+            } else if (!object.userData.legacyEdges && profile === "standard") {
+              object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX * ratio;
+              object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
+              object.material.uniforms.blackLineWidth.value = enabled ? NORMAL_EDGE_WIDTH_PX * ratio : 0;
+              object.visible = true;
+            } else {
+              object.visible = false; // A renderer swap can precede rebuilding local draw batches.
+            }
             setWideLineResolution(object.material, activeRenderer.domElement.width, activeRenderer.domElement.height);
           });
           try { activeRenderer.render(scene, camera); }
@@ -1222,7 +1244,10 @@ export function BuilderCanvas({
           surfaces: compilePart(model, source.reference, "16"), matrix, colorCode,
         };
         if (rendererRef.current instanceof WebGLRenderer) {
-          const root = createImportedGroup(model);
+          const profile = rendererProfileRef.current;
+          const root = createImportedGroup(model, profile === "standard" ? undefined : {
+            compactFaces: true, edges: profile === "legacy" ? "legacy" : "none",
+          });
           const index = new InstanceIndex(root, model);
           index.preview(PLACEMENT_PREVIEW_ID, matrix);
           root.name = "placement-preview";
@@ -1251,7 +1276,10 @@ export function BuilderCanvas({
         mesh.name = "placement-preview";
         mesh.position.set(target.x, target.y, target.z);
         mesh.renderOrder = 5;
-        mesh.add(localPreviewEdgeMesh(selectedType, selectedColor));
+        const profile = rendererProfileRef.current;
+        if (profile === "standard" || profile === "legacy") {
+          mesh.add(...createLocalBrickEdgeBatches([{ ...brick, x: 0, y: 0, z: 0 }], profile === "legacy"));
+        }
         scene.add(mesh);
         placementRootRef.current = mesh;
       }
@@ -1280,8 +1308,14 @@ export function BuilderCanvas({
     rollbackRef.current?.();
     const retry = attemptRef.current >= 0 && attemptRef.current !== buildAttempt;
     attemptRef.current = buildAttempt;
+    const changedProject = renderingProjectRef.current !== projectId;
+    renderingProjectRef.current = projectId;
+    if (changedProject && !retry && graphicsProfile !== "standard") {
+      setGraphicsProfile("standard");
+      return;
+    }
     const replace = retry || requestedProfileRef.current !== graphicsProfile ||
-      (!sameModel && rendererProfileRef.current !== graphicsProfile);
+      (changedProject && rendererProfileRef.current !== graphicsProfile);
     requestedProfileRef.current = graphicsProfile;
     if (replace) {
       if (importedRootRef.current) {
@@ -1342,16 +1376,20 @@ export function BuilderCanvas({
       let software: SoftwareScene | undefined;
       const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
       const maxGeometryBytes = (memory <= 1 ? 32 : memory <= 2 ? 64 : 96) * 1024 * 1024;
-      if (rendererRef.current instanceof WebGLRenderer) {
+      const profile = rendererProfileRef.current;
+      if (rendererRef.current instanceof WebGLRenderer && profile !== "software") {
         try {
           root = await createImportedGroupAsync(imported, {
             signal: controller.signal, onProgress: progress("canvas.sceneStage"), maxGeometryBytes,
-            viewport: graphicsProfile === "software" ? undefined : graphicsProfile,
+            viewport: profile,
           });
         } catch (error) {
           if (!(error instanceof SceneBudgetExceeded)) throw error;
-          // Budget is checked before GPU upload; switch instead of risking a
-          // driver/context crash or throwing away the user's model.
+          if (controller.signal.aborted) return;
+          if (profile !== "legacy-faces") {
+            setGraphicsProfile(nextGraphicsProfile(profile));
+            return;
+          }
         }
       }
       if (root) {
@@ -1500,7 +1538,10 @@ export function BuilderCanvas({
       nextRoot.add(instances);
     }
 
-    for (const edgeBatch of createLocalBrickEdgeBatches(bricks)) nextRoot.add(edgeBatch);
+    const profile = rendererProfileRef.current;
+    if (profile === "standard" || profile === "legacy") {
+      for (const edgeBatch of createLocalBrickEdgeBatches(bricks, profile === "legacy")) nextRoot.add(edgeBatch);
+    }
 
     const selectedBricks = bricks.filter(brick => selectedBrickIds.has(brick.id));
     for (const selected of selectedBricks) {
@@ -1531,7 +1572,7 @@ export function BuilderCanvas({
     refreshConstructionAreaRef.current?.();
     refreshInstructionFocus();
     invalidatorRef.current?.();
-  }, [bricks, selectedId, selectedIds]);
+  }, [bricks, selectedId, selectedIds, rendererVersion]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -2297,7 +2338,8 @@ export function BuilderCanvas({
   const compatibilityHint = rendererRef.current instanceof FallbackRenderer && bricks.length > 1200
     ? t("canvas.compatibilityLarge")
     : null;
-  const edgeDetailHint = thickEdges && importedRootRef.current && importedSceneDetail(importedRootRef.current).edges !== "wide"
+  const edgeStyle = importedRootRef.current && importedSceneDetail(importedRootRef.current).edges;
+  const edgeDetailHint = thickEdges && (edgeStyle === "thin" || edgeStyle === "none")
     ? t("canvas.reducedEdges")
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
@@ -2427,7 +2469,7 @@ export function BuilderCanvas({
           style={{ pointerEvents: "auto" }}
           onPointerDown={event => event.stopPropagation()}
           onClick={() => {
-            setGraphicsProfile("recovery");
+            setGraphicsProfile("legacy");
             setBuildAttempt(value => value + 1);
           }}>{t("canvas.retryRender")}</button>}
     </div>}
@@ -2436,31 +2478,6 @@ export function BuilderCanvas({
 
 function geometryCacheHas(geometry: InstancedMesh["geometry"]): boolean {
   return [...geometryCache.values()].some((cached) => cached === geometry);
-}
-
-function localPreviewEdgeMesh(type: BrickType, brickColor: string): Mesh {
-  const normals = localBrickEdgeNormalPairs(type);
-  const expanded = expandWideLines(localBrickEdges(type), normals.primary, normals.alternate);
-  const geometry = new InstancedBufferGeometry();
-  for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
-  expanded.dispose();
-  geometry.setAttribute("instanceRow0", new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0]), 4));
-  geometry.setAttribute("instanceRow1", new InstancedBufferAttribute(new Float32Array([0, 1, 0, 0]), 4));
-  geometry.setAttribute("instanceRow2", new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0]), 4));
-  const color = new Color(brickColor);
-  const encoded = color.getHex(SRGBColorSpace);
-  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(
-    new Uint8Array([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff]), 3, true,
-  ));
-  geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array([0]), 1));
-  geometry.instanceCount = 1;
-  const edges = new Mesh(geometry, wideLineMaterial());
-  edges.name = `brick-edges-${type}`;
-  edges.userData.isWideEdgeMesh = true;
-  edges.userData.brickIds = ["placement-preview-brick"];
-  edges.frustumCulled = false;
-  edges.renderOrder = 10;
-  return edges;
 }
 
 function disposePlacementRoot(root: Mesh | Group): void {
@@ -2481,8 +2498,8 @@ function disposeImported(root: Group): void {
   disposeImportedScene(root);
 }
 
-function createViewportRenderer(profile: GraphicsProfile): WebGLRenderer | FallbackRenderer {
-  if (profile === "software") return new FallbackRenderer();
+function createViewportRenderer(profile: GraphicsProfile): WebGLRenderer | null {
+  if (profile === "software") return null;
   const canvas = document.createElement("canvas");
   const standard = profile === "standard";
   try {
@@ -2499,7 +2516,7 @@ function createViewportRenderer(profile: GraphicsProfile): WebGLRenderer | Fallb
   } catch (error) {
     console.warn("Failed to initialize the builder WebGL renderer.", error);
   }
-  return new FallbackRenderer();
+  return null;
 }
 
 function setRendererSize(

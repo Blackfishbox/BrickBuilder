@@ -22,12 +22,15 @@ const MAX_VERTICES = 1_500_000;
 const MAX_DERIVED_EDGE_TRIANGLES = 20_000;
 const MAX_RENDER_EDGE_SEGMENTS = 100_000;
 const DERIVED_EDGE_CREASE_ANGLE_DEGREES = 30;
-const edgeSources = new WeakMap<readonly Surface[], { surface: Surface; positions: Float32Array }[]>();
+type EdgeSource = { surface: Surface; positions: Float32Array };
+const edgeSources = new WeakMap<readonly Surface[], EdgeSource[]>();
+const legacyEdgeSources = new WeakMap<readonly Surface[], EdgeSource[]>();
 
-function getEdgeSources(surfaces: readonly Surface[]) {
-  const cached = edgeSources.get(surfaces);
+function getEdgeSources(surfaces: readonly Surface[], legacy: boolean) {
+  const cache = legacy ? legacyEdgeSources : edgeSources;
+  const cached = cache.get(surfaces);
   if (cached) return cached;
-  const sources: { surface: Surface; positions: Float32Array }[] = [];
+  const sources: EdgeSource[] = [];
   for (const surface of surfaces) {
     let edges = surface.edges;
     if (!edges.length && surface.positions.length &&
@@ -36,31 +39,31 @@ function getEdgeSources(surfaces: readonly Surface[]) {
       geometry.setAttribute("position", new BufferAttribute(surface.positions, 3));
       // 30° suppresses the 22.5° facet seams on standard 16-sided LEGO studs,
       // while retaining actual body corners and authored LDraw line records.
-      const creaseGeometry = new EdgesGeometry(geometry, DERIVED_EDGE_CREASE_ANGLE_DEGREES);
+      const creaseGeometry = new EdgesGeometry(geometry, legacy ? 18 : DERIVED_EDGE_CREASE_ANGLE_DEGREES);
       geometry.dispose();
       edges = creaseGeometry.getAttribute("position").array as Float32Array;
       creaseGeometry.dispose();
     }
     if (edges.length) sources.push({ surface, positions: edges });
   }
-  edgeSources.set(surfaces, sources);
+  cache.set(surfaces, sources);
   return sources;
 }
 
-function edgeLayout(surfaces: readonly Surface[]) {
-  const sources = getEdgeSources(surfaces);
+function edgeLayout(surfaces: readonly Surface[], legacy = false) {
+  const sources = getEdgeSources(surfaces, legacy);
   const totalSegments = sources.reduce((sum, source) => sum + Math.floor(source.positions.length / 6), 0);
   const stride = Math.max(1, Math.ceil(totalSegments / MAX_RENDER_EDGE_SEGMENTS));
   return { sources, stride, selectedSegments: Math.ceil(totalSegments / stride) };
 }
 
-export function visibleEdgeCount(surfaces: readonly Surface[]): number {
-  return edgeLayout(surfaces).selectedSegments;
+export function visibleEdgeCount(surfaces: readonly Surface[], legacy = false): number {
+  return edgeLayout(surfaces, legacy).selectedSegments;
 }
 
 /** Uses authored LDraw edges or derived creases without preparing wide-line lighting. */
-export function visibleEdgeLines(surfaces: readonly Surface[]): Float32Array {
-  const { sources, stride, selectedSegments } = edgeLayout(surfaces);
+export function visibleEdgeLines(surfaces: readonly Surface[], legacy = false): Float32Array {
+  const { sources, stride, selectedSegments } = edgeLayout(surfaces, legacy);
   if (sources.length === 1 && stride === 1) return sources[0].positions;
   const positions = new Float32Array(selectedSegments * 6);
   let sourceSegment = 0, outputSegment = 0;

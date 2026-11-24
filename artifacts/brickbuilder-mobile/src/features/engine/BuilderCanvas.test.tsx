@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Box3, Color, DoubleSide, Euler, Group, InstancedMesh, LineSegments, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, SRGBColorSpace, Vector2, Vector3 } from "three";
+import { Box3, Color, DoubleSide, Euler, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Plane, Raycaster, Scene, ShaderMaterial, SRGBColorSpace, Vector2, Vector3 } from "three";
 import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
@@ -13,6 +13,7 @@ import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
 import { compilePart, worldMatrix } from "./ldraw-geometry";
+import * as importedScenes from "./imported-scene";
 import { DEFAULT_INSTRUCTION_PHI, DEFAULT_INSTRUCTION_THETA } from "./instruction-camera";
 import * as snapping from "../connections/engine";
 import type { Contact } from "../connections/types";
@@ -167,7 +168,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("restores solid WebGL and normal edges from compatibility mode without resetting the camera", async () => {
+it.each([false, true])("tries historical WebGL before software and rebuilds it (thick edges: %s)", async (thickEdges) => {
   observed.webglEnabled = true;
   const model = engineFixture(1, 3);
   const props = { projectId: "graphics-recovery", bricks: [], imported: model, selectedId: null,
@@ -181,11 +182,12 @@ it("restores solid WebGL and normal edges from compatibility mode without resett
     });
     flushFrame();
   };
-  act(() => root.render(<BuilderCanvas {...props} thickEdges />));
+  act(() => root.render(<BuilderCanvas {...props} thickEdges={!thickEdges} />));
   await waitForModel();
-  act(() => root.render(<BuilderCanvas {...props} thickEdges={false} />));
+  act(() => root.render(<BuilderCanvas {...props} thickEdges={thickEdges} />));
   flushFrame();
-  expect((edges() as Mesh<never, ShaderMaterial>).material.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
+  expect((edges() as Mesh<never, ShaderMaterial>).material.uniforms.edgeContrast.value)
+    .toBe(thickEdges ? 1 : NORMAL_EDGE_CONTRAST);
   const initialCamera = observed.cameraPose;
   const first = gpuCanvas();
   act(() => { first.dispatchEvent(new Event("webglcontextlost", { cancelable: true })); });
@@ -195,7 +197,9 @@ it("restores solid WebGL and normal edges from compatibility mode without resett
   expect(first.isConnected).toBe(false);
   expect(observed.preparations).toBe(0);
   expect(observed.cameraPose).toEqual(initialCamera);
-  expect(edges()).toBeInstanceOf(LineSegments);
+  expect(second.dataset.webglProfile).toBe("legacy");
+  expect(edges()?.userData.legacyEdges).toBe(true);
+  expect((edges() as Mesh<never, ShaderMaterial>).material.uniforms.lineWidth.value).toBe(thickEdges ? 18 : 1);
   expect(vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.filter(([kind]) => kind === "webgl2").at(-1))
     .toEqual(["webgl2", expect.objectContaining({ antialias: false })]);
 
@@ -203,6 +207,7 @@ it("restores solid WebGL and normal edges from compatibility mode without resett
   await waitForModel();
   const third = gpuCanvas();
   expect(third).not.toBe(second);
+  expect(third.dataset.webglProfile).toBe("legacy-faces");
   expect(edges()).toBeUndefined();
   expect(observed.preparations).toBe(0);
 
@@ -216,9 +221,30 @@ it("restores solid WebGL and normal edges from compatibility mode without resett
   act(() => retry.click());
   await waitForModel();
   expect(gpuCanvas()).not.toBe(third);
-  expect(edges()).toBeInstanceOf(LineSegments);
+  expect(gpuCanvas().dataset.webglProfile).toBe("legacy");
+  expect(edges()?.userData.legacyEdges).toBe(true);
   expect(element.querySelector("[data-renderer='canvas-fallback']")).toBeNull();
   expect(observed.cameraPose).toEqual(initialCamera);
+});
+
+it("tries the historical WebGL scene when the modern scene exceeds its GPU budget", async () => {
+  observed.webglEnabled = true;
+  const original = importedScenes.createImportedGroupAsync;
+  const build = vi.spyOn(importedScenes, "createImportedGroupAsync").mockImplementation((model, options) =>
+    options?.viewport === "standard" ? Promise.reject(new importedScenes.SceneBudgetExceeded()) : original(model, options));
+  const model = engineFixture(1, 3);
+  act(() => root.render(<BuilderCanvas projectId="gpu-budget-test" imported={model} bricks={[]} selectedId={null}
+    selectedType="brick-2x4" selectedColor="#B40000" toolMode="view" onMove={vi.fn()} onSelect={vi.fn()} onPlace={vi.fn()} />));
+  for (const profile of ["standard", "legacy"]) {
+    await act(async () => {
+      await vi.waitFor(() => expect(build.mock.calls.some(([, options]) => options?.viewport === profile)).toBe(true));
+    });
+  }
+  await act(async () => {
+    await vi.waitFor(() => expect(observed.scene3d?.getObjectByName("ldraw:instanced-edges")?.userData.legacyEdges).toBe(true));
+  });
+  expect(element.querySelector("[data-webgl-profile='legacy']")).not.toBeNull();
+  expect(observed.preparations).toBe(0);
 });
 
 describe("temporary rotation anchor marker", () => {

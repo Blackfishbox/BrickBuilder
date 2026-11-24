@@ -9,6 +9,7 @@ import { compilePart, visibleEdgeCount, visibleEdgeData, visibleEdgeLines, world
 import { installInstructionFocus, FOCUS_ATTRIBUTE, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER } from "./instruction-focus";
 import { expandWideLines, wideLineMaterial } from "./wide-lines";
 import { compactFaceAttributes } from "./compact-faces";
+import { expandLegacyLines, legacyLineMaterial, LEGACY_EDGE_BYTES_PER_SEGMENT } from "./legacy-lines";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
 function sharedAttribute(array: Float32Array): BufferAttribute {
   let attribute = sharedAttributes.get(array);
@@ -16,15 +17,17 @@ function sharedAttribute(array: Float32Array): BufferAttribute {
   return attribute;
 }
 
+export type SceneViewport = "standard" | "legacy" | "legacy-faces";
 export interface SceneBuildOptions {
   signal?: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
   maxGeometryBytes?: number;
-  viewport?: "standard" | "recovery" | "faces";
+  viewport?: SceneViewport;
 }
 export interface ImportedSceneDetail {
   compactFaces: boolean;
-  edges: "wide" | "thin" | "none";
+  edges: "wide" | "thin" | "legacy" | "none";
+  legacyEdgeStride?: number;
 }
 const FULL_DETAIL: ImportedSceneDetail = { compactFaces: false, edges: "wide" };
 export function importedSceneDetail(root: Group): ImportedSceneDetail {
@@ -144,13 +147,20 @@ function compactLineMaterial(): ShaderMaterial {
 }
 
 /** One instanced line draw per part, never one Object3D per brick. */
-function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[], mode: ImportedSceneDetail["edges"]): void {
+function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[], detail: ImportedSceneDetail): void {
+  const mode = detail.edges;
   if (mode === "none") return;
   const geometry = new InstancedBufferGeometry();
   if (mode === "thin") {
     const positions = visibleEdgeLines(surfaces);
     if (!positions.length) return;
     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  } else if (mode === "legacy") {
+    const positions = visibleEdgeLines(surfaces, true);
+    if (!positions.length) return;
+    const expanded = expandLegacyLines(positions, detail.legacyEdgeStride);
+    for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
+    expanded.dispose();
   } else {
     const source = visibleEdgeData(surfaces);
     if (!source.positions.length) return;
@@ -194,15 +204,17 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
   geometry.instanceCount = instances.length;
   geometry.boundingBox = bounds;
   geometry.computeBoundingSphere();
-  const lines = mode === "wide" ? new Mesh(geometry, wideLineMaterial()) : new LineSegments(geometry, compactLineMaterial());
+  const lines = mode === "thin" ? new LineSegments(geometry, compactLineMaterial())
+    : new Mesh(geometry, mode === "legacy" ? legacyLineMaterial() : wideLineMaterial());
   // The shader's per-instance transform is not represented by Object3D.matrix.
   lines.frustumCulled = false;
   lines.name = "ldraw:instanced-edges";
-  lines.userData.isWideEdgeMesh = mode === "wide";
+  lines.userData.isWideEdgeMesh = mode !== "thin";
+  lines.userData.legacyEdges = mode === "legacy";
   lines.userData.brickIds = instances.map(instance => instance.id);
   lines.userData.batchKey = `${instances[0].reference.toLowerCase()}|edges`;
   lines.userData.localBounds = local;
-  lines.renderOrder = 10;
+  if (mode !== "legacy") lines.renderOrder = 10;
   root.add(lines);
 }
 
@@ -243,11 +255,33 @@ export function createImportedGroup(model: ImportedModel, detail = FULL_DETAIL):
     for (const [reference, instances] of instanceGroups(model)) {
       const surfaces = compilePart(model, reference, "16");
       addPartFaces(root, surfaces, instances, detail.compactFaces);
-      addEdges(root, surfaces, instances, detail.edges);
+      addEdges(root, surfaces, instances, detail);
     }
   }
   catch (error) { disposeImportedScene(root); throw error; }
   return root;
+}
+
+/** Prefer the historic edge layout; sample decorations only when it would exceed mobile budgets. */
+function legacyEdgeStride(batches: { segments: number; instances: number }[], budget: number): number | undefined {
+  let high = Math.max(1, ...batches.map(batch => batch.segments));
+  let low = 1;
+  const fits = (stride: number) => {
+    let bytes = 0, repeatedSegments = 0;
+    for (const batch of batches) {
+      const count = Math.ceil(batch.segments / stride);
+      bytes += count * LEGACY_EDGE_BYTES_PER_SEGMENT + batch.instances * 52;
+      repeatedSegments += count * batch.instances;
+    }
+    return bytes <= budget && repeatedSegments <= MAX_WIDE_EDGE_OCCURRENCES;
+  };
+  if (!fits(high)) return undefined;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (fits(middle)) high = middle;
+    else low = middle + 1;
+  }
+  return low;
 }
 
 export async function createImportedGroupAsync(model: ImportedModel, options: SceneBuildOptions = {}): Promise<Group> {
@@ -265,6 +299,7 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
   };
   try {
     let rawFaceBytes = 0, wideEdgeBytes = 0, thinEdgeBytes = 0, edgeOccurrences = 0;
+    const legacyBatches: { segments: number; instances: number }[] = [];
     if (viewport) {
       for (const [reference, instances] of parts) {
         signal?.throwIfAborted();
@@ -272,19 +307,22 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
         for (const surface of surfaces) {
           rawFaceBytes += surface.positions.byteLength * (surface.colorCode === "16" ? 2 : 3);
         }
-        if (viewport !== "faces") {
-          const segments = visibleEdgeCount(surfaces);
+        if (viewport !== "legacy-faces") {
+          const segments = visibleEdgeCount(surfaces, viewport === "legacy");
           if (segments > 0) {
-            wideEdgeBytes += segments * WIDE_EDGE_BYTES_PER_SEGMENT + instances.length * 55;
-            thinEdgeBytes += segments * 24 + instances.length * 52;
-            edgeOccurrences += segments * instances.length;
+            if (viewport === "legacy") legacyBatches.push({ segments, instances: instances.length });
+            else {
+              wideEdgeBytes += segments * WIDE_EDGE_BYTES_PER_SEGMENT + instances.length * 55;
+              thinEdgeBytes += segments * 24 + instances.length * 52;
+              edgeOccurrences += segments * instances.length;
+            }
           }
         }
         await yieldFrame();
       }
     }
-    const compactFaces = viewport === "recovery" || viewport === "faces" ||
-      !!(viewport && rawFaceBytes > budget * 0.75);
+    const compactFaces = viewport === "legacy-faces" ||
+      !!(viewport && rawFaceBytes > budget * (viewport === "legacy" ? 0.6 : 0.75));
     let done = 0;
     const total = parts.size * 2;
     for (const [reference, instances] of parts) {
@@ -295,15 +333,19 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
       await yieldFrame();
     }
     const edgeBudget = budget - measureImportedScene(root).bufferBytes;
-    const edges = viewport === "faces" ? "none"
-      : !viewport || (viewport === "standard" && wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES) ? "wide"
-      : thinEdgeBytes <= edgeBudget ? "thin"
-      : "none";
-    root.userData.importedSceneDetail = { compactFaces, edges } satisfies ImportedSceneDetail;
-    if (edges !== "none") {
+    let detail: ImportedSceneDetail = { compactFaces, edges: "none" };
+    if (viewport === "legacy") {
+      const stride = legacyEdgeStride(legacyBatches, edgeBudget);
+      if (stride !== undefined) detail = { compactFaces, edges: "legacy", legacyEdgeStride: stride };
+    } else if (viewport !== "legacy-faces") {
+      if (!viewport || (wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES)) detail.edges = "wide";
+      else if (thinEdgeBytes <= edgeBudget) detail.edges = "thin";
+    }
+    root.userData.importedSceneDetail = detail;
+    if (detail.edges !== "none") {
       for (const [reference, instances] of parts) {
         signal?.throwIfAborted();
-        addEdges(root, compilePart(model, reference, "16"), instances, edges);
+        addEdges(root, compilePart(model, reference, "16"), instances, detail);
         if (measureImportedScene(root).bufferBytes > budget) throw new SceneBudgetExceeded();
         onProgress?.(++done, total);
         await yieldFrame();
