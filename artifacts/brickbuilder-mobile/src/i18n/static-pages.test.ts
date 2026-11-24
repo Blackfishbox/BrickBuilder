@@ -68,3 +68,25 @@ it("keeps the Android privacy contact email visible after switching languages", 
     dom.window.close();
   }
 });
+
+it("uses the requested privacy labels and emphasizes the API URL", () => {
+  const html = readFileSync(new URL("../../public/privacy.html", import.meta.url), "utf8");
+  const dom = new JSDOM(html, { url: "https://brickbuilder.test/" });
+  try {
+    const { document } = dom.window;
+    expect(document.querySelector('meta[name="description"]')?.content).toBe("Datenschutzerklärung für BrickBuilder.");
+    const api = [...document.querySelectorAll("strong")].find(node =>
+      node.textContent === "https://brickbuilder.blackfishbox.de/api");
+    expect(api).toBeDefined();
+    expect(document.querySelector('[data-copy="app-name"]')).toBeNull();
+    expect(document.querySelector('[data-copy="title"]')?.textContent).toBe("Privacy Policy");
+    expect(document.querySelector('main[data-locale="en"]')?.textContent).toContain(
+      "considerable effort not undertaken by the server operator",
+    );
+    expect(document.querySelector('main[data-locale="de"]')?.textContent).toContain(
+      "welcher vom Verantwortlichen des Servers nicht betrieben wird",
+    );
+  } finally {
+    dom.window.close();
+  }
+});

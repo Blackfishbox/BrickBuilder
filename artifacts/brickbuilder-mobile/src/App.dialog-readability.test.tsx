@@ -453,9 +453,9 @@ it.each(["light", "dark"] as const)(
     openProjectMenu(container);
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="button-open-privacy"]')!.click());
     const privacy = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(privacy.textContent).toContain("Datenschutz · Android-Fassung");
+    expect(privacy.textContent).toContain("Datenschutzeinstellungen");
     expect(privacy.querySelector('input[type="checkbox"]')).not.toBeNull();
-    expect(privacy.querySelector("iframe")?.title).toBe("Datenschutzerklärung für BrickBuilder");
+    expect(privacy.querySelector("iframe")?.title).toBe("Datenschutzerklärung");
     act(() => privacy.querySelector<HTMLButtonElement>("button")!.click());
 
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-parts"]')!.click());

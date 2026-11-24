@@ -7,6 +7,8 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
   const { t } = useI18n();
   const [enabled, setEnabled] = useState(remoteGeometryEnabled);
   const [error, setError] = useState("");
+  const geometryInfo = t("privacy.geometryInfo", { api: GEOMETRY_API });
+  const apiStart = geometryInfo.indexOf(GEOMETRY_API);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="max-w-3xl w-[calc(100%-24px)] p-3 sm:p-5" aria-describedby={undefined}>
       <DialogHeader><DialogTitle>{t("privacy.title")}</DialogTitle></DialogHeader>
@@ -20,7 +22,11 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
             }} />
           {t("privacy.loadGeometry")}
         </label>
-        <p>{t("privacy.geometryInfo", { api: GEOMETRY_API })}</p>
+        <p>{apiStart < 0 ? geometryInfo : <>
+          {geometryInfo.slice(0, apiStart)}
+          <strong>{GEOMETRY_API}</strong>
+          {geometryInfo.slice(apiStart + GEOMETRY_API.length)}
+        </>}</p>
         <p className="mt-2">{t("privacy.geometryInfo2")}</p>
         {error && <p role="alert">{error}</p>}
       </section>}

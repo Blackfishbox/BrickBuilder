@@ -11,7 +11,7 @@ it("opens the bundled policy without leaving the editor and allows closing", () 
   try {
     act(() => root.render(<PrivacyDialog onClose={onClose} />));
     const dialog = document.querySelector("[role='dialog']")!;
-    expect(dialog.textContent).toContain("Android-Fassung");
+    expect(dialog.textContent).toContain("Datenschutzeinstellungen");
     expect(dialog.querySelector("iframe")?.getAttribute("src")).toBe(`${import.meta.env.BASE_URL}privacy.html`);
     act(() => dialog.querySelector<HTMLButtonElement>("button")!.click());
     expect(onClose).toHaveBeenCalledOnce();
@@ -29,6 +29,9 @@ it("persists Android opt-in and allows withdrawal after reopening", () => {
   try {
     act(() => root.render(<PrivacyDialog onClose={() => {}} />));
     let checkbox = document.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+    const api = [...document.querySelectorAll("[role=dialog] strong")].find(node =>
+      node.textContent === "https://brickbuilder.blackfishbox.de/api");
+    expect(api).toBeDefined();
     expect(checkbox.checked).toBe(false);
     expect(document.querySelector("[role=dialog]")?.textContent).toContain("IP address");
     act(() => checkbox.click());
