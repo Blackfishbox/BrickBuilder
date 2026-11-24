@@ -8,6 +8,7 @@ import PartThumbnail from "./PartThumbnail";
 import CatalogPartSearch from "./CatalogPartSearch";
 import PartPlacementControl from "./PartPlacementControl";
 import { useI18n } from "@/i18n/I18nProvider";
+import type { Locale } from "@/i18n/messages";
 
 type PkgState = { status: 'idle' | 'pending' | 'error'; error?: string };
 const CATEGORIES = [
@@ -22,8 +23,8 @@ const CATEGORIES = [
 const categoryLabel = (value: string, t: ReturnType<typeof useI18n>['t']) =>
   t(CATEGORIES.find(category => category.value === value)?.label ?? 'parts.category');
 
-const formatBytes = (bytes: number, locale: 'en' | 'de') =>
-  bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toLocaleString(locale === 'de' ? 'de-DE' : 'en-US', { maximumFractionDigits: 1 })} KB`;
+const formatBytes = (bytes: number, locale: Locale) =>
+  bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toLocaleString(locale, { maximumFractionDigits: 1 })} KB`;
 
 const errorText = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -199,7 +200,7 @@ export default function PartsLibrary({ online, selectedPartId, selectedColor = "
               )}
               {inst && (
                 <p className="plib-installed-at">
-                  {t('parts.installedAt', { date: new Date(inst.installedAt).toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-US') })}
+                  {t('parts.installedAt', { date: new Date(inst.installedAt).toLocaleDateString(locale) })}
                   {!current && ` · ${t('parts.newVersion', { old: inst.version, version: pkg.version })}`}
                 </p>
               )}

@@ -484,7 +484,7 @@ describe("local construction instructions", () => {
       expect(text).toContain("LDraw 3004");
       expect(text).toContain("2 neue Teile");
       expect(text).toContain("3 Teile bis zu diesem Schritt");
-      expect(text).toContain("1 neue Teile");
+      expect(text).toContain("1 neues Teil");
     } finally { vi.unstubAllGlobals(); }
   });
 

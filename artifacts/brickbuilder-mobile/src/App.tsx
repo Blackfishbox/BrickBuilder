@@ -592,7 +592,7 @@ function App() {
             <div className="save-status" role="status" data-testid="status-save">
               <span className={`save-dot ${editor.isSaving ? 'busy' : ''}`} />
               <span>{editor.saveError || saveMessage || (editor.isSaving ? t("save.inProgress") : editor.savedAt
-                ? t("save.savedAt", { time: new Date(editor.savedAt).toLocaleTimeString(locale === "de" ? "de-DE" : "en-GB", { hour: '2-digit', minute: '2-digit' }) })
+                ? t("save.savedAt", { time: new Date(editor.savedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })
                 : t("save.localNotice"))}</span>
             </div>
             {restoreMessage && <div className="toast-note" role="status" data-testid="status-restore">{restoreMessage}</div>}
@@ -736,11 +736,11 @@ function App() {
             const [{ exportInstructionPDF }, { exportFile }] = await Promise.all([
               import('@/features/instructions/pdf'), import('@/platform/export-file'),
             ]);
-            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal, highlight });
+            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal, highlight, locale });
             signal.throwIfAborted();
             const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
             const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");
-            await exportFile(bytes, `${name}-Bauanleitung.pdf`, "application/pdf");
+            await exportFile(bytes, `${name}-${t("instruction.pdf.filename")}.pdf`, "application/pdf");
           }}
           onExportStudioPDF={async (plan, onProgress, signal, highlight) => {
             const [{ exportStudioLayoutPDF }, { exportFile }] = await Promise.all([

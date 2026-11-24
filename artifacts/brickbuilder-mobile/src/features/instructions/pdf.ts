@@ -7,12 +7,19 @@ import { instructionPartGroups } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { drawInstructionPartBox } from "./pdf-parts";
 import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
+import { translate, translatePlural, type Locale } from "../../i18n/messages";
 
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
   highlight?: boolean;
-  locale?: "en" | "de";
+  locale?: Locale;
+}
+
+function localizedStepTitle(title: string, number: number, locale: Locale): string {
+  return /^(?:step|schritt)\s+\d+$/i.test(title.trim())
+    ? translate(locale, "instruction.stepNumber", { number })
+    : title;
 }
 
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
@@ -28,18 +35,23 @@ export async function exportInstructionPDF(
   renderCallout = instructionCalloutImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
+  const locale = options.locale ?? "de";
   options.signal?.throwIfAborted();
   options.onProgress?.(0, plan.steps.length);
   const renderer = await createRenderer(document, options.signal);
   try {
     const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
-    pdf.setProperties({ title: `${document.name} – Bauanleitung`, creator: "BrickBuilder" });
+    pdf.setProperties({
+      title: `${document.name} – ${translate(locale, "instruction.pdf.title")}`,
+      creator: "BrickBuilder",
+    });
     const visible = new Set<string>();
     for (const [index, step] of plan.steps.entries()) {
       options.signal?.throwIfAborted();
       if (index) pdf.addPage();
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
-      const title = pdf.splitTextToSize(`${index + 1}. ${step.title}`, 178) as string[];
+      const stepTitle = localizedStepTitle(step.title, index + 1, locale);
+      const title = pdf.splitTextToSize(`${index + 1}. ${stepTitle}`, 178) as string[];
       pdf.text(title, 16, 20);
       let imageY = 24 + (title.length - 1) * 7;
       const groups = instructionPartGroups(document, step.partIds);
@@ -47,7 +59,7 @@ export async function exportInstructionPDF(
       const firstPageParts = callouts.length ? 6 : 12;
       imageY += await drawInstructionPartBox(
         pdf, document, groups.slice(0, firstPageParts), imageY, options.signal, renderPart,
-        callouts.slice(0, 3), renderCallout,
+        callouts.slice(0, 3), renderCallout, locale,
       ) + 4;
       step.partIds.forEach(id => visible.add(id));
       const highlightIds = options.highlight && index > 0 ? instructionHighlightIds(document, step) : undefined;
@@ -57,7 +69,8 @@ export async function exportInstructionPDF(
       const continuationPage = (section: string) => {
         pdf.addPage();
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
-        const heading = pdf.splitTextToSize(`${index + 1}. ${step.title} – ${section} (Fortsetzung)`, 178) as string[];
+        const continued = translate(locale, "instruction.pdf.continued");
+        const heading = pdf.splitTextToSize(`${index + 1}. ${stepTitle} – ${section} (${continued})`, 178) as string[];
         pdf.text(heading, 16, 20);
         return 24 + (heading.length - 1) * 6;
       };
@@ -65,28 +78,34 @@ export async function exportInstructionPDF(
         pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(10);
         const lines = pdf.splitTextToSize(value, 178) as string[];
         for (const line of lines) {
-          if (y > 277) y = continuationPage("Hinweise");
+          if (y > 277) y = continuationPage(translate(locale, "instruction.pdf.notes"));
           pdf.text(line, 16, y); y += 5;
         }
       };
-      const calloutSummary = callouts.length ? ` · ${callouts.length} Baugruppen einsetzen` : "";
-      text(`${step.partIds.length} neue Teile${calloutSummary} · ${visible.size} Teile bis zu diesem Schritt`, true);
+      const partCount = step.partIds.length;
+      const newParts = translatePlural(locale, "instruction.pdf.newParts", partCount);
+      const calloutSummary = callouts.length
+        ? ` · ${translatePlural(locale, "instruction.pdf.assemblies", callouts.length)}`
+        : "";
+      const cumulative = translatePlural(locale, "instruction.pdf.cumulativeParts", visible.size);
+      text(`${newParts}${calloutSummary} · ${cumulative}`, true);
       if (step.notes) { y += 3; text(step.notes); }
       const missing = document.imported?.instances.filter(part => visible.has(part.id) && part.part.status !== "resolved") ?? [];
       if (missing.length) {
         y += 3;
         pdf.setTextColor(155, 45, 20);
-        text(`Hinweis: ${missing.length} Teile ohne geladene Geometrie sind in der Abbildung nicht dargestellt. Die Teileliste bleibt vollständig.`);
+        text(translate(locale, "instruction.pdf.missingGeometry", { count: missing.length }));
         pdf.setTextColor(0);
       }
       for (let offset = 3; offset < callouts.length; offset += 12) {
-        const y = continuationPage("Baugruppen");
+        const y = continuationPage(translate(locale, "instruction.pdf.subassemblies"));
         await drawInstructionPartBox(pdf, document, [], y, options.signal, renderPart,
-          callouts.slice(offset, offset + 12), renderCallout);
+          callouts.slice(offset, offset + 12), renderCallout, locale);
       }
       for (let offset = firstPageParts; offset < groups.length; offset += 36) {
-        y = continuationPage("Teile");
-        y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal, renderPart) + 4;
+        y = continuationPage(translate(locale, "instruction.pdf.parts"));
+        y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal,
+          renderPart, [], renderCallout, locale) + 4;
       }
       options.onProgress?.(index + 1, plan.steps.length);
       // Give Android a chance to repaint progress and deliver cancellation.

@@ -29,9 +29,9 @@ export default function CatalogPanel() {
       {catalog.status === "error" && <p role="alert">{catalog.error} {t("catalog.unavailable")}</p>}
       {catalog.status !== "ready" && <button type="button" className="plib-btn" disabled={catalog.status === "loading"} onClick={() => void ensureCatalog().catch(() => undefined)}>{t("catalog.load")}</button>}
       {c && <>
-        <p>{t("catalog.partsColors", { parts: c.parts.toLocaleString(locale === "de" ? "de-DE" : "en-US"), colors: c.colors })}<br />
-          {t("catalog.mappingRows", { parts: c.partRows.toLocaleString(locale === "de" ? "de-DE" : "en-US"), colors: c.colorRows.toLocaleString(locale === "de" ? "de-DE" : "en-US") })}</p>
-        <p>{t("catalog.partIds", { total: c.ldrawParts.toLocaleString(locale === "de" ? "de-DE" : "en-US"), confirmed: c.confirmedParts.toLocaleString(locale === "de" ? "de-DE" : "en-US"), ambiguous: c.ambiguousParts, unknown: c.unknownParts })}<br />
+        <p>{t("catalog.partsColors", { parts: c.parts.toLocaleString(locale), colors: c.colors })}<br />
+          {t("catalog.mappingRows", { parts: c.partRows.toLocaleString(locale), colors: c.colorRows.toLocaleString(locale) })}</p>
+        <p>{t("catalog.partIds", { total: c.ldrawParts.toLocaleString(locale), confirmed: c.confirmedParts.toLocaleString(locale), ambiguous: c.ambiguousParts, unknown: c.unknownParts })}<br />
           {t("catalog.colorIds", { total: c.ldrawColors, confirmed: c.confirmedColors, ambiguous: c.ambiguousColors, unknown: c.unknownColors })}</p>
         <p>{t("catalog.noImportMapping")}</p>
         <label style={{ display: "block" }}>{t("catalog.searchAll")} <input style={{ minHeight: 44, width: "100%" }} value={query} onChange={event => setQuery(event.target.value)} placeholder={t("catalog.nameOrIdExample")} data-testid="catalog-search" /></label>

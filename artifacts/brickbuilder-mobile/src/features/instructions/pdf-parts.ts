@@ -4,12 +4,14 @@ import type { InstructionPart } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { instructionCalloutImage } from "./callouts";
 import type { InstructionCallout } from "./types";
+import { translate, type Locale } from "../../i18n/messages";
 
 /** Six columns, bounded rows per page; every entry is emitted by the caller. */
 export async function drawInstructionPartBox(
   pdf: jsPDF, document: BuilderDocument, entries: InstructionPart[], y: number,
   signal?: AbortSignal, renderImage = instructionPartImage,
   callouts: InstructionCallout[] = [], renderCallout = instructionCalloutImage,
+  locale: Locale = "de",
 ): Promise<number> {
   const calloutRows = Math.ceil(callouts.length / 3);
   pdf.setFont("helvetica", "bold"); pdf.setFontSize(7);
@@ -26,12 +28,16 @@ export async function drawInstructionPartBox(
   pdf.setDrawColor(183, 194, 181); pdf.setFillColor(253, 253, 249);
   pdf.roundedRect(15, y, 180, height, 2, 2, "FD");
   pdf.setTextColor(35, 55, 46); pdf.setFont("helvetica", "bold"); pdf.setFontSize(9);
-  pdf.text(callouts.length ? "Teile und Baugruppen in diesem Schritt" : "Teile in diesem Schritt", 19, y + 5);
+  pdf.text(translate(locale, callouts.length
+    ? "instruction.pdf.partsAndAssembliesInStep"
+    : "instruction.pdf.partsInStep"), 19, y + 5);
   if (!entries.length && !callouts.length) {
-    pdf.setFont("helvetica", "normal"); pdf.text("Keine neuen Teile", 19, y + 15);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(translate(locale, "instruction.pdf.noNewParts"), 19, y + 15);
   }
   if (callouts.length) {
-    pdf.setFontSize(7); pdf.text("Baugruppen einsetzen", 19, y + 11);
+    pdf.setFontSize(7);
+    pdf.text(translate(locale, "instruction.pdf.insertSubassemblies"), 19, y + 11);
     for (const [index, callout] of callouts.entries()) {
       signal?.throwIfAborted();
       const row = Math.floor(index / 3);
@@ -44,7 +50,7 @@ export async function drawInstructionPartBox(
       } catch {
         signal?.throwIfAborted();
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5); pdf.setTextColor(142, 61, 40);
-        pdf.text("Vorschau fehlt", x + 30, top + 14, { align: "center" });
+        pdf.text(translate(locale, "instruction.pdf.previewUnavailable"), x + 30, top + 14, { align: "center" });
       }
       pdf.setTextColor(35, 55, 46); pdf.setFont("helvetica", "bold"); pdf.setFontSize(7);
       const title = calloutTitles[index];
@@ -62,7 +68,7 @@ export async function drawInstructionPartBox(
     } catch {
       signal?.throwIfAborted();
       pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5); pdf.setTextColor(142, 61, 40);
-      pdf.text("Vorschau fehlt", x + 15, top + 11, { align: "center" });
+      pdf.text(translate(locale, "instruction.pdf.previewUnavailable"), x + 15, top + 11, { align: "center" });
     }
     pdf.setTextColor(35, 55, 46); pdf.setFont("helvetica", "bold"); pdf.setFontSize(9);
     pdf.text(`${entry.count}×`, x + 27, top + 4, { align: "right" });

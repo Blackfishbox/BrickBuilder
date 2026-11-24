@@ -5,7 +5,7 @@ import { parseLDraw } from "../formats/ldraw/parser";
 import { writeZip } from "../formats/zip";
 import { readStudioInstructions } from "./studio";
 import { sourceInstructionPlan } from "./model";
-import { exportStudioLayoutPDF } from "./studio-pdf";
+import { exportStudioLayoutPDF, partListRect } from "./studio-pdf";
 import type { InstructionImageRenderer } from "./render";
 
 const sourceText = [
@@ -43,6 +43,7 @@ it("exports one PDF page per imported Studio page with the source format and ste
   document.instructions = readStudioInstructions(xml, sourceInstructionPlan(imported));
   const image = `data:image/png;base64,${imageBytes.toString("base64")}`;
   const imageCalls: string[] = [], progress: [number, number][] = [];
+  const partImageCalls: string[] = [];
   const renderer: InstructionImageRenderer = {
     image(visible, step) { imageCalls.push(step.id); return image; },
     dispose: vi.fn(),
@@ -50,7 +51,10 @@ it("exports one PDF page per imported Studio page with the source format and ste
 
   const bytes = await exportStudioLayoutPDF(document, document.instructions, {
     onProgress: (done, total) => progress.push([done, total]),
-  }, async () => renderer);
+  }, async () => renderer, async (_document, entry) => {
+    partImageCalls.push(entry.number);
+    return image;
+  });
   const pdfText = new TextDecoder().decode(bytes);
 
   expect(pdfText).toMatch(/\/Count\s+2\b/);
@@ -62,8 +66,17 @@ it("exports one PDF page per imported Studio page with the source format and ste
   expect(pdfText).toMatch(/\/Times-Italic\b/);
   expect(pdfText).toMatch(/\/ca 0\.5\b/);
   expect(imageCalls).toEqual(document.instructions.steps.map(step => step.id));
+  expect(partImageCalls).toEqual(["LDraw 3004", "LDraw 3003"]);
   expect(progress).toEqual([[0, 2], [1, 2], [2, 2]]);
   expect(renderer.dispose).toHaveBeenCalledOnce();
+});
+
+it("moves a Studio parts box away from an overlapping step name", () => {
+  expect(partListRect(
+    { quadrant: "LeftTop" },
+    { quadrant: "LeftTop" },
+    0, 0, 100, 100, 1,
+  )).toEqual([66, 0, 34, 27]);
 });
 
 it("exports the Studio custom paper size using its configured units and orientation", async () => {

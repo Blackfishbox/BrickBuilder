@@ -526,8 +526,8 @@ function fitImportedView(
 function softwareWarning(scene: SoftwareScene, locale: "en" | "de", t: ReturnType<typeof useI18n>["t"]): string {
   const samples = scene.triangleCount - scene.free.length;
   return t("canvas.compatibility", {
-    shown: samples.toLocaleString(locale === "de" ? "de-DE" : "en-US"),
-    total: scene.sourceTriangles.toLocaleString(locale === "de" ? "de-DE" : "en-US"),
+    shown: samples.toLocaleString(locale),
+    total: scene.sourceTriangles.toLocaleString(locale),
   });
 }
 

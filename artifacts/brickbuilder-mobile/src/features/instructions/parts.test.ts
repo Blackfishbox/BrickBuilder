@@ -197,6 +197,25 @@ describe("step parts illustrations", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
+  it("localizes all standard instruction PDF labels and default step titles to English", async () => {
+    const doc = createEmptyDocument("English instructions");
+    doc.bricks = [{ id: "one", type: "brick-1x2", color: "#d75b3f", x: 0, y: 0, z: 0, rotation: 0 }];
+    const plan: InstructionPlan = { version: 1, source: "manual", edited: true, warnings: [], steps: [
+      { id: "step", title: "Schritt 1", notes: "", partIds: ["one"] },
+    ] };
+    const image = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    pdfTexts.length = 0;
+    await exportInstructionPDF(doc, plan, { locale: "en" }, async () => ({
+      image: () => image, dispose: vi.fn(),
+    }), async () => image);
+    const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
+      .filter((value): value is string => typeof value === "string");
+    expect(strings).toContain("1. Step 1");
+    expect(strings).toContain("Parts in this step");
+    expect(strings).toContain("1 new part · 1 part through this step");
+    expect(strings.some(value => /Schritt|Teile|Baugruppen|Vorschau fehlt|Hinweis:/.test(value))).toBe(false);
+  });
+
   it("highlights PDF steps except the first and omits the unsolicited color legend", async () => {
     const doc = createEmptyDocument("Highlighted steps");
     doc.bricks = ["old", "new"].map((id, index) => ({

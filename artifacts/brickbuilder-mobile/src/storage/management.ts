@@ -1,4 +1,5 @@
 import { builderDatabase } from "./database";
+import { translate, translatePlural, type Locale } from "../i18n/messages";
 
 export interface StorageEntry {
   id: string;
@@ -19,10 +20,10 @@ export function estimateRecordBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-async function browserEstimate(): Promise<StorageOverview["browser"]> {
+async function browserEstimate(locale: Locale): Promise<StorageOverview["browser"]> {
   try {
     if (typeof navigator === "undefined" || !navigator.storage?.estimate) {
-      return { error: "Dieser Browser stellt keine Speicherschätzung bereit." };
+      return { error: translate(locale, "storage.browserEstimateUnavailable") };
     }
     const estimate = await navigator.storage.estimate();
     const valid = (value?: number) =>
@@ -32,15 +33,15 @@ async function browserEstimate(): Promise<StorageOverview["browser"]> {
     return {
       usage, quota,
       ...(usage === undefined || quota === undefined
-        ? { error: "Der Browser liefert nur eine unvollständige Speicherschätzung." } : {}),
+        ? { error: translate(locale, "storage.browserEstimatePartial") } : {}),
     };
   } catch {
-    return { error: "Die Browser-Speicherschätzung ist momentan nicht verfügbar." };
+    return { error: translate(locale, "storage.browserEstimateFailed") };
   }
 }
 
-export async function getStorageOverview(): Promise<StorageOverview> {
-  const browser = await browserEstimate();
+export async function getStorageOverview(locale: Locale = "en"): Promise<StorageOverview> {
+  const browser = await browserEstimate(locale);
   return builderDatabase.transaction("r", [
     builderDatabase.projects, builderDatabase.partPackages, builderDatabase.libraryParts,
     builderDatabase.libraryFiles, builderDatabase.geometrySnapshots,
@@ -55,21 +56,26 @@ export async function getStorageOverview(): Promise<StorageOverview> {
         id: pkg.id, name: pkg.title,
         bytes: estimateRecordBytes(pkg) + parts.reduce((sum, p) => sum + estimateRecordBytes(p), 0)
           + files.reduce((sum, f) => sum + estimateRecordBytes(f), 0),
-        detail: `${parts.length} Teile · ${files.length} Dateien · Version ${pkg.version}`,
+        detail: `${translatePlural(locale, "storage.detail.parts", parts.length)} · ` +
+          `${translatePlural(locale, "storage.detail.files", files.length)} · ` +
+          translate(locale, "storage.detail.version", { version: pkg.version }),
       };
     }));
     return {
       browser,
       projects: projects.map(project => ({
-        id: project.id, name: project.name || "Neues Modell",
+        id: project.id, name: project.name || translate(locale, "project.new"),
         bytes: estimateRecordBytes(project),
-        detail: `${project.bricks.length + (project.imported?.instances.length ?? 0)} Steine${project.imported ? " · mit Originaldatei und Import-Ressourcen" : ""}`,
+        detail: `${translatePlural(locale, "storage.detail.parts",
+          project.bricks.length + (project.imported?.instances.length ?? 0))}` +
+          (project.imported ? translate(locale, "storage.detail.projectImported") : ""),
       })),
       packages: packageEntries,
       snapshots: snapshots.map(snapshot => ({
-        id: snapshot.id, name: snapshot.roots.join(", ") || "Import-Geometrie",
+        id: snapshot.id, name: snapshot.roots.join(", ") || translate(locale, "storage.detail.importGeometry"),
         bytes: estimateRecordBytes(snapshot),
-        detail: `${snapshot.files.length} Dateien · ${new Date(snapshot.createdAt).toLocaleString("de-DE")}`,
+        detail: `${translatePlural(locale, "storage.detail.files", snapshot.files.length)} · ` +
+          new Date(snapshot.createdAt).toLocaleString(locale),
       })),
     };
   });

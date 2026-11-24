@@ -16,6 +16,7 @@ import './storage-manager.css';
 import { exportFile } from '@/platform/export-file';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isGeneratedProjectName } from '@/i18n/project-name';
+import { translate, type Locale } from '@/i18n/messages';
 
 interface Props {
   currentProjectId: string;
@@ -25,14 +26,14 @@ interface Props {
 
 type Pending = { kind: 'project' | 'package'; entry: StorageEntry } | null;
 
-export function formatBytes(bytes: number, locale: 'en' | 'de' = 'en'): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return locale === 'de' ? 'unbekannt' : 'unknown';
+export function formatBytes(bytes: number, locale: Locale = 'en'): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return translate(locale, 'storage.unknown');
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KiB', 'MiB', 'GiB', 'TiB'];
   let value = bytes / 1024;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
-  return `${value.toLocaleString(locale === 'de' ? 'de-DE' : 'en-US', { maximumFractionDigits: value < 10 ? 1 : 0 })} ${units[unit]}`;
+  return `${value.toLocaleString(locale, { maximumFractionDigits: value < 10 ? 1 : 0 })} ${units[unit]}`;
 }
 
 const sum = (list: StorageEntry[]) => list.reduce((total, item) => total + item.bytes, 0);
@@ -63,14 +64,14 @@ export default function StorageManager({ currentProjectId, onClose, onProjectsCh
     const token = ++loadToken.current;
     setLoading(true); setLoadError('');
     try {
-      const next = await getStorageOverview();
+      const next = await getStorageOverview(locale);
       if (alive.current && token === loadToken.current) setOverview(next);
     } catch (error) {
       if (alive.current && token === loadToken.current) setLoadError(message(error, t('storage.loadError')));
     } finally {
       if (alive.current && token === loadToken.current) setLoading(false);
     }
-  }, []);
+  }, [locale, t]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
