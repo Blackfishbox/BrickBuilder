@@ -12,7 +12,7 @@ import { NORMAL_EDGE_CONTRAST, setWideLineResolution } from "../engine/wide-line
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer, INSTRUCTION_RENDER_SIZE } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
-import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
 import { applyPdfStepCamera, setPdfDefaultCamera } from "./camera";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
@@ -204,25 +204,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         if (!context) throw new Error("PDF-Bild konnte nicht zusammengesetzt werden.");
         context.drawImage(renderer.domElement, 0, 0);
         if (highlightIds?.size) {
-          const boxes = new Map<string, Box3>();
-          assembly.traverse(object => {
-            if (object.userData.partId && visible.has(object.userData.partId) && highlightIds.has(object.userData.partId)) {
-              boxes.set(object.userData.partId, new Box3().setFromObject(object, true));
-            }
-            if (!(object instanceof Mesh)) return;
-            if (!(object instanceof InstancedMesh)) return;
-            const ids = object.userData.brickIds as string[] | undefined;
-            if (!ids) return;
-            object.geometry.computeBoundingBox();
-            ids.forEach((id, index) => {
-              if (!visible.has(id) || !highlightIds.has(id)) return;
-              object.getMatrixAt(index, matrix);
-              const box = object.geometry.boundingBox!.clone().applyMatrix4(matrix).applyMatrix4(object.matrixWorld);
-              if (boxes.has(id)) boxes.get(id)!.union(box); else boxes.set(id, box);
-            });
-          });
           const groups = groupInstructionHighlights(highlightOccurrences, new Set([...highlightIds].filter(id => visible.has(id))));
-          drawInstructionOutlines(context, camera, instructionGroupBounds(groups, boxes),
+          drawInstructionOutlines(context, camera, instructionGroupFrames(groups, highlightOccurrences, assembly.matrixWorld),
             INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
         }
         return output.toDataURL("image/png");

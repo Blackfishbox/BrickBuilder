@@ -6,7 +6,7 @@ import { compilePart, visibleEdgeData, worldMatrix } from "../engine/ldraw-geome
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
-import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
+import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
 import { applyPdfStepCamera, setPdfDefaultCamera } from "./camera";
 import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 
@@ -127,16 +127,14 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           ...(step.rotation ?? [0, 0, 0]).map(angle => angle * Math.PI / 180) as [number, number, number],
         ));
         const projected: { points: number[]; depth: number; color: string; alpha: number }[] = [];
-        const outlines = new Map<string, Box3>();
+        const highlighted = new Set<string>();
         for (const face of faces) {
           if (!visible.has(face.id)) continue;
           a.fromArray(face.points, 0).sub(center).applyMatrix4(rotation);
           b.fromArray(face.points, 3).sub(center).applyMatrix4(rotation);
           c.fromArray(face.points, 6).sub(center).applyMatrix4(rotation);
           if (highlightIds?.has(face.id)) {
-            let box = outlines.get(face.id);
-            if (!box) { box = new Box3(); outlines.set(face.id, box); }
-            box.expandByPoint(a); box.expandByPoint(b); box.expandByPoint(c);
+            highlighted.add(face.id);
           }
           normal.copy(b).sub(a).cross(vertex.copy(c).sub(a)).normalize();
           const shade = 0.58 + 0.42 * Math.abs(normal.dot(light));
@@ -201,9 +199,10 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           context.strokeStyle = stroke;
           context.stroke();
         }
-        if (outlines.size) {
-          const groups = groupInstructionHighlights(highlightOccurrences, new Set(outlines.keys()));
-          drawInstructionOutlines(context, camera, instructionGroupBounds(groups, outlines), width, height);
+        if (highlighted.size) {
+          const groups = groupInstructionHighlights(highlightOccurrences, highlighted);
+          const diagram = rotation.clone().multiply(new Matrix4().makeTranslation(-center.x, -center.y, -center.z));
+          drawInstructionOutlines(context, camera, instructionGroupFrames(groups, highlightOccurrences, diagram), width, height);
         }
         return canvas.toDataURL("image/png");
       },

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { BufferGeometry, Color, InstancedMesh, Mesh, ShaderMaterial, Vector3, type Camera, type Scene } from "three";
+import { Box3, BufferGeometry, Color, InstancedMesh, Matrix4, Mesh, ShaderMaterial, Vector3, type Camera, type Scene } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { brickTransformMatrix } from "../editor/brick-transform";
@@ -317,6 +317,70 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
     expect(context.stroke).toHaveBeenCalledOnce();
     expect(JSON.stringify(document)).toBe(before);
   } finally { renderer.dispose(); }
+});
+
+it.each([
+  { label: "step 5, rotated plate", partMatrix: "0 0 1 0 1 0 -1 0 0", rotation: [20, 65, -15] },
+  { label: "step 6, tilted accessory", partMatrix: "0.707107 0 -0.707107 0.707107 0 0.707107 0 -1 0", rotation: [-35, 140, 12] },
+])("rotates highlight corners with the model for $label in both PDF paths", async ({ partMatrix, rotation }) => {
+  const document = createEmptyDocument();
+  const sourceText = `1 4 47 -64 -41 ${partMatrix} test.dat`;
+  document.imported = { version: 1, format: "io", sourceName: "synthetic.io", sourceText, originalBytes: [],
+    ...parseLDraw(sourceText), resources: {
+      "parts/test.dat": { path: "parts/test.dat", source: "embedded",
+        content: [
+          "4 16 -40 0 -10 40 0 -10 40 -8 -10 -40 -8 -10",
+          "4 14 -40 0 10 40 0 10 40 -8 10 -40 -8 10",
+        ].join("\n") },
+    }, legalDocuments: [] };
+  const part = document.imported.instances[0];
+  part.part.status = "resolved";
+  const paths: number[][] = [];
+  let path: number[] = [];
+  const context = {
+    strokeStyle: "", globalAlpha: 1, lineWidth: 1, fillStyle: "",
+    drawImage() {}, save() {}, restore() {}, fillRect() {}, fill() {}, closePath() {},
+    beginPath() { path = []; },
+    moveTo(x: number, y: number) { path.push(x, y); },
+    lineTo(x: number, y: number) { path.push(x, y); },
+    stroke() { if (this.strokeStyle === "#e32620") paths.push([...path]); },
+  };
+  vi.stubGlobal("document", { createElement: () => ({
+    width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/png;base64,test",
+  }) });
+  const webgl = await createInstructionRenderer(document);
+  const software = await createSoftwareInstructionRenderer(document);
+  const ids = new Set([part.id]);
+  const step = { id: "rotated", title: "", notes: "", partIds: [...ids], rotation: rotation as [number, number, number] };
+  try {
+    webgl.image(ids, step, ids);
+    const [scene, camera] = frames.mock.lastCall! as [Scene, Camera];
+    let transform: Matrix4 | undefined;
+    scene.traverse(object => {
+      if (object instanceof InstancedMesh && object.userData.brickIds?.includes(part.id)) {
+        const instance = new Matrix4();
+        object.getMatrixAt(0, instance);
+        transform = object.matrixWorld.clone().multiply(instance);
+      }
+    });
+    const local = new Box3(new Vector3(-40, -8, -10), new Vector3(40, 0, 10));
+    const corners: Vector3[] = [];
+    for (const x of [local.min.x, local.max.x]) for (const y of [local.min.y, local.max.y]) for (const z of [local.min.z, local.max.z]) {
+      corners.push(new Vector3(x, y, z).applyMatrix4(transform!).project(camera));
+    }
+    const expected: number[] = [];
+    for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) {
+      const j = i ^ bit;
+      if (j < i) continue;
+      for (const point of [corners[i], corners[j]]) expected.push((point.x + 1) * 1000, (1 - point.y) * 760);
+    }
+    expect(paths).toHaveLength(1);
+    paths[0].forEach((value, index) => expect(value).toBeCloseTo(expected[index], 3));
+    paths.length = 0;
+    software.image(ids, step, ids);
+    expect(paths).toHaveLength(1);
+    paths[0].forEach((value, index) => expect(value).toBeCloseTo(expected[index], 3));
+  } finally { webgl.dispose(); software.dispose(); }
 });
 
 it("releases the WebGL renderer and context when PDF setup is canceled during imported geometry", async () => {

@@ -1,12 +1,19 @@
-import { Box3, Camera, Vector3 } from "three";
+import { Box3, Camera, Matrix4, Vector3 } from "three";
 import type { Brick, BuilderDocument } from "../editor/model";
+import { brickTransformMatrix } from "../editor/brick-transform";
 import { brickConstructionBounds } from "../engine/construction-floor";
-import { stackingBounds } from "../engine/stacking";
+import { localPartBounds, stackingBounds } from "../engine/stacking";
+import { worldMatrix } from "../engine/ldraw-geometry";
 
 export interface InstructionHighlightOccurrence {
   id: string;
   identity: string;
   bounds: Box3;
+  frame?: InstructionOutlineFrame;
+}
+export interface InstructionOutlineFrame {
+  bounds: Box3;
+  transform: Matrix4;
 }
 export interface InstructionHighlightGroup {
   ids: string[];
@@ -77,7 +84,13 @@ export function instructionHighlightOccurrences(
   const occurrences: InstructionHighlightOccurrence[] = [];
   for (const brick of bricks) {
     const bounds = brickConstructionBounds(brick);
-    occurrences.push({ id: brick.id, identity: JSON.stringify(["local", brick.type, brick.color.toLowerCase()]), bounds });
+    occurrences.push({
+      id: brick.id, identity: JSON.stringify(["local", brick.type, brick.color.toLowerCase()]), bounds,
+      frame: {
+        bounds: brickConstructionBounds({ ...brick, x: 0, y: 0, z: 0, rotation: 0, tiltX: 0, tiltZ: 0 }),
+        transform: brickTransformMatrix(brick),
+      },
+    });
   }
   if (imported) {
     const boxes = stackingBounds(imported);
@@ -87,6 +100,7 @@ export function instructionHighlightOccurrences(
         id: part.id,
         identity: JSON.stringify(["imported", part.reference.replaceAll("\\", "/").toLowerCase(), part.colorCode]),
         bounds,
+        frame: { bounds: localPartBounds(imported, part.reference), transform: worldMatrix(part.matrix) },
       });
     }
   }
@@ -107,16 +121,33 @@ export function instructionGroupBounds(
   }).filter(box => !box.isEmpty());
 }
 
+/** Transform box corners, not an already rotated axis-aligned enclosing box. */
+export function instructionGroupFrames(
+  groups: readonly InstructionHighlightGroup[], occurrences: readonly InstructionHighlightOccurrence[], diagram: Matrix4,
+): InstructionOutlineFrame[] {
+  const byId = new Map(occurrences.map(part => [part.id, part]));
+  return groups.map(group => {
+    const frame = group.ids.length === 1 ? byId.get(group.ids[0])?.frame : undefined;
+    return {
+      bounds: frame?.bounds ?? group.bounds,
+      transform: frame ? diagram.clone().multiply(frame.transform) : diagram.clone(),
+    };
+  });
+}
+
 /** Selection-style 3D bounds, projected without allocating a mesh per part. */
 export function drawInstructionOutlines(
-  context: CanvasRenderingContext2D, camera: Camera, boxes: Iterable<Box3>, width: number, height: number,
+  context: CanvasRenderingContext2D, camera: Camera, boxes: Iterable<Box3 | InstructionOutlineFrame>, width: number, height: number,
 ): void {
   context.save();
   context.strokeStyle = "#e32620"; context.lineWidth = 2.6; context.globalAlpha = 1;
-  for (const box of boxes) {
+  for (const entry of boxes) {
+    const box = entry instanceof Box3 ? entry : entry.bounds;
     const points = [];
     for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
-      points.push(new Vector3(x, y, z).project(camera));
+      const point = new Vector3(x, y, z);
+      if (!(entry instanceof Box3)) point.applyMatrix4(entry.transform);
+      points.push(point.project(camera));
     }
     if (points.some(p => !Number.isFinite(p.x) || p.z < -1 || p.z > 1)) continue;
     context.beginPath();

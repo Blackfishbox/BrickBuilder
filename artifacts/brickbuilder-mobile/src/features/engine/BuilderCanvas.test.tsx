@@ -8,7 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import * as instructionOutlines from "../instructions/outlines";
-import { NORMAL_EDGE_CONTRAST, THICK_EDGE_WIDTH_PX } from "./wide-lines";
+import { NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX, THICK_EDGE_WIDTH_PX } from "./wide-lines";
 import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
@@ -439,7 +439,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect(edgeMaterial.depthTest).toBe(true);
   expect(edgeMaterial.transparent).toBe(true);
   expect(importedEdge.renderOrder).toBeGreaterThan(0);
-  expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(NORMAL_EDGE_WIDTH_PX);
   expect(importedEdge.geometry.getAttribute("instanceEdgeColor").count).toBe(imported.instances.length);
   expect(importedEdge.geometry.getAttribute("edgeNormal").count).toBe(
     importedEdge.geometry.getAttribute("position").count,
@@ -455,19 +455,21 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   const originalEdgeColor = [...importedEdge.geometry.getAttribute("instanceEdgeColor").array];
   expect(localEdge.visible).toBe(true);
   expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
+  expect(edgeMaterial.uniforms.blackLineWidth.value).toBe(0);
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
   expect(THICK_EDGE_WIDTH_PX).toBe(5.5);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.edgeContrast.value).toBe(1);
+  expect(edgeMaterial.uniforms.blackLineWidth.value).toBe(NORMAL_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThan(1);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeLessThan(7);
   expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
   expect(edgeMaterial.fragmentShader).toContain("vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);");
   expect(edgeMaterial.fragmentShader).toContain("smoothstep(1.0 - edgeWidth, 1.0, abs(vLineSide))");
   expect(edgeMaterial.vertexShader).toContain("vec4 clip = clipA;");
-  expect(edgeMaterial.vertexShader).not.toContain("clip.z -=");
+  expect(edgeMaterial.vertexShader).toContain("clip.z -= 0.000002 * clip.w;");
   expect(edgeMaterial.vertexShader).not.toContain("mix(clipA, clipB, lineEndpoint)");
   expect(localEdge.visible).toBe(true);
   expect(localEdge.renderOrder).toBeGreaterThan(0);
@@ -486,8 +488,9 @@ it("toggles screen-space edge width without rebuilding imported or local model g
 
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
-  expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(NORMAL_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
+  expect(edgeMaterial.uniforms.blackLineWidth.value).toBe(0);
   expect(localEdge.visible).toBe(true);
 });
 
@@ -538,11 +541,25 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
     constructionArea(new Box3()), false, null, null, true);
   expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
+  expect(observedStrokes.some(stroke => stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "#000000")).toBe(true);
   expect(observedStrokes.some(stroke =>
     stroke.width === THICK_EDGE_WIDTH_PX && stroke.color.startsWith("rgb(") && stroke.color !== "#B40000",
   )).toBe(true);
   expect(observedPaints.some(item => item.globalAlpha === 1 && item.fillStyle.startsWith("rgb("))).toBe(true);
   expect(software.records.size).toBe(1);
+});
+
+it("draws thin black standard edges without changing opaque part faces", () => {
+  const local: Brick = { id: "black-edge-local", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };
+  const renderer = new FallbackRenderer();
+  renderer.setSize(600, 600);
+  const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
+  camera.position.set(10, 10, 10);
+  camera.lookAt(0, 0, 0);
+  renderer.render(camera, new Vector3(), [local], null);
+  expect(NORMAL_EDGE_CONTRAST).toBe(0);
+  expect(observedStrokes.some(stroke => stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "rgb(0,0,0)")).toBe(true);
+  expect(observedPaints.some(paint => paint.globalAlpha === 1 && paint.fillStyle !== "rgb(0,0,0)")).toBe(true);
 });
 
 it("outlines every selected local part in the compatibility renderer", () => {

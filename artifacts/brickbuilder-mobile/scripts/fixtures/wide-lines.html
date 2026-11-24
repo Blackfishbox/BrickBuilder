@@ -9,8 +9,8 @@ canvas { background: #dce4df; width: 500px; height: 440px; }
 pre { white-space: pre-wrap; }
 </style>
 <h1>Same placed parts, same camera — real WebGL</h1>
-<main><section><h2>Edges off</h2><div id="off"></div></section>
-<section><h2>Edges on</h2><div id="on"></div></section></main>
+<main><section><h2>Standard thin black edges</h2><div id="off"></div></section>
+<section><h2>Thick part-colored edges</h2><div id="on"></div></section></main>
 <pre id="result">Pending</pre>
 <script type="module">
 import {
@@ -18,7 +18,7 @@ import {
   Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh,
   MeshLambertMaterial, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget, SRGBColorSpace,
 } from "three";
-import { expandWideLines, deriveLineNormalPairs, wideLineMaterial, setWideLineResolution, THICK_EDGE_WIDTH_PX } from "/src/features/engine/wide-lines.ts";
+import { expandWideLines, deriveLineNormalPairs, wideLineMaterial, setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX } from "/src/features/engine/wide-lines.ts";
 import { createBuilderLighting } from "/src/features/engine/lighting.ts";
 
 const result = document.querySelector("#result");
@@ -118,16 +118,41 @@ try {
   }
   assert(overlapPixels > 300, "No edge pixels overlap the rendered brick faces");
   assert(matchedLitPixels > 250, `Thick strokes do not match lit brick faces: ${matchedLitPixels}/${overlapPixels}`);
+  material.uniforms.edgeContrast.value = NORMAL_EDGE_CONTRAST;
+  const blackEdges = pixels(NORMAL_EDGE_WIDTH_PX);
+  let visibleBlackEdges = 0;
+  for (let i = 0; i < blackEdges.length; i += 4) {
+    if (facePixels[i + 3] > 200 &&
+      facePixels[i] + facePixels[i + 1] + facePixels[i + 2] -
+      blackEdges[i] - blackEdges[i + 1] - blackEdges[i + 2] > 30) visibleBlackEdges++;
+  }
+  assert(visibleBlackEdges > 300, `Thin black edges disappeared against solid part faces: ${visibleBlackEdges}`);
+  material.uniforms.edgeContrast.value = 1;
+  material.uniforms.blackLineWidth.value = NORMAL_EDGE_WIDTH_PX;
+  const combinedCore = pixels(THICK_EDGE_WIDTH_PX);
+  let visibleBlackCore = 0, retainedColoredEdges = 0;
+  for (let i = 0; i < combinedCore.length; i += 4) {
+    if (facePixels[i + 3] > 200 &&
+      combinedPixels[i] + combinedPixels[i + 1] + combinedPixels[i + 2] -
+      combinedCore[i] - combinedCore[i + 1] - combinedCore[i + 2] > 30) visibleBlackCore++;
+    if (combinedCore[i + 3] && Math.max(combinedCore[i], combinedCore[i + 1], combinedCore[i + 2]) -
+      Math.min(combinedCore[i], combinedCore[i + 1], combinedCore[i + 2]) > 30) retainedColoredEdges++;
+  }
+  assert(visibleBlackCore > 300, `Thick edges have no visible thin black core: ${visibleBlackCore}`);
+  assert(retainedColoredEdges > 300, "Thick edges lost their part-colored outer stroke");
   renderer.setRenderTarget(null);
   for (const enabled of [false, true]) {
-    edges.visible = enabled;
+    edges.visible = true;
+    material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
+    material.uniforms.blackLineWidth.value = enabled ? NORMAL_EDGE_WIDTH_PX : 0;
+    material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX;
     renderer.render(scene, camera);
     const canvas = document.createElement("canvas"); canvas.width = 500; canvas.height = 440;
     canvas.getContext("2d").drawImage(renderer.domElement, 0, 0);
     document.querySelector(enabled ? "#on" : "#off").append(canvas);
   }
   assert(renderer.info.programs.every(program => program.diagnostics?.runnable !== false), "Shader compilation failed");
-  result.textContent = `PASS: old shader ${brokenCount} pixels; thin ${thinCount}; thick ${thickCount}; colors retained (blue ${blueEdges}, red ${redEdges}); lit-face match <=45: ${matchedLitPixels}/${overlapPixels}, <=12: ${nearPixels}, exact: ${exactPixels}, mean RGB delta: ${(summedDifference / overlapPixels).toFixed(1)}; both instances visible.`;
+  result.textContent = `PASS: thick-edge black core ${visibleBlackCore} pixels; visible standard black edges ${visibleBlackEdges} pixels; old shader ${brokenCount} pixels; thin ${thinCount}; thick ${thickCount}; colors retained (blue ${blueEdges}, red ${redEdges}); lit-face match <=45: ${matchedLitPixels}/${overlapPixels}, <=12: ${nearPixels}, exact: ${exactPixels}, mean RGB delta: ${(summedDifference / overlapPixels).toFixed(1)}; both instances visible.`;
   document.body.dataset.result = "passed";
   target.dispose(); renderer.dispose();
 } catch (error) {

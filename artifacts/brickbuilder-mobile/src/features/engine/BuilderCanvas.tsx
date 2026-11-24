@@ -63,7 +63,7 @@ import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-ge
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
 import {
-  expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, wideLineMaterial,
+  expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX, wideLineMaterial,
   deriveLineNormals,
 } from "./wide-lines";
 
@@ -351,9 +351,16 @@ export class FallbackRenderer {
           }
           context.strokeStyle = color;
           context.stroke();
+          if (thickEdges) {
+            const previousWidth = context.lineWidth;
+            context.lineWidth = NORMAL_EDGE_WIDTH_PX;
+            context.strokeStyle = "#000000";
+            context.stroke();
+            context.lineWidth = previousWidth;
+          }
         }
       };
-    context.lineWidth = thickEdges ? THICK_EDGE_WIDTH_PX : 1;
+    context.lineWidth = thickEdges ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX;
     if (imported) {
       const light = new Vector3(-0.4, 0.8, 0.5).normalize();
       for (const record of imported.edgeRecords) {
@@ -960,14 +967,15 @@ export function BuilderCanvas({
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
             const enabled = propsRef.current.thickEdges;
-            object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : 1;
+            object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX * ratio;
             object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
+            object.material.uniforms.blackLineWidth.value = enabled ? NORMAL_EDGE_WIDTH_PX * ratio : 0;
             if (object.name.startsWith("brick-edges-")) object.visible = true;
             setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
           });
             importedRootRef.current?.children.forEach(child => {
               if (child.name === "ldraw:instanced-edges") {
-                child.visible = propsRef.current.thickEdges || !interactive;
+                child.visible = true;
               }
             });
           try { activeRenderer.render(scene, camera); }

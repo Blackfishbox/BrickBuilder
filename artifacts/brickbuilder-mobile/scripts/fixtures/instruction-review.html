@@ -1,0 +1,65 @@
+<!doctype html><meta charset="utf-8"><title>Local instruction rendering review</title>
+<style>body{font:16px sans-serif;background:#eee;margin:16px}main{display:flex;gap:12px}section{width:500px}img,canvas{width:500px}pre{white-space:pre-wrap}</style>
+<h1>Local model and instruction rendering review</h1>
+<main><section><h2>Normal black edges (live perspective)</h2><div id="model"></div></section>
+<section><h2>Instruction 5</h2><img id="step5"><h2>Instruction 6</h2><img id="step6"></section></main>
+<pre id="result">Pending</pre>
+<script>addEventListener("error",e=>{document.querySelector("#result").textContent=e.message});addEventListener("unhandledrejection",e=>{document.querySelector("#result").textContent=String(e.reason?.stack||e.reason)});</script>
+<script type="module">
+import { Box3, Mesh, PerspectiveCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer } from "three";
+import { importIO } from "/src/features/formats/io/import.ts";
+import { createImportedGroupAsync } from "/src/features/engine/imported-scene.ts";
+import { createBuilderLighting } from "/src/features/engine/lighting.ts";
+import { NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX, setWideLineResolution } from "/src/features/engine/wide-lines.ts";
+import { createInstructionRenderer } from "/src/features/instructions/render.ts";
+import { exportInstructionPDF } from "/src/features/instructions/pdf.ts";
+import { setRemoteGeometryEnabled } from "/src/features/privacy/geometry-consent.ts";
+const result = document.querySelector("#result");
+try {
+  result.textContent="Loading uploaded archive";
+  // This isolated renderer check does not need a background catalog worker.
+  window.Worker = undefined;
+  setRemoteGeometryEnabled(true);
+  const modelUrl = new URLSearchParams(location.search).get("model");
+  if (!modelUrl) throw new Error("Pass a model URL in the query string.");
+  const bytes = new Uint8Array(await (await fetch(modelUrl)).arrayBuffer());
+  result.textContent="Resolving bundled geometry";
+  const modelName = decodeURIComponent(modelUrl.split("/").pop()).replace(/_\d{13}(?=\.io$)/i, "");
+  const model = await importIO(bytes, modelName, { online: true });
+  result.textContent="Building live scene";
+  const missing = model.imported.instances.filter(part => part.part.status !== "resolved");
+  if (missing.length) throw new Error(`Missing geometry: ${missing.map(part=>part.reference).join(", ")}`);
+  const root = await createImportedGroupAsync(model.imported);
+  const scene = new Scene(); scene.add(root, createBuilderLighting());
+  const bounds = new Box3().setFromObject(root), center = bounds.getCenter(new Vector3());
+  const radius = bounds.getSize(new Vector3()).length() / 2;
+  const camera = new PerspectiveCamera(42, 500/440, 0.01, 10000);
+  camera.position.copy(center).add(new Vector3(0.7, 0.65, 1).normalize().multiplyScalar(radius*3.2));
+  camera.lookAt(center);
+  const renderer = new WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+  renderer.setSize(500,440); renderer.setClearColor("#eef1ec");
+  root.traverse(object => {
+    if (object instanceof Mesh && object.userData.isWideEdgeMesh && object.material instanceof ShaderMaterial) {
+      object.material.uniforms.edgeContrast.value = NORMAL_EDGE_CONTRAST;
+      object.material.uniforms.lineWidth.value = NORMAL_EDGE_WIDTH_PX;
+      setWideLineResolution(object.material,500,440);
+    }
+  });
+  document.querySelector("#model").append(renderer.domElement);
+  renderer.render(scene,camera);
+  result.textContent="Rendering instruction images";
+  const diagrams = await createInstructionRenderer(model);
+  const visible = new Set();
+  for (const [index,step] of model.instructions.steps.entries()) {
+    step.partIds.forEach(id=>visible.add(id));
+    if(index===4 || index===5) document.querySelector(`#step${index+1}`).src=diagrams.image(visible,step,new Set(step.partIds));
+  }
+  diagrams.dispose();
+  result.textContent="Exporting PDF";
+  const pdf = await exportInstructionPDF(model, model.instructions, { highlight:true, locale:"en" });
+  const saved = await fetch("/__review-output",{method:"POST",body:pdf});
+  if (!saved.ok) throw new Error("Could not save local PDF review");
+  result.textContent=`PASS: ${model.imported.instances.length} parts resolved; ${model.instructions.steps.length} steps; PDF ${pdf.length} bytes; steps 5/6 use original Studio rotations ${JSON.stringify(model.instructions.steps.slice(4,6).map(step=>step.rotation))}.`;
+  document.body.dataset.result="passed";
+} catch(error) { result.textContent=error.stack; document.body.dataset.result="failed"; }
+</script>

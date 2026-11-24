@@ -6,8 +6,10 @@ import { BUILDER_LIGHTING } from "./lighting";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
 export const THICK_EDGE_WIDTH_PX = 5.5;
-/** Subtle hue-preserving contrast so touching pieces remain distinguishable. */
-export const NORMAL_EDGE_CONTRAST = 0.68;
+/** Black standard-width edges keep touching pieces visibly separated, independent of part color or lighting. */
+export const NORMAL_EDGE_CONTRAST = 0;
+/** Thin but readable in CSS pixels, including high-density mobile canvases. */
+export const NORMAL_EDGE_WIDTH_PX = 1.5;
 
 export interface LineNormalPairs {
   primary: Float32Array;
@@ -165,6 +167,7 @@ export function wideLineMaterial(): ShaderMaterial {
     uniforms: {
       lineWidth: { value: 1 },
       edgeContrast: { value: 1 },
+      blackLineWidth: { value: 0 },
       resolution: { value: new Vector2(1, 1) },
       instructionFocusEnabled: { value: false },
       hemisphereGround: { value: ground.r },
@@ -236,11 +239,16 @@ export function wideLineMaterial(): ShaderMaterial {
         vec2 screenNormal = vec2(-direction.y, direction.x);
         vec4 clip = clipA;
         clip.xy += screenNormal * lineSide * lineWidth / resolution * clip.w;
+        // Avoid coincident face depths swallowing a thin edge in perspective views.
+        // Keep depth testing enabled so genuinely hidden edges stay occluded.
+        clip.z -= 0.000002 * clip.w;
         gl_Position = clip;
       }`,
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
       uniform bool instructionFocusEnabled;
       uniform float edgeContrast;
+      uniform float lineWidth;
+      uniform float blackLineWidth;
       uniform float hemisphereGround;
       uniform float hemisphereIntensity;
       uniform vec3 sunDirection;
@@ -263,6 +271,13 @@ export function wideLineMaterial(): ShaderMaterial {
         float edgeWidth = max(fwidth(vLineSide), 0.0001);
         float coverage = 1.0 - smoothstep(1.0 - edgeWidth, 1.0, abs(vLineSide));
         gl_FragColor = vec4(baseColor * (hemisphere + sunlight) * edgeContrast, coverage);
+        if (blackLineWidth > 0.0) {
+          float coreWidth = clamp(blackLineWidth / max(lineWidth, 0.0001), 0.0, 1.0);
+          float coreCoverage = 1.0 - smoothstep(
+            max(0.0, coreWidth - edgeWidth * 0.5),
+            coreWidth + edgeWidth * 0.5, abs(vLineSide));
+          gl_FragColor.rgb *= 1.0 - coreCoverage;
+        }
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
             ? vec4(0.6, 0.015, 0.01, 0.95)
