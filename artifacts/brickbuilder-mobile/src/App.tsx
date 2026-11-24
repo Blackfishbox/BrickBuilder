@@ -207,6 +207,34 @@ function App() {
     }
     setAdditionalSelectionIds(nextIds.filter(selectedId => selectedId !== editor.selectedId));
   };
+  const toggleCanvasSelection = (id: string | null) => {
+    if (id === null) {
+      setAdditionalSelectionIds([]);
+      editor.select(null);
+      return;
+    }
+    if (!selectionIdSet.has(id)) {
+      if (!editor.selectedId) {
+        editor.select(id);
+        return;
+      }
+      setAdditionalSelectionIds([...rotationTargetIds, id].filter(selectedId => selectedId !== editor.selectedId));
+      return;
+    }
+    const nextIds = rotationTargetIds.filter(selectedId => selectedId !== id);
+    if (id === editor.selectedId) {
+      if (!nextIds.length) {
+        setAdditionalSelectionIds([]);
+        editor.select(null);
+        return;
+      }
+      selectionMenuAnchorUpdateRef.current = true;
+      setAdditionalSelectionIds(nextIds.slice(1));
+      editor.select(nextIds[0]);
+      return;
+    }
+    setAdditionalSelectionIds(nextIds.filter(selectedId => selectedId !== editor.selectedId));
+  };
   const rotationSelection = (mobile = false) => (
     <div key={`rotation-selection-${editor.selectedId ?? "none"}-${editor.toolMode}`}
       className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}
@@ -526,6 +554,7 @@ function App() {
                 toolMode={editor.toolMode}
                 onPlace={editor.place}
                 onSelect={editor.select}
+                onToggleSelection={toggleCanvasSelection}
                 onViewPartTap={(id) => {
                   editor.setToolMode('select');
                   editor.select(id);

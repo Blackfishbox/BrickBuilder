@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { renderView, ViewExportError, type ViewExporter } from "./view-export";
-import { Link2, TriangleAlert, Cloud, MousePointer2, Layers } from "lucide-react";
+import { Link2, TriangleAlert, Cloud, MousePointer2, Layers, MousePointerClick } from "lucide-react";
 import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
   BoxGeometry,
@@ -115,6 +115,8 @@ interface BuilderCanvasProps {
   toolMode: ToolMode;
   onPlace: (position: Position3, transform?: Affine, options?: { stayInBuildMode?: boolean; floorSnap?: boolean }) => void;
   onSelect: (id: string | null) => void;
+  /** When enabled, stationary select-mode taps toggle parts in a multi-selection. */
+  onToggleSelection?: (id: string | null) => void;
   onViewPartTap?: (id: string) => void;
   onOpenRotationControls?: (id: string) => void;
   onMove: (id: string, position: Position3, transform?: Affine) => void;
@@ -563,6 +565,7 @@ export function BuilderCanvas({
   toolMode,
   onPlace,
   onSelect,
+  onToggleSelection,
   onViewPartTap,
   onOpenRotationControls,
   onMove,
@@ -653,6 +656,7 @@ export function BuilderCanvas({
   const autoSelectAfterPlacementRef = useRef(false);
   autoSelectAfterPlacementRef.current = autoSelectAfterPlacement;
   const [moveConnectedAbove, setMoveConnectedAbove] = useState(true);
+  const [multiSelectOnTap, setMultiSelectOnTap] = useState(false);
   useEffect(() => {
     if (!toggleToast) return;
     const timer = setTimeout(() => setToggleToast(""), 2200);
@@ -760,6 +764,8 @@ export function BuilderCanvas({
     onMove,
     onMoveGroup,
     moveConnectedAbove,
+    multiSelectOnTap,
+    onToggleSelection,
   });
   const pointersRef = useRef(new Map<number, PointerPoint>());
   const pointerLastRef = useRef(new Map<number, PointerPoint>());
@@ -818,6 +824,8 @@ export function BuilderCanvas({
     onMove,
     onMoveGroup,
     moveConnectedAbove,
+    multiSelectOnTap,
+    onToggleSelection,
   };
 
   useEffect(() => {
@@ -1900,7 +1908,7 @@ export function BuilderCanvas({
       if (current.toolMode === "select") {
         if (hit) {
           const alreadySelected = current.selectedIds?.includes(hit.id) ?? false;
-          if (!alreadySelected) current.onSelect(hit.id);
+          if (!alreadySelected && !current.multiSelectOnTap) current.onSelect(hit.id);
           const brick = current.bricks.find((item) => item.id === hit.id);
           const instance = current.imported?.instances.find(item => item.id === hit.id);
           const origin = brick ? { x: brick.x, y: brick.y, z: brick.z } :
@@ -2095,7 +2103,7 @@ export function BuilderCanvas({
         const isDoubleTap = previousTap?.id === tapHit.id &&
           now - previousTap.at <= DOUBLE_TAP_INTERVAL_MS &&
           Math.hypot(point.x - previousTap.x, point.y - previousTap.y) <= 48;
-        if (isDoubleTap && current.toolMode === "select" && previousTap?.toolMode === "select") {
+        if (isDoubleTap && current.toolMode === "select" && !current.multiSelectOnTap && previousTap?.toolMode === "select") {
           if (pendingTapActionRef.current) {
             window.clearTimeout(pendingTapActionRef.current.timer);
             pendingTapActionRef.current = null;
@@ -2203,9 +2211,11 @@ export function BuilderCanvas({
         } else if (current.toolMode === "delete" && click && !click.moved) {
           const hit = findBrick(point);
           if (hit) current.onSelect(hit.id);
-        } else if (current.toolMode === "select" && !drag && click && !click.moved) {
+        } else if (current.toolMode === "select" && click && !click.moved &&
+          (!drag || (current.multiSelectOnTap && !drag.moved))) {
           const hit = findBrick(point);
-          current.onSelect(hit?.id ?? null);
+          if (current.multiSelectOnTap) current.onToggleSelection?.(hit?.id ?? null);
+          else current.onSelect(hit?.id ?? null);
         } else if (
           current.toolMode === "view" &&
           autoSelectOnTapRef.current &&
@@ -2360,6 +2370,18 @@ export function BuilderCanvas({
           setToggleToast(t(moveConnectedAbove ? "canvas.moveConnectedAboveOff" : "canvas.moveConnectedAboveOn"));
         }}>
         <Layers size={20} aria-hidden="true" />
+      </button>}
+      {toolMode === "select" && <button type="button" data-testid="button-multiselect-on-tap"
+        className="canvas-control-toggle pointer-events-auto min-h-[46px] min-w-[46px] rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
+        aria-label={t(multiSelectOnTap ? "canvas.multiSelectOnTapOn" : "canvas.multiSelectOnTapOff")}
+        aria-pressed={multiSelectOnTap}
+        title={t(multiSelectOnTap ? "canvas.multiSelectOnTapOn" : "canvas.multiSelectOnTapOff")}
+        onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+        onClick={() => {
+          setMultiSelectOnTap(!multiSelectOnTap);
+          setToggleToast(t(multiSelectOnTap ? "canvas.multiSelectOnTapOff" : "canvas.multiSelectOnTapOn"));
+        }}>
+        <MousePointerClick size={20} aria-hidden="true" />
       </button>}
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
     </div>}

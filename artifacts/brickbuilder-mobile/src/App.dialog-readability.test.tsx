@@ -346,6 +346,19 @@ it("keeps multi-selection checkboxes in sync with viewport selection and applies
   expect(editor.setSelectedColor).toHaveBeenCalledWith("#112233", "1", ["selected-brick", "second-brick"]);
 });
 
+it("syncs direct viewport multi-selection into the opened multi-selection menu", async () => {
+  const container = await mount("light", true);
+  expect(canvasProps.current.selectedIds).toEqual(["selected-brick"]);
+
+  await act(async () => canvasProps.current.onToggleSelection("second-brick"));
+  expect(canvasProps.current.selectedIds).toEqual(["selected-brick", "second-brick"]);
+
+  const menu = container.querySelector<HTMLElement>('[data-testid="group-selection-menu"]')!;
+  await act(async () => menu.querySelector<HTMLButtonElement>('[data-testid="button-group-selection"]')!.click());
+  expect(container.querySelector<HTMLInputElement>('[data-testid="group-selection-item-selected-brick"] input')!.checked).toBe(true);
+  expect(container.querySelector<HTMLInputElement>('[data-testid="group-selection-item-second-brick"] input')!.checked).toBe(true);
+});
+
 it("preserves part selection on the tap that closes a menu and allows selection on the next tap", async () => {
   const container = await mount("light", true);
   const menu = container.querySelector<HTMLElement>('[data-testid="group-selection-menu"]')!;

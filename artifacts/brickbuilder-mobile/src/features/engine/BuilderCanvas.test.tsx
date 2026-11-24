@@ -884,6 +884,23 @@ describe("frame-coalesced drag transactions", () => {
     act(() => root.render(<BuilderCanvas {...props} toolMode="view" />));
     expect(element.querySelector("[data-testid='button-move-connected-above']")).toBeNull();
   });
+  it("defaults direct multi-selection off and toggles selected parts from canvas taps when enabled", async () => {
+    const { props, point, model } = await mount("select");
+    const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-multiselect-on-tap']")!;
+    expect(toggle).not.toBeNull();
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.querySelector("svg")).not.toBeNull();
+
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(element.querySelector("[data-testid='construction-toggle-toast']")?.textContent)
+      .toBe("Direkte Mehrfachauswahl aktiv: Teile antippen zum Hinzufügen oder Entfernen");
+
+    pointer("pointerdown", point.x, point.y);
+    pointer("pointerup", point.x, point.y);
+    expect(props.onToggleSelection).toHaveBeenCalledWith(model.instances[0].id);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
   it("keeps icon toggle gestures from starting a canvas camera gesture", async () => {
     await mount("select");
     const toggle = element.querySelector<HTMLButtonElement>("[aria-label='Kollisionswarnung anzeigen']")!;
@@ -1765,11 +1782,11 @@ describe("frame-coalesced drag transactions", () => {
     expect(onMoveGroup.mock.calls[0][1].z).toBeGreaterThan(0);
   });
   async function mount(toolMode: ToolMode = "select") {
-    const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn(), onViewPartTap = vi.fn();
+    const model = engineFixture(1, 2), onMove = vi.fn(), onSelect = vi.fn(), onToggleSelection = vi.fn(), onViewPartTap = vi.fn();
     const onOpenRotationControls = vi.fn(), onPlace = vi.fn();
     const props = { projectId: "one", bricks: [], imported: model, selectedId: model.instances[0].id,
       selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode, onMove, onSelect,
-      onViewPartTap, onOpenRotationControls, onPlace };
+      onViewPartTap, onOpenRotationControls, onToggleSelection, onPlace };
     act(() => { root.render(<BuilderCanvas {...props} />); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     host = element.querySelector("[data-testid='canvas-3d']")!;
