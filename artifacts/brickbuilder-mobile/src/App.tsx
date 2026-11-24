@@ -6,6 +6,7 @@ import { useBuilder } from '@/features/editor/useBuilder';
 import FinePositionControls from '@/features/editor/FinePositionControls';
 import TiltControls from '@/features/editor/TiltControls';
 import DraggablePanel from '@/features/editor/DraggablePanel';
+import GroupSelectionItem, { type GroupSelectionTarget } from '@/features/editor/GroupSelectionItem';
 import {
   BRICK_DEFINITIONS,
   type BrickType,
@@ -54,6 +55,8 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { isGeneratedProjectName } from '@/i18n/project-name';
 import { rotationAnchors } from '@/features/connections/rotation-anchors';
 import { importedControlAngles, importedRotationOffset, importedTiltOffset } from '@/features/editor/imported-control-angles';
+import { displayColorName } from '@/features/catalog/color-evidence';
+import type { InstructionPart } from '@/features/instructions/parts';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -141,15 +144,43 @@ function App() {
     document.addEventListener("pointerdown", closeMenusOutside, true);
     return () => document.removeEventListener("pointerdown", closeMenusOutside, true);
   }, [finePositionOpen, groupSelectionOpen, tiltControlsOpen]);
-  const availableRotationTargets = [
-    ...editor.document.bricks.map((brick, index) => ({
-      id: brick.id, label: `#${index + 1} · ${t(brick.type === "brick-2x4" ? "brick.classic" :
-        brick.type === "brick-2x2" ? "brick.square" : "brick.narrow")} · ${t("editor.local")}`,
-    })),
-    ...(editor.imported?.instances ?? []).map((instance, index) => ({
-      id: instance.id, label: `#${index + 1} · LDraw ${instance.part.ldrawId}${instance.part.name ? ` · ${instance.part.name}` : ""}`,
-    })),
-  ];
+  const availableRotationTargets = useMemo<GroupSelectionTarget[]>(() => {
+    const palette = catalogPalette();
+    const localTargets: GroupSelectionTarget[] = editor.document.bricks.map(brick => {
+      const definition = BRICK_DEFINITIONS[brick.type];
+      const name = t(brick.type === "brick-2x4" ? "brick.classic" :
+        brick.type === "brick-2x2" ? "brick.square" : "brick.narrow");
+      const color = palette.find(entry => entry.hex.toLowerCase() === brick.color.toLowerCase());
+      const colorName = displayColorName(color?.name ?? t("color.custom"));
+      const imageEntry: InstructionPart = {
+        kind: "legacy", part: brick, count: 1, number: definition.ldrawId,
+        colorName, colorHex: brick.color,
+        key: JSON.stringify(["legacy", brick.type, brick.color.toLowerCase()]),
+      };
+      return {
+        id: brick.id, number: definition.ldrawId, name, colorName, colorHex: brick.color,
+        searchText: `${definition.ldrawId} ${name} ${colorName}`, imageEntry,
+      };
+    });
+    const importedTargets: GroupSelectionTarget[] = (editor.document.imported?.instances ?? []).map(instance => {
+      const resolvedColor = instance.color ?? resolveColor(instance.colorCode);
+      const colorName = displayColorName(resolvedColor?.name ?? instance.colorCode);
+      const colorHex = resolvedColor?.hex ?? "#ff00ff";
+      const name = instance.part.name?.trim() || t("editor.part");
+      const imageEntry: InstructionPart = {
+        kind: "imported", part: instance, count: 1, number: instance.part.ldrawId,
+        colorName, colorHex,
+        key: JSON.stringify(["imported", instance.reference.replaceAll("\\", "/").toLowerCase(),
+          instance.colorCode, resolvedColor?.hex, instance.part.brickLinkId, instance.part.status]),
+      };
+      return {
+        id: instance.id, number: instance.part.ldrawId, name, colorName, colorHex,
+        searchText: `${instance.part.ldrawId} ${instance.part.brickLinkId ?? ""} ${name} ${colorName}`,
+        imageEntry,
+      };
+    });
+    return [...localTargets, ...importedTargets];
+  }, [catalog, editor.document, locale]);
   const availableRotationIds = new Set(availableRotationTargets.map(target => target.id));
   const rotationTargetIds = editor.selectedId
     ? [editor.selectedId, ...additionalRotationIds.filter(id => id !== editor.selectedId && availableRotationIds.has(id))]
@@ -178,13 +209,11 @@ function App() {
         <p>{t("group.selectedSummary", { count: rotationTargetIds.length })}</p>
         <div className="rotation-selection-list">
           {availableRotationTargets.filter(target => target.id !== editor.selectedId &&
-            target.label.toLowerCase().includes(rotationTargetQuery.trim().toLowerCase())).map(target => (
-            <label key={target.id}>
-              <input type="checkbox" checked={additionalRotationIds.includes(target.id)}
-                onChange={event => setAdditionalRotationIds(ids => event.target.checked
-                  ? [...ids, target.id] : ids.filter(id => id !== target.id))} />
-              <span>{target.label}</span>
-            </label>
+            target.searchText.toLowerCase().includes(rotationTargetQuery.trim().toLowerCase())).map(target => (
+            <GroupSelectionItem key={target.id} target={target} document={editor.document}
+              checked={additionalRotationIds.includes(target.id)}
+              onChange={checked => setAdditionalRotationIds(ids => checked
+                ? [...ids, target.id] : ids.filter(id => id !== target.id))} />
           ))}
         </div>
       </DraggablePanel>
