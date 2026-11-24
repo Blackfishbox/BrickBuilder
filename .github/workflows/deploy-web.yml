@@ -46,7 +46,12 @@ jobs:
   deploy:
     name: Deploy on the BrickBuilder server
     needs: build
-    if: github.ref == 'refs/heads/main'
+    # Never add pull_request or pull_request_target triggers to this workflow:
+    # this job executes code on a persistent server.
+    if: >-
+      github.repository == 'Blackfishbox/BrickBuilder' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: [self-hosted, linux, x64, brickbuilder-web-deploy]
     timeout-minutes: 10
     steps:

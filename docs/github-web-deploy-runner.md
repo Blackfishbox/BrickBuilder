@@ -62,6 +62,25 @@ The runner must be online and show the `brickbuilder-web-deploy` label before
 the deployment job can start. It needs outbound HTTPS access to GitHub Actions.
 No inbound firewall rule or Google Authenticator code is required.
 
+## Public-repository safeguards
+
+This repository is public, so keep the runner narrowly scoped:
+
+- The deployment workflow intentionally accepts only pushes to `main` and
+  manual runs from `main`. Its deploy job also checks the repository, event and
+  branch explicitly.
+- Never add `pull_request`, `pull_request_target` or `workflow_run` triggers to
+  a workflow that runs on this persistent server runner. Do not approve a
+  contributor's workflow changes without reviewing the workflow and scripts.
+- In **Settings → Actions → General → Fork pull request workflows from outside
+  collaborators**, choose the strongest available approval policy:
+  **Require approval for all external contributors**. Approval gates reduce
+  accidental execution but do not make malicious code safe after it is approved.
+- Keep the runner registered at repository level, not shared at organization
+  level. Labels select jobs; they are not a security boundary.
+- The runner account has no `sudo` access and writes only to the web root. Do
+  not add credentials or secrets to the deploy job.
+
 ## What each deployment changes
 
 - The PWA is built on a GitHub-hosted runner, not on the server, avoiding the
