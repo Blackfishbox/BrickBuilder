@@ -24,7 +24,7 @@ type ComponentPlacement = "LeftTop" | "LeftBottom" | "RightTop" | "RightBottom" 
 type ComponentLayout = { quadrant: ComponentPlacement; padding?: [number, number] };
 type StudioPageImage = {
   path: string; rect: [number, number, number, number]; rotation: number; depth: number;
-  opacity: number; flipH: boolean; flipV: boolean;
+  opacity: number; flipH: boolean; flipV: boolean; order: number;
 };
 type StudioColor = { rgb: [number, number, number]; alpha: number };
 type StudioBoxStyle = {
@@ -212,6 +212,23 @@ function studioImageNodes(page: XmlRecord): XmlRecord[] {
   ];
 }
 
+export type StudioPageObject<T> = { depth: number; order: number; value: T };
+
+/** Lower Studio depths render behind higher depths; source order breaks ties. */
+export function orderStudioPageObjects<T>(objects: readonly StudioPageObject<T>[]): StudioPageObject<T>[] {
+  return objects.map((object, sequence) => ({ object, sequence }))
+    .sort((left, right) => left.object.depth - right.object.depth ||
+      left.object.order - right.object.order || left.sequence - right.sequence)
+    .map(({ object }) => object);
+}
+
+function nativeDepth(node: StudioNode | undefined): number {
+  const raw = node?.attributes.Depth ?? node?.attributes.depth;
+  if (raw === undefined || raw.trim() === "") return 0;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
 function componentRect(
   placement: ComponentLayout | undefined,
   x: number,
@@ -311,8 +328,11 @@ function studioPages(document: BuilderDocument, input: InstructionPlan, locale: 
   const margins = marginValues.map(value => Math.max(0, Math.min(size[0] / 3, value * unitScale))) as [number, number, number, number];
   const pageNodes = asList(asRecord(instruction?.Pages)?.Page);
   if (!pageNodes.length) throw new Error(translate(locale, "instruction.pdf.noStudioPages"));
+  const nativeNodes = studioNodes(layout.sourceXml);
+  const nativePages = nativeNodes.filter(node => node.name === "Page" && nativeNodes[node.parent ?? -1]?.name === "Pages");
 
-  const pages = pageNodes.map(page => {
+  const pages = pageNodes.map((page, pageIndex) => {
+    const nativePage = nativePages[pageIndex];
     const slots = asList(page.Slot);
     const directSlotRects = slots.map(parseSlotRect);
     const template = attribute(page, "template");
@@ -327,22 +347,30 @@ function studioPages(document: BuilderDocument, input: InstructionPlan, locale: 
       const layout = slot.StepCompLayout ?? globalStepLayout;
       return { source, planStep: input.steps[planIndex], planIndex, placements: componentPlacements(layout) };
     }));
-    const images = studioImageNodes(page).flatMap(node => {
+    const nativeSlotIds = nativeNodes.filter(node => node.name === "Slot" && node.parent === nativePage?.id).map(node => node.id);
+    const nativeImageNodes = [
+      ...nativeNodes.filter(node => node.name === "Image" && node.parent === nativePage?.id),
+      ...nativeSlotIds.flatMap(slotId => nativeNodes.filter(node => node.name === "Image" && node.parent === slotId)),
+    ];
+    const images = studioImageNodes(page).flatMap((node, imageIndex) => {
       const path = attribute(node, "imagePath");
       const rect = attribute(node, "rect").trim().split(/\s+/).map(Number);
       if (!path || path.length > 300 || /^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith("//") ||
           path.includes("\\") || path.split("/").some(segment => segment === "." || segment === "..") ||
           rect.length !== 4 || !rect.every(Number.isFinite) || rect[2] <= 0 || rect[3] <= 0) return [];
+      const order = nativeImageNodes[imageIndex]?.id ?? Number.MAX_SAFE_INTEGER;
+      const depthValue = Number(attribute(node, "Depth") || attribute(node, "depth"));
       return [{
         path, rect: rect as [number, number, number, number],
         rotation: Number(attribute(node, "rotation")) || 0,
-        depth: Number(attribute(node, "depth")) || 0,
+        depth: Number.isFinite(depthValue) ? depthValue : 0,
         opacity: (() => {
           const value = Number(attribute(node, "opacity"));
           return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
         })(),
         flipH: attribute(node, "fliped_H").toLowerCase() === "true",
         flipV: attribute(node, "fliped_V").toLowerCase() === "true",
+        order,
       }];
     });
     return { source: page, images, ...(slotRects ? { slotRects } : {}), steps: pageSteps };
@@ -463,11 +491,11 @@ function paddingOf(style: StudioBoxStyle, scale: number): [number, number, numbe
 function renderNativeCallouts(
   pdf: jsPDF, wrapper: StudioNode, nodes: StudioNode[], slot: StudioRect,
   plan: InstructionPlan, renderer: InstructionImageRenderer, globalStyle: XmlRecord | undefined,
-  scale: number, locale: Locale, signal?: AbortSignal,
+  scale: number, locale: Locale, signal?: AbortSignal, onlyItem?: StudioNode,
 ) {
   if (!supportedStudioCallout(wrapper, nodes) || wrapper.attributes.IsVisible?.toLowerCase() === "false") return;
   const ink: StudioColor = { rgb: [0, 0, 0], alpha: 1 };
-  for (const item of studioChildren(wrapper, nodes, "CallOutItemData")) {
+  for (const item of onlyItem ? [onlyItem] : studioChildren(wrapper, nodes, "CallOutItemData")) {
     signal?.throwIfAborted();
     if (item.attributes.IsVisible?.toLowerCase() === "false") continue;
     const rect = studioCalloutRect(studioVector(item.attributes.Rect, 4)!, slot);
@@ -531,16 +559,24 @@ function renderNativeCallouts(
       withTextOpacity(pdf, font.color, () =>
         pdf.text(`${multiplier}×`, x + width - pr + offset[0] * scale, y + height - pb + offset[1] * scale, { align: "right" }));
     }
-    const arrowStyle = child(styleNode, "ArrowStyle");
-    for (const arrow of studioChildren(item, nodes, "CallOutArrowItemData")) {
-      if (arrow.attributes.IsVisible?.toLowerCase() === "false") continue;
-      const [u, v, tx, ty] = studioVector(arrow.attributes.ArrowPosition, 4)!;
-      drawStudioArrow(pdf, [x + u * width, y + (1 - v) * height,
-        slot[0] + (0.5 + tx) * slot[2], slot[1] + (0.5 - ty) * slot[3]],
-      "NoHeads", attribute(arrowStyle ?? {}, "Style") || "TriangleEmpty",
-      Number(attribute(arrowStyle ?? {}, "Thickness")) || 2, attribute(arrowStyle ?? {}, "Color"), scale);
-    }
   }
+}
+
+function renderNativeCalloutArrow(
+  pdf: jsPDF, wrapper: StudioNode, item: StudioNode, arrow: StudioNode,
+  nodes: StudioNode[], slot: StudioRect, globalStyle: XmlRecord | undefined, scale: number,
+) {
+  if (!supportedStudioCallout(wrapper, nodes) || wrapper.attributes.IsVisible?.toLowerCase() === "false" ||
+      item.attributes.IsVisible?.toLowerCase() === "false" || arrow.attributes.IsVisible?.toLowerCase() === "false") return;
+  const rect = studioCalloutRect(studioVector(item.attributes.Rect, 4)!, slot);
+  const [x, y, width, height] = rect;
+  const styleNode = objectStyle(item, nodes, globalStyle);
+  const arrowStyle = child(styleNode, "ArrowStyle");
+  const [u, v, tx, ty] = studioVector(arrow.attributes.ArrowPosition, 4)!;
+  drawStudioArrow(pdf, [x + u * width, y + (1 - v) * height,
+    slot[0] + (0.5 + tx) * slot[2], slot[1] + (0.5 - ty) * slot[3]],
+  "NoHeads", attribute(arrowStyle ?? {}, "Style") || "TriangleEmpty",
+  Number(attribute(arrowStyle ?? {}, "Thickness")) || 2, attribute(arrowStyle ?? {}, "Color"), scale);
 }
 
 function renderStepNumber(
@@ -701,8 +737,10 @@ export async function exportStudioLayoutPDF(
     ...nodeRecord(globalCallout),
     ...Object.fromEntries(nodes.filter(node => node.parent === globalCallout.id).map(node => [node.name, nodeRecord(node)])),
   } : {};
-  const drawPageArrows = (pdf: jsPDF, parent: StudioNode, originX: number, originY: number) => {
-    for (const arrow of studioChildren(parent, nodes, "Arrow")) {
+  const drawPageArrows = (
+    pdf: jsPDF, parent: StudioNode, originX: number, originY: number, onlyArrow?: StudioNode,
+  ) => {
+    for (const arrow of onlyArrow ? [onlyArrow] : studioChildren(parent, nodes, "Arrow")) {
       if (!supportedStudioArrow(arrow, nodes) || arrow.attributes.IsVisible?.toLowerCase() === "false") continue;
       const points = studioVector(arrow.attributes.PointList, 4)!;
       drawStudioArrow(pdf, points.map((value, index) => value * scale + (index % 2 ? originY : originX)),
@@ -736,6 +774,18 @@ export async function exportStudioLayoutPDF(
       const entries = sourcePage.steps;
       const nativePage = pageNodes[pageIndex];
       const nativeSteps = studioChildren(nativePage, nodes, "Slot").flatMap(slot => studioChildren(slot, nodes, "Step"));
+      const pageObjects: StudioPageObject<() => void | Promise<void>>[] = [];
+      const queuePageObject = (node: StudioNode | undefined, draw: () => void | Promise<void>, depth = nativeDepth(node)) => {
+        pageObjects.push({ depth, order: node?.id ?? Number.MAX_SAFE_INTEGER, value: draw });
+      };
+      for (const image of sourcePage.images) {
+        const asset = imageData[image.path];
+        const [x, y, width, height] = image.rect.map(value => value * scale);
+        pageObjects.push({
+          depth: image.depth, order: image.order,
+          value: () => placeStudioImage(pdf, asset.data, asset.format, [x, y, width, height], image),
+        });
+      }
       const template = attribute(sourcePage.source, "template");
       const grid = templateGrid(template);
       const autoColumns = Math.max(1, Math.ceil(Math.sqrt(entries.length)));
@@ -793,8 +843,11 @@ export async function exportStudioLayoutPDF(
           }
         }
         const [modelX, modelY, modelWidth, modelHeight] = studioModelRect(slot, occupied);
-        fitImage(renderer.image(visible, step, highlightIds, modelWidth / modelHeight),
-          modelX, modelY, modelWidth, modelHeight, pdf);
+        const modelPreview = nativeStep && studioChildren(nativeStep, nodes, "StepPreview")[0];
+        queuePageObject(modelPreview ?? nativeStep, () => {
+          fitImage(renderer.image(visible, step, highlightIds, modelWidth / modelHeight),
+            modelX, modelY, modelWidth, modelHeight, pdf);
+        });
         const resolvedStepNumber = Number.isFinite(stepNumber) ? stepNumber : entry.planIndex + 1;
         if (showParts) {
           const [partsX, partsY, partsWidth, partsHeight] = showNumber
@@ -813,46 +866,61 @@ export async function exportStudioLayoutPDF(
           const [calloutX, calloutY, calloutWidth, calloutHeight] = componentRect(
             entry.placements.SubModelPreview ?? entry.placements.SubmodelPreview, x, imageY, cellWidth, previewHeight, scale,
           );
-          const count = Math.min(callouts.length, 4);
-          const [paddingLeft, paddingRight, paddingBottom, paddingTop] = paddingOf(styles.callout, scale);
-          for (let calloutIndex = 0; calloutIndex < count; calloutIndex++) {
-            const col = calloutIndex % 2, row = Math.floor(calloutIndex / 2);
-            const thumbWidth = calloutWidth / 2, thumbHeight = calloutHeight / 2;
-            const thumb = await instructionCalloutImage(document, callouts[calloutIndex], options.signal ?? new AbortController().signal);
-            options.signal?.throwIfAborted();
-            const thumbX = calloutX + col * thumbWidth, thumbY = calloutY + row * thumbHeight;
-            drawStyledBox(pdf, thumbX, thumbY, thumbWidth, thumbHeight, styles.callout, scale);
-            fitImage(thumb, thumbX + paddingLeft, thumbY + paddingTop,
-              Math.max(1, thumbWidth - paddingLeft - paddingRight),
-              Math.max(1, thumbHeight - paddingTop - paddingBottom), pdf);
-            const multiplier = callouts[calloutIndex].occurrence.length;
-            if (styles.showCalloutMultiplier && multiplier > 1) {
-              const font = styles.calloutMultiplier;
-              applyFont(pdf, font, scale, 5, 60);
-              withTextOpacity(pdf, font.color, () =>
-                pdf.text(`${multiplier}×`, thumbX + thumbWidth - 2, thumbY + thumbHeight - 2, { align: "right" }));
+          const modelOrder = modelPreview?.id ?? nativeStep?.id ?? stepNode.id;
+          queuePageObject(modelPreview ?? nativeStep, async () => {
+            const count = Math.min(callouts.length, 4);
+            const [paddingLeft, paddingRight, paddingBottom, paddingTop] = paddingOf(styles.callout, scale);
+            for (let calloutIndex = 0; calloutIndex < count; calloutIndex++) {
+              const col = calloutIndex % 2, row = Math.floor(calloutIndex / 2);
+              const thumbWidth = calloutWidth / 2, thumbHeight = calloutHeight / 2;
+              const thumb = await instructionCalloutImage(document, callouts[calloutIndex], options.signal ?? new AbortController().signal);
+              options.signal?.throwIfAborted();
+              const thumbX = calloutX + col * thumbWidth, thumbY = calloutY + row * thumbHeight;
+              drawStyledBox(pdf, thumbX, thumbY, thumbWidth, thumbHeight, styles.callout, scale);
+              fitImage(thumb, thumbX + paddingLeft, thumbY + paddingTop,
+                Math.max(1, thumbWidth - paddingLeft - paddingRight),
+                Math.max(1, thumbHeight - paddingTop - paddingBottom), pdf);
+              const multiplier = callouts[calloutIndex].occurrence.length;
+              if (styles.showCalloutMultiplier && multiplier > 1) {
+                const font = styles.calloutMultiplier;
+                applyFont(pdf, font, scale, 5, 60);
+                withTextOpacity(pdf, font.color, () =>
+                  pdf.text(`${multiplier}×`, thumbX + thumbWidth - 2, thumbY + thumbHeight - 2, { align: "right" }));
+              }
             }
-          }
-          if (callouts.length > count) {
-            pdf.setFont("helvetica", "bold"); pdf.setFontSize(6); pdf.setTextColor(35, 55, 46);
-            pdf.text(`+${callouts.length - count}`, calloutX + calloutWidth - 2, calloutY + calloutHeight - 2, { align: "right" });
-          }
+            if (callouts.length > count) {
+              pdf.setFont("helvetica", "bold"); pdf.setFontSize(6); pdf.setTextColor(35, 55, 46);
+              pdf.text(`+${callouts.length - count}`, calloutX + calloutWidth - 2, calloutY + calloutHeight - 2, { align: "right" });
+            }
+          }, 0);
+          pageObjects[pageObjects.length - 1].order = modelOrder + 0.5;
         }
         if (showNativeCallouts) {
           for (const wrapper of nativeCallouts) {
-            renderNativeCallouts(pdf, wrapper, nodes, [x, imageY, cellWidth, previewHeight],
-              plan, renderer, calloutStyle, scale, locale, options.signal);
+            for (const item of studioChildren(wrapper, nodes, "CallOutItemData")) {
+              queuePageObject(item, () => renderNativeCallouts(pdf, wrapper, nodes,
+                [x, imageY, cellWidth, previewHeight], plan, renderer, calloutStyle, scale, locale, options.signal, item));
+              for (const arrow of studioChildren(item, nodes, "CallOutArrowItemData")) {
+                queuePageObject(arrow, () => renderNativeCalloutArrow(pdf, wrapper, item, arrow,
+                  nodes, [x, imageY, cellWidth, previewHeight], calloutStyle, scale));
+              }
+            }
           }
         }
-        if (nativeStep?.parent !== undefined) drawPageArrows(pdf, nodes[nativeStep.parent], x, imageY);
+        if (nativeStep?.parent !== undefined) {
+          const slotNode = nodes[nativeStep.parent];
+          for (const arrow of studioChildren(slotNode, nodes, "Arrow")) {
+            queuePageObject(arrow, () => drawPageArrows(pdf, slotNode, x, imageY, arrow));
+          }
+        }
       }
-      for (const image of sourcePage.images.sort((a, b) => a.depth - b.depth)) {
+      for (const arrow of studioChildren(nativePage, nodes, "Arrow")) {
+        queuePageObject(arrow, () => drawPageArrows(pdf, nativePage, 0, 0, arrow));
+      }
+      for (const { value: draw } of orderStudioPageObjects(pageObjects)) {
         options.signal?.throwIfAborted();
-        const asset = imageData[image.path];
-        const [x, y, width, height] = image.rect.map(value => value * scale);
-        placeStudioImage(pdf, asset.data, asset.format, [x, y, width, height], image);
+        await draw();
       }
-      drawPageArrows(pdf, nativePage, 0, 0);
       options.onProgress?.(pageIndex + 1, pages.length);
       await new Promise(resolve => setTimeout(resolve, 0));
     }

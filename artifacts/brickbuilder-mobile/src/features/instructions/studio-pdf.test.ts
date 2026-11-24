@@ -8,7 +8,7 @@ import { parseLDraw } from "../formats/ldraw/parser";
 import { writeZip } from "../formats/zip";
 import { readStudioInstructions } from "./studio";
 import { sourceInstructionPlan } from "./model";
-import { exportStudioLayoutPDF, partListRect, studioPartCellLayout } from "./studio-pdf";
+import { exportStudioLayoutPDF, orderStudioPageObjects, partListRect, studioPartCellLayout } from "./studio-pdf";
 import type { InstructionImageRenderer } from "./render";
 import { editStudioLayout, inspectStudioLayout, studioNodes } from "./studio-layout";
 import { studioCalloutRect, studioModelRect } from "./studio-objects";
@@ -68,6 +68,68 @@ it("maps native callouts from Studio coordinates and leaves the largest free mod
   expect(rect.slice(2)).toEqual([60, 60]);
   expect(studioModelRect([0, 0, 200, 100], [[0, 0, 60, 100]])).toEqual([60, 0, 140, 100]);
   expect(studioModelRect([0, 0, 200, 100], [])).toEqual([0, 0, 200, 100]);
+});
+
+it("orders equal-depth page objects by their source order, then keeps insertion order", () => {
+  const ordered = orderStudioPageObjects([
+    { depth: 2, order: 8, value: "later" },
+    { depth: 2, order: 3, value: "first in source" },
+    { depth: 1, order: 9, value: "back" },
+    { depth: 2, order: 3, value: "same source position" },
+  ]);
+  expect(ordered.map(object => object.value)).toEqual([
+    "back", "first in source", "same source position", "later",
+  ]);
+});
+
+it("layers transparent Studio images behind and in front of callouts and arrows by depth", async () => {
+  const backPath = "ImageResource/back.png", frontPath = "ImageResource/front.png";
+  const backImage = `<Image depth="-5" rect="20 10 60 60" opacity="0.5" imagePath="${backPath}"/>`;
+  const frontImage = `<Image depth="15" rect="20 10 60 60" opacity="0.4" imagePath="${frontPath}"/>`;
+  const pageArrow = '<Arrow Depth="20" PointList="20 10 80 70" EndStyle="TriangleFilled" Color="0 1 0"/>';
+  const { document, renderer } = nativeFixture("", "", `${backImage}${frontImage}${pageArrow}`);
+  const layout = document.instructions!.studioLayout!;
+  layout.sourceXml = layout.sourceXml
+    .replace('<Step SerializedIndex="0"><CallOut>', '<Step SerializedIndex="0"><StepPreview Depth="-10"/><CallOut>')
+    .replace('CalloutGridMaxPerLine="2"', 'CalloutGridMaxPerLine="2" Depth="0"')
+    .replace('<Divider IsVisible="True"', '<Divider IsVisible="False"')
+    .replace('ArrowPosition="1 0.5 0.1 0"', 'ArrowPosition="1 0.5 0.1 0" Depth="10"');
+  const png = readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url));
+  document.imported!.originalBytes = Array.from(writeZip({
+    "model.ldr": new TextEncoder().encode(sourceText),
+    "model.ins": new TextEncoder().encode(layout.sourceXml),
+    [backPath]: new Uint8Array(png),
+    [frontPath]: new Uint8Array(png),
+  }));
+
+  const imageSpy = vi.spyOn(jsPDF.API, "addImage");
+  try {
+    const bytes = await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+    const sourceImageIndices = imageSpy.mock.calls.flatMap((call, index) =>
+      Number(call[2]) === 20 && Number(call[3]) === 10 && Number(call[4]) === 60 && Number(call[5]) === 60
+        ? [index] : []);
+    const calloutPreviewIndex = imageSpy.mock.calls.findIndex(call =>
+      Number(call[2]) > 20 && Number(call[2]) < 50 && Number(call[3]) > 10 && Number(call[3]) < 40 &&
+      Number(call[4]) < 30 && Number(call[5]) < 30);
+    const commands = pdfCommands(bytes);
+    const drawPositions = [...commands.matchAll(/\/I\d+ Do/g)].map(match => match.index!);
+    const calloutArrowPosition = commands.indexOf("1. 0. 0. RG");
+    const pageArrowPosition = commands.indexOf("0. 1. 0. RG");
+
+    expect(sourceImageIndices).toHaveLength(2);
+    expect(calloutPreviewIndex).toBeGreaterThanOrEqual(0);
+    expect(drawPositions).toHaveLength(imageSpy.mock.calls.length);
+    expect(drawPositions[sourceImageIndices[0]]).toBeLessThan(drawPositions[calloutPreviewIndex]);
+    expect(drawPositions[calloutPreviewIndex]).toBeLessThan(calloutArrowPosition);
+    expect(calloutArrowPosition).toBeLessThan(drawPositions[sourceImageIndices[1]]);
+    expect(drawPositions[sourceImageIndices[1]]).toBeLessThan(pageArrowPosition);
+    expect(new TextDecoder().decode(bytes)).toMatch(/\/ca 0\.4\b/);
+    expect(renderer.image.mock.calls[0][3]).toBeCloseTo(1.2);
+    expect(renderer.image.mock.calls[3][3]).toBeCloseTo(2);
+    expect(renderer.dispose).toHaveBeenCalledOnce();
+  } finally {
+    imageSpy.mockRestore();
+  }
 });
 
 it("draws native callout steps, borders, opacity, typography, dividers, multipliers and arrows", async () => {
