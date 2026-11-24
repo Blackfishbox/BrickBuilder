@@ -8,7 +8,7 @@ import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
 import * as instructionOutlines from "../instructions/outlines";
-import { THICK_EDGE_WIDTH_PX } from "./wide-lines";
+import { NORMAL_EDGE_CONTRAST, THICK_EDGE_WIDTH_PX } from "./wide-lines";
 import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
@@ -453,12 +453,14 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect([...importedEdge.geometry.getAttribute("edgeUseInstanceColor").array]).toContain(1);
   expect([...importedEdge.geometry.getAttribute("edgeUseInstanceColor").array]).toContain(0);
   const originalEdgeColor = [...importedEdge.geometry.getAttribute("instanceEdgeColor").array];
-  expect(localEdge.visible).toBe(false);
+  expect(localEdge.visible).toBe(true);
+  expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
 
   await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
   flushFrame();
   expect(THICK_EDGE_WIDTH_PX).toBe(5.5);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
+  expect(edgeMaterial.uniforms.edgeContrast.value).toBe(1);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeGreaterThan(1);
   expect(edgeMaterial.uniforms.lineWidth.value).toBeLessThan(7);
   expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
@@ -485,7 +487,8 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(1);
-  expect(localEdge.visible).toBe(false);
+  expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
+  expect(localEdge.visible).toBe(true);
 });
 
 it("draws the enabled thick edges on the current local brick preview", async () => {

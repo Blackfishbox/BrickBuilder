@@ -102,6 +102,8 @@ describe("full-geometry software outlines", () => {
     const ids = document.imported?.instances.map(part => part.id) ?? document.bricks.map(part => part.id);
     const context = { save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
       stroke: vi.fn(), fill: vi.fn(), closePath: vi.fn(), fillRect: vi.fn(), strokeStyle: "", lineWidth: 0, globalAlpha: 1, fillStyle: "" };
+    const strokeStyles: string[] = [];
+    context.stroke.mockImplementation(() => { strokeStyles.push(context.strokeStyle); });
     const canvas = { width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,test" };
     vi.stubGlobal("document", { createElement: () => canvas });
     const before = JSON.stringify(document);
@@ -109,14 +111,16 @@ describe("full-geometry software outlines", () => {
     try {
       for (const rotation of [[0, 0, 0], [23, 61, -17]] as [number, number, number][]) {
         context.stroke.mockClear();
+        strokeStyles.length = 0;
         renderer.image(new Set(ids), { id: "step", title: "", notes: "", partIds: ids, rotation }, new Set(ids));
-        expect(context.stroke).toHaveBeenCalledTimes(2);
+        expect(strokeStyles.filter(style => style === "#e32620")).toHaveLength(2);
       }
       context.stroke.mockClear();
+      strokeStyles.length = 0;
       renderer.image(new Set(ids), { id: "step", title: "", notes: "", partIds: ids });
-      expect(context.stroke).not.toHaveBeenCalled();
+      expect(strokeStyles.filter(style => style === "#e32620")).toHaveLength(0);
       renderer.image(new Set(ids.slice(0, 1)), { id: "single", title: "", notes: "", partIds: ids }, new Set(ids));
-      expect(context.stroke).toHaveBeenCalledOnce();
+      expect(strokeStyles.filter(style => style === "#e32620")).toHaveLength(1);
       expect(JSON.stringify(document)).toBe(before);
     } finally { renderer.dispose(); }
   });

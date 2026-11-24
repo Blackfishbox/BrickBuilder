@@ -1,17 +1,30 @@
-import { Box3, Color, Euler, Matrix4, OrthographicCamera, Vector3 } from "three";
+import { Box3, Color, Euler, Matrix3, Matrix4, OrthographicCamera, Vector3 } from "three";
 import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
-import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
-import { compilePart, worldMatrix } from "../engine/ldraw-geometry";
+import { createLocalBrickGeometry, localBrickEdgeNormalPairs, localBrickEdges } from "../engine/local-brick-geometry";
+import { compilePart, visibleEdgeData, worldMatrix } from "../engine/ldraw-geometry";
 import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
 import { applyPdfStepCamera, setPdfDefaultCamera } from "./camera";
+import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 
 const MAX_TRIANGLES = 120_000;
+const MAX_EDGE_SEGMENTS = 60_000;
 export const INSTRUCTION_RENDER_SIZE = { width: 2000, height: 1520 } as const;
 interface Face { id: string; points: Float32Array; color: string; alpha: number }
+interface EdgeSource {
+  id: string;
+  positions: Float32Array;
+  normals: Float32Array;
+  alternateNormals: Float32Array;
+  colorCodes?: string[];
+  inheritedColor: string;
+  matrix: Matrix4;
+  normalMatrix: Matrix3;
+  firstSegment: number;
+}
 
 /**
  * Exact source triangles, not the interactive renderer's sampled fallback.
@@ -27,8 +40,9 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     canvas.width = 1; canvas.height = 1;
     throw new Error("PDF-Abbildungen sind nicht verfügbar: Weder WebGL noch die 2D-Ausgabe konnten gestartet werden.");
   }
-  const faces: Face[] = [], bounds = new Box3(), vertex = new Vector3();
-  const dispose = () => { faces.length = 0; canvas.width = 1; canvas.height = 1; };
+  const faces: Face[] = [], edgeSources: EdgeSource[] = [], bounds = new Box3(), vertex = new Vector3();
+  let sourceEdgeSegments = 0;
+  const dispose = () => { faces.length = 0; edgeSources.length = 0; canvas.width = 1; canvas.height = 1; };
   const push = (id: string, positions: ArrayLike<number>, matrix: Matrix4, code: string) => {
     if (faces.length + positions.length / 9 > MAX_TRIANGLES) {
       throw new Error("PDF: WebGL ist nicht verfügbar und dieses Modell ist für die vollständige Software-Abbildung zu groß. Bitte auf einem Gerät mit WebGL exportieren.");
@@ -48,8 +62,17 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
       signal?.throwIfAborted();
       if (part.part.status !== "resolved") continue;
       const matrix = worldMatrix(part.matrix);
-      for (const surface of compilePart(document.imported!, part.reference, "16")) {
+      const surfaces = compilePart(document.imported!, part.reference, "16");
+      for (const surface of surfaces) {
         push(part.id, surface.positions, matrix, surface.colorCode === "16" ? part.colorCode : surface.colorCode);
+      }
+      const edgeData = visibleEdgeData(surfaces);
+      if (edgeData.positions.length) {
+        edgeSources.push({
+          id: part.id, ...edgeData, inheritedColor: part.colorCode, matrix,
+          normalMatrix: new Matrix3().getNormalMatrix(matrix), firstSegment: sourceEdgeSegments,
+        });
+        sourceEdgeSegments += edgeData.positions.length / 6;
       }
       if (index % 12 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
@@ -72,7 +95,17 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           geometry.dispose();
         }
       }
-      push(part.id, positions, brickTransformMatrix(part), `0x2${part.color.slice(1)}`);
+      const matrix = brickTransformMatrix(part);
+      push(part.id, positions, matrix, `0x2${part.color.slice(1)}`);
+      const localEdges = localBrickEdges(part.type), pairs = localBrickEdgeNormalPairs(part.type);
+      if (localEdges.length) {
+        edgeSources.push({
+          id: part.id, positions: localEdges, normals: pairs.primary, alternateNormals: pairs.alternate,
+          inheritedColor: `0x2${part.color.slice(1)}`, matrix,
+          normalMatrix: new Matrix3().getNormalMatrix(matrix), firstSegment: sourceEdgeSegments,
+        });
+        sourceEdgeSegments += localEdges.length / 6;
+      }
     }
     localTriangles.clear();
     signal?.throwIfAborted();
@@ -83,6 +116,8 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     setPdfDefaultCamera(camera, radius);
     const a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3();
     const light = new Vector3(0.4, 0.8, 0.5).normalize(), color = new Color();
+    const edgeStride = Math.max(1, Math.ceil(sourceEdgeSegments / MAX_EDGE_SEGMENTS));
+    const rotationNormal = new Matrix3();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
       image(visible, step, highlightIds) {
@@ -122,6 +157,50 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           context.lineTo(face.points[4], face.points[5]); context.closePath(); context.fill();
         }
         context.globalAlpha = 1;
+        rotationNormal.setFromMatrix4(rotation);
+        const lineStrokes = new Map<string, number[]>();
+        const firstPoint = new Vector3(), secondPoint = new Vector3();
+        const firstNormal = new Vector3(), secondNormal = new Vector3();
+        const midpoint = new Vector3(), viewDirection = new Vector3();
+        for (const source of edgeSources) {
+          if (!visible.has(source.id)) continue;
+          const segmentCount = source.positions.length / 6;
+          for (let segment = 0; segment < segmentCount; segment++) {
+            if ((source.firstSegment + segment) % edgeStride !== 0) continue;
+            const offset = segment * 6;
+            firstPoint.fromArray(source.positions, offset).applyMatrix4(source.matrix).sub(center).applyMatrix4(rotation);
+            secondPoint.fromArray(source.positions, offset + 3).applyMatrix4(source.matrix).sub(center).applyMatrix4(rotation);
+            firstNormal.fromArray(source.normals, offset).applyMatrix3(source.normalMatrix).applyMatrix3(rotationNormal).normalize();
+            secondNormal.fromArray(source.alternateNormals, offset).applyMatrix3(source.normalMatrix).applyMatrix3(rotationNormal).normalize();
+            midpoint.copy(firstPoint).add(secondPoint).multiplyScalar(0.5);
+            viewDirection.copy(camera.position).sub(midpoint).normalize();
+            if (Math.max(firstNormal.dot(viewDirection), secondNormal.dot(viewDirection)) < -0.05) continue;
+            const first = firstPoint.clone().project(camera), second = secondPoint.clone().project(camera);
+            if (first.z < -1 || first.z > 1 || second.z < -1 || second.z > 1) continue;
+            const sourceColor = source.colorCodes?.[segment];
+            color.set(resolveColor(sourceColor && sourceColor !== "16" ? sourceColor : source.inheritedColor)?.hex ?? "#ff00ff");
+            if (highlightIds !== undefined) instructionDisplayColor(color, highlightIds.has(source.id));
+            const stroke = color.clone().multiplyScalar(
+              (0.58 + 0.42 * Math.abs(firstNormal.dot(light))) * NORMAL_EDGE_CONTRAST,
+            ).getStyle();
+            const points = lineStrokes.get(stroke) ?? [];
+            points.push(
+              (first.x + 1) * width / 2, (1 - first.y) * height / 2,
+              (second.x + 1) * width / 2, (1 - second.y) * height / 2,
+            );
+            lineStrokes.set(stroke, points);
+          }
+        }
+        context.lineWidth = Math.max(1, width / 1000);
+        for (const [stroke, points] of lineStrokes) {
+          context.beginPath();
+          for (let index = 0; index + 3 < points.length; index += 4) {
+            context.moveTo(points[index], points[index + 1]);
+            context.lineTo(points[index + 2], points[index + 3]);
+          }
+          context.strokeStyle = stroke;
+          context.stroke();
+        }
         if (outlines.size) {
           const groups = groupInstructionHighlights(highlightOccurrences, new Set(outlines.keys()));
           drawInstructionOutlines(context, camera, instructionGroupBounds(groups, outlines), width, height);

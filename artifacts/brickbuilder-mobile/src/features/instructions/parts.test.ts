@@ -86,7 +86,7 @@ describe("step parts illustrations", () => {
     const points: number[] = [], styles: string[] = [];
     const context = { fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), beginPath: vi.fn(), closePath: vi.fn(),
       moveTo: (x: number, y: number) => points.push(x, y), lineTo: (x: number, y: number) => points.push(x, y),
-      fill() { styles.push(this.fillStyle); } };
+      fill() { styles.push(this.fillStyle); }, stroke() {} };
     const toDataURL = vi.fn(() => "data:image/jpeg;base64,canonical-local");
     vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0, getContext: () => context, toDataURL }) });
     // Render an independently neutral occurrence, so a cache hit cannot hide an incorrect first image.
@@ -151,7 +151,7 @@ describe("step parts illustrations", () => {
     const styles: string[] = [], points: number[] = [];
     const context = { fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), beginPath: vi.fn(), closePath: vi.fn(),
       moveTo: (x: number, y: number) => points.push(x, y), lineTo: (x: number, y: number) => points.push(x, y),
-      fill() { styles.push(this.fillStyle); } };
+      fill() { styles.push(this.fillStyle); }, stroke() {} };
     const canvas = { width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,real-source" };
     vi.stubGlobal("document", { createElement: () => canvas });
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

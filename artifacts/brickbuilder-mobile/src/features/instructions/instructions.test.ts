@@ -722,7 +722,7 @@ describe("local construction instructions", () => {
     };
     const fill = vi.fn(), context = {
       fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), beginPath: vi.fn(),
-      moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn(), fill,
+      moveTo: vi.fn(), lineTo: vi.fn(), closePath: vi.fn(), fill, stroke: vi.fn(),
     };
     const canvas = { width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,test" };
     vi.stubGlobal("document", { createElement: () => canvas });

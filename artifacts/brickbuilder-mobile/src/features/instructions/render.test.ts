@@ -8,6 +8,7 @@ import { parseLDraw } from "../formats/ldraw/parser";
 import { createInstructionRenderer, INSTRUCTION_PDF_EDGE_WIDTH_PX } from "./render";
 import { exportInstructionPDF } from "./pdf";
 import { instructionDisplayColor } from "./highlight-color";
+import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 
 vi.mock("../engine/local-brick-geometry", async importOriginal => {
   const module = await importOriginal<typeof import("../engine/local-brick-geometry")>();
@@ -44,7 +45,7 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
     fillRect() {}, drawImage() {}, beginPath() { path = []; },
     moveTo(x: number, y: number) { path.push(x, y); },
     lineTo(x: number, y: number) { path.push(x, y); },
-    closePath() {}, fill() { softwareFaces.push(path.slice()); },
+    closePath() {}, fill() { softwareFaces.push(path.slice()); }, stroke() {},
   };
   vi.stubGlobal("document", { createElement: () => ({
     width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,software",
@@ -131,7 +132,7 @@ it("shares WebGL geometry but not occurrence colors, visibility or highlights, a
   renderer.image(visible, step, new Set([document.bricks[0].id]));
   const meshes: Mesh<BufferGeometry, import("three").MeshLambertMaterial>[] = [];
   (frames.mock.lastCall![0] as Scene).traverse(object => {
-    if (object instanceof Mesh) meshes.push(object as typeof meshes[number]);
+    if (object instanceof Mesh && object.parent?.userData.partId) meshes.push(object as typeof meshes[number]);
   });
   expect(meshes[0].geometry).toBe(meshes[1].geometry);
   expect(meshes[0].geometry).not.toBe(meshes[2].geometry);
@@ -185,7 +186,7 @@ it("builds and flattens software geometry once per type without sharing occurren
     context.fill.mockClear();
     renderer.image(new Set(document.bricks.map(part => part.id)), step, new Set([document.bricks[1].id]));
     expect(context.fill).toHaveBeenCalledTimes(trianglesPerBrick * 3);
-    expect(context.stroke).toHaveBeenCalledOnce();
+    expect(context.stroke).toHaveBeenCalled();
     context.fill.mockClear(); context.stroke.mockClear();
     renderer.image(new Set(), step, new Set([document.bricks[1].id]));
     expect(context.fill).not.toHaveBeenCalled();
@@ -292,9 +293,13 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
         !(object.material instanceof ShaderMaterial)) return;
       expect(object.material.uniforms.resolution.value.toArray()).toEqual([2000, 1520]);
       expect(object.material.uniforms.lineWidth.value).toBe(INSTRUCTION_PDF_EDGE_WIDTH_PX);
+      expect(object.material.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
       configuredEdges++;
     });
     expect(configuredEdges).toBeGreaterThan(0);
+    const localEdgeBatch = (frames.mock.lastCall![0] as Scene).getObjectByName("brick-edges-brick-2x2") as Mesh;
+    expect(localEdgeBatch).toBeDefined();
+    expect(localEdgeBatch.geometry.instanceCount).toBe(4);
     let batches = 0;
     (frames.mock.lastCall![0] as Scene).traverse(object => {
       if (object instanceof InstancedMesh) batches++;

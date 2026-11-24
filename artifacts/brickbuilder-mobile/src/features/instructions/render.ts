@@ -6,8 +6,9 @@ import {
 import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
+import { createLocalBrickEdgeBatches } from "../engine/local-brick-edge-batches";
 import { createImportedGroupAsync, disposeImportedScene } from "../engine/imported-scene";
-import { setWideLineResolution } from "../engine/wide-lines";
+import { NORMAL_EDGE_CONTRAST, setWideLineResolution } from "../engine/wide-lines";
 import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer, INSTRUCTION_RENDER_SIZE } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
@@ -67,6 +68,7 @@ function configureInstructionEdges(root: Group, width: number, height: number): 
     if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
       !(object.material instanceof ShaderMaterial)) return;
     object.material.uniforms.lineWidth.value = INSTRUCTION_PDF_EDGE_WIDTH_PX;
+    object.material.uniforms.edgeContrast.value = NORMAL_EDGE_CONTRAST;
     setWideLineResolution(object.material, width, height);
   });
 }
@@ -98,6 +100,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   const brickMaterials = new Map<string, MeshLambertMaterial>();
   // Geometry is immutable and export-owned; materials remain occurrence-specific.
   const brickGeometries = new Map<BrickType, BufferGeometry>();
+  const localEdgeBatches: Mesh[] = [];
   const output = globalThis.document.createElement("canvas");
   output.width = INSTRUCTION_RENDER_SIZE.width; output.height = INSTRUCTION_RENDER_SIZE.height;
   let disposed = false;
@@ -107,14 +110,18 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     if (imported) disposeImportedScene(imported);
     for (const geometry of brickGeometries.values()) geometry.dispose();
     for (const material of brickMaterials.values()) material.dispose();
+    for (const batch of localEdgeBatches) {
+      batch.geometry.dispose();
+      for (const material of Array.isArray(batch.material) ? batch.material : [batch.material]) material.dispose();
+    }
     brickGeometries.clear(); brickMaterials.clear(); brickColors.clear();
+    localEdgeBatches.length = 0;
     renderer.dispose(); renderer.forceContextLoss();
     output.width = 1; output.height = 1;
   };
   try {
     if (document.imported) {
       imported = await createImportedGroupAsync(document.imported, { signal });
-      configureInstructionEdges(imported, INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
       assembly.add(imported);
     }
     const bounds = imported ? new Box3().setFromObject(imported) : new Box3();
@@ -136,6 +143,9 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       // studs. Use actual local vertices, as the software renderer does.
       bounds.expandByObject(group, true);
     }
+    localEdgeBatches.push(...createLocalBrickEdgeBatches(document.bricks));
+    for (const edgeBatch of localEdgeBatches) assembly.add(edgeBatch);
+    configureInstructionEdges(assembly, INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
     const center = bounds.isEmpty() ? new Vector3() : bounds.getCenter(new Vector3());
     const radius = bounds.isEmpty() ? 2 : Math.max(1, bounds.getSize(new Vector3()).length() / 2);
     assembly.position.sub(center);

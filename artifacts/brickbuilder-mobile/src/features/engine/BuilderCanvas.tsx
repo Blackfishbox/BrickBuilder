@@ -41,6 +41,7 @@ import { applyInstructionFocus, installInstructionFocus, instructionDisplayColor
 import { createImportedGroup, createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
 import { compilePart, reuseGeometryCache, worldMatrix } from "./ldraw-geometry";
+import { createLocalBrickEdgeBatches } from "./local-brick-edge-batches";
 import { importedSelectionBounds, pickSoftwareInstance } from "./imported-selection";
 import { createSoftwareScene, updateSoftwareScene, previewSoftware, restoreSoftware, applySoftwareInstructionFocus, INTERACTIVE_TRIANGLE_BUDGET, type SoftwareScene } from "./software-scene";
 import { InstanceIndex, instanceIndex } from "./instance-index";
@@ -62,7 +63,7 @@ import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-ge
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
 import {
-  expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, wideLineMaterial,
+  expandWideLines, setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, wideLineMaterial,
   deriveLineNormals,
 } from "./wide-lines";
 
@@ -332,7 +333,8 @@ export class FallbackRenderer {
           const second = project(b.x, b.y + yOffset, b.z);
           if (first.depth < 0.1 || second.depth < 0.1) continue;
           normal.fromArray(normals, index).transformDirection(transform);
-          const shade = ambient + direct * Math.abs(normal.dot(light));
+          const shade = (ambient + direct * Math.abs(normal.dot(light))) *
+            (thickEdges ? 1 : NORMAL_EDGE_CONTRAST);
           const base = new Color(colorForSegment(index / 6));
           if (focused !== undefined) instructionDisplayColor(base, focused);
           const color = base.multiplyScalar(shade).getStyle();
@@ -349,37 +351,35 @@ export class FallbackRenderer {
           context.stroke();
         }
       };
-    if (thickEdges) {
-      context.lineWidth = THICK_EDGE_WIDTH_PX;
-      if (imported) {
-        const light = new Vector3(-0.4, 0.8, 0.5).normalize();
-        for (const record of imported.edgeRecords) {
-          if (remainingEdgeSegments <= 0) break;
-          if (record.localEdges.length) {
-            drawSegments(
-              record.localEdges, worldMatrix(record.currentMatrix), importOffset,
-              record.localEdgeNormals,
-              segment => resolveColor(record.localEdgeColorCodes[segment] === "16"
-                ? record.instance.colorCode : record.localEdgeColorCodes[segment])?.hex ?? "#ff00ff",
-              light, 0.6, 0.4,
-              instructionFocusIds === undefined ? undefined : instructionFocusIds.has(record.instance.id),
-            );
-          }
-        }
-      }
-      if (placementGeometry) {
-        const transform = worldMatrix(placementGeometry.matrix);
-        const light = new Vector3(0.4, 0.8, 0.5).normalize();
-        for (const surface of placementGeometry.surfaces) {
-          if (remainingEdgeSegments <= 0) break;
-          const colorCode = surface.colorCode === "16" ? placementGeometry.colorCode : surface.colorCode;
+    context.lineWidth = thickEdges ? THICK_EDGE_WIDTH_PX : 1;
+    if (imported) {
+      const light = new Vector3(-0.4, 0.8, 0.5).normalize();
+      for (const record of imported.edgeRecords) {
+        if (remainingEdgeSegments <= 0) break;
+        if (record.localEdges.length) {
           drawSegments(
-            surface.edges, transform, 0,
-            deriveLineNormals(surface.edges, surface.positions, surface.normals),
-            () => resolveColor(colorCode)?.hex ?? "#ff00ff",
-            light, 0.58, 0.42,
+            record.localEdges, worldMatrix(record.currentMatrix), importOffset,
+            record.localEdgeNormals,
+            segment => resolveColor(record.localEdgeColorCodes[segment] === "16"
+              ? record.instance.colorCode : record.localEdgeColorCodes[segment])?.hex ?? "#ff00ff",
+            light, 0.6, 0.4,
+            instructionFocusIds === undefined ? undefined : instructionFocusIds.has(record.instance.id),
           );
         }
+      }
+    }
+    if (placementGeometry) {
+      const transform = worldMatrix(placementGeometry.matrix);
+      const light = new Vector3(0.4, 0.8, 0.5).normalize();
+      for (const surface of placementGeometry.surfaces) {
+        if (remainingEdgeSegments <= 0) break;
+        const colorCode = surface.colorCode === "16" ? placementGeometry.colorCode : surface.colorCode;
+        drawSegments(
+          surface.edges, transform, 0,
+          deriveLineNormals(surface.edges, surface.positions, surface.normals),
+          () => resolveColor(colorCode)?.hex ?? "#ff00ff",
+          light, 0.58, 0.42,
+        );
       }
     }
 
@@ -425,9 +425,8 @@ export class FallbackRenderer {
       }
       context.globalAlpha = 1;
 
-      if (thickEdges && remainingEdgeSegments > 0) {
+      if (remainingEdgeSegments > 0) {
         const edges = localBrickEdges(brick.type);
-        context.lineWidth = THICK_EDGE_WIDTH_PX;
         drawSegments(
           edges, transform, 0, localBrickEdgeNormals(brick.type),
           () => color.getStyle(), new Vector3(0.4, 0.8, 0.5).normalize(), 0.58, 0.42,
@@ -945,7 +944,8 @@ export function BuilderCanvas({
               !(object.material instanceof ShaderMaterial)) return;
             const enabled = propsRef.current.thickEdges;
             object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : 1;
-            if (object.name.startsWith("brick-edges-")) object.visible = enabled;
+            object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
+            if (object.name.startsWith("brick-edges-")) object.visible = true;
             setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
           });
             importedRootRef.current?.children.forEach(child => {
@@ -1459,48 +1459,7 @@ export function BuilderCanvas({
       nextRoot.add(instances);
     }
 
-    const localEdgeGroups = new Map<BrickType, Brick[]>();
-    for (const brick of bricks) {
-      const group = localEdgeGroups.get(brick.type) ?? [];
-      group.push(brick);
-      localEdgeGroups.set(brick.type, group);
-    }
-    for (const [type, groupBricks] of localEdgeGroups) {
-      const normals = localBrickEdgeNormalPairs(type);
-      const expanded = expandWideLines(localBrickEdges(type), normals.primary, normals.alternate);
-      const geometry = new InstancedBufferGeometry();
-      for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
-      expanded.dispose();
-      const rows = [new Float32Array(groupBricks.length * 4), new Float32Array(groupBricks.length * 4), new Float32Array(groupBricks.length * 4)];
-      const bounds = new Box3(), transformed = new Box3();
-      geometry.computeBoundingBox();
-      const local = geometry.boundingBox!.clone();
-      groupBricks.forEach((brick, index) => {
-        const matrix = brickTransformMatrix(brick), elements = matrix.elements;
-        for (let row = 0; row < 3; row++) rows[row].set(
-          [elements[row], elements[4 + row], elements[8 + row], elements[12 + row]], index * 4,
-        );
-        bounds.union(transformed.copy(local).applyMatrix4(matrix));
-      });
-      rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
-      const edgeColors = new Uint8Array(groupBricks.length * 3);
-      groupBricks.forEach((brick, index) => {
-        const encoded = new Color(brick.color).getHex(SRGBColorSpace);
-        edgeColors.set([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff], index * 3);
-      });
-      geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3, true));
-      geometry.setAttribute("instructionFocus", new InstancedBufferAttribute(new Float32Array(groupBricks.length), 1));
-      geometry.instanceCount = groupBricks.length;
-      geometry.boundingBox = bounds;
-      geometry.computeBoundingSphere();
-      const edgeMesh = new Mesh(geometry, wideLineMaterial());
-      edgeMesh.name = `brick-edges-${type}`;
-      edgeMesh.userData.brickIds = groupBricks.map(brick => brick.id);
-      edgeMesh.userData.isWideEdgeMesh = true;
-      edgeMesh.frustumCulled = false;
-      edgeMesh.renderOrder = 10;
-      nextRoot.add(edgeMesh);
-    }
+    for (const edgeBatch of createLocalBrickEdgeBatches(bricks)) nextRoot.add(edgeBatch);
 
     const selected = bricks.find((brick) => brick.id === selectedId);
     if (selected) {

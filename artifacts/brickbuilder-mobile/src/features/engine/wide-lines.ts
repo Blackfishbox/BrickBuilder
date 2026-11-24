@@ -6,6 +6,8 @@ import { BUILDER_LIGHTING } from "./lighting";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
 export const THICK_EDGE_WIDTH_PX = 5.5;
+/** Subtle hue-preserving contrast so touching pieces remain distinguishable. */
+export const NORMAL_EDGE_CONTRAST = 0.68;
 
 export interface LineNormalPairs {
   primary: Float32Array;
@@ -162,6 +164,7 @@ export function wideLineMaterial(): ShaderMaterial {
     depthWrite: false,
     uniforms: {
       lineWidth: { value: 1 },
+      edgeContrast: { value: 1 },
       resolution: { value: new Vector2(1, 1) },
       instructionFocusEnabled: { value: false },
       hemisphereGround: { value: ground.r },
@@ -237,6 +240,7 @@ export function wideLineMaterial(): ShaderMaterial {
       }`,
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
       uniform bool instructionFocusEnabled;
+      uniform float edgeContrast;
       uniform float hemisphereGround;
       uniform float hemisphereIntensity;
       uniform vec3 sunDirection;
@@ -258,7 +262,7 @@ export function wideLineMaterial(): ShaderMaterial {
         vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);
         float edgeWidth = max(fwidth(vLineSide), 0.0001);
         float coverage = 1.0 - smoothstep(1.0 - edgeWidth, 1.0, abs(vLineSide));
-        gl_FragColor = vec4(baseColor * (hemisphere + sunlight), coverage);
+        gl_FragColor = vec4(baseColor * (hemisphere + sunlight) * edgeContrast, coverage);
         if (instructionFocusEnabled) {
           gl_FragColor = vInstructionFocus > 1.5
             ? vec4(0.6, 0.015, 0.01, 0.95)
