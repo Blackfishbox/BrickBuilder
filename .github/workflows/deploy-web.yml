@@ -1,0 +1,69 @@
+name: Build and deploy web app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build PWA on GitHub
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check frontend types
+        run: pnpm --filter @workspace/brickbuilder-mobile run typecheck
+      - name: Build the root-hosted PWA
+        env:
+          BASE_PATH: /
+          PORT: "4173"
+        run: pnpm --filter @workspace/brickbuilder-mobile run build
+      - name: Keep the server-managed privacy page out of the artifact
+        run: rm -f artifacts/brickbuilder-mobile/dist/public/privacy.html
+      - name: Upload static website
+        uses: actions/upload-artifact@v4
+        with:
+          name: brickbuilder-web-${{ github.sha }}
+          path: artifacts/brickbuilder-mobile/dist/public/
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: Deploy on the BrickBuilder server
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, brickbuilder-web-deploy]
+    timeout-minutes: 10
+    steps:
+      - name: Download this commit's PWA
+        uses: actions/download-artifact@v4
+        with:
+          name: brickbuilder-web-${{ github.sha }}
+          path: ${{ runner.temp }}/brickbuilder-web
+      - name: Deploy without replacing the privacy page
+        env:
+          WEB_ROOT: /var/www/brickbuilder
+          WEB_BUILD: ${{ runner.temp }}/brickbuilder-web
+        run: |
+          set -euo pipefail
+          test -s "$WEB_BUILD/index.html"
+          test ! -e "$WEB_BUILD/privacy.html"
+          test -s "$WEB_ROOT/privacy.html"
+          rsync -a --exclude='/privacy.html' "$WEB_BUILD/" "$WEB_ROOT/"
+          test -s "$WEB_ROOT/index.html"
+          test -s "$WEB_ROOT/privacy.html"

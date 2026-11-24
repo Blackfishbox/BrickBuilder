@@ -75,6 +75,8 @@ Production preview is for local verification, not an internet-facing production 
 **[Setup and hosting guide](docs/setup-and-hosting.md)** covers clean installs,
 static hosting, root/subpath deployments, HTTPS/PWA caching, browser storage,
 optional API services and troubleshooting.
+For automatic deployment to an existing Ubuntu web root without inbound SSH,
+see [the GitHub runner deployment guide](docs/github-web-deploy-runner.md).
 
 ## Documentation
 
@@ -84,6 +86,7 @@ optional API services and troubleshooting.
 - [Large-model performance](artifacts/brickbuilder-mobile/docs/performance.md)
 - [Studio IO import and archive limits](docs/io-import.md)
 - [Setup and hosting](docs/setup-and-hosting.md)
+- [Automatic web deployment with a server runner](docs/github-web-deploy-runner.md)
 - [Automated server installation](docs/self-host-installer.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
