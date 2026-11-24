@@ -9,6 +9,7 @@ import type { InstructionImageRenderer } from "./render";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
 import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderSize } from "./camera";
 import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
+import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
 
 const MAX_TRIANGLES = 120_000;
 const MAX_EDGE_SEGMENTS = 60_000;
@@ -121,7 +122,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     const rotationNormal = new Matrix3();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds, fitAspect) {
+      image(visible, step, highlightIds, fitAspect, modelArrows = []) {
         signal?.throwIfAborted();
         const renderSize = fitAspect ? studioRenderSize(fitAspect) : size;
         width = renderSize.width; height = renderSize.height;
@@ -143,6 +144,9 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
                 .applyMatrix4(rotation).applyMatrix4(camera.matrixWorldInverse));
             }
           }
+          for (const arrowPoint of studioModelArrowPoints(
+            modelArrows, center, step.rotation ?? [0, 0, 0],
+          )) fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           fitStudioCamera(camera, fitBounds, width / height);
         }
         const projected: { points: number[]; depth: number; color: string; alpha: number }[] = [];
@@ -217,6 +221,9 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           }
           context.strokeStyle = stroke;
           context.stroke();
+        }
+        if (modelArrows.length) {
+          drawStudioModelArrows(context, camera, modelArrows, center, step.rotation ?? [0, 0, 0], width, height);
         }
         if (highlighted.size) {
           const groups = groupInstructionHighlights(highlightOccurrences, highlighted);

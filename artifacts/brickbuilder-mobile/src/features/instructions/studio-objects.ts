@@ -1,6 +1,71 @@
 import type { StudioNode } from "./studio-layout";
+import { Euler, OrthographicCamera, Quaternion, Vector3 } from "three";
 
 export type StudioRect = [number, number, number, number];
+export interface StudioModelArrow {
+  points: [[number, number, number], [number, number, number]];
+  startStyle: string;
+  endStyle: string;
+  thickness: number;
+  color: string;
+}
+export function studioModelArrowPoints(
+  arrows: readonly StudioModelArrow[], center: Vector3, rotation: readonly [number, number, number],
+): Vector3[] {
+  const euler = new Euler(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
+  return arrows.flatMap(arrow => arrow.points.map(point =>
+    new Vector3(...point).sub(center).applyEuler(euler)));
+}
+
+export function drawStudioModelArrows(
+  context: CanvasRenderingContext2D, camera: OrthographicCamera, arrows: readonly StudioModelArrow[],
+  center: Vector3, rotation: readonly [number, number, number], width: number, height: number,
+): void {
+  const projected = studioModelArrowPoints(arrows, center, rotation).map(point => point.project(camera));
+  const scale = Math.max(width, height) / 2000;
+  for (let index = 0; index < arrows.length; index++) {
+    const arrow = arrows[index], first = projected[index * 2], last = projected[index * 2 + 1];
+    const x1 = (first.x + 1) * width / 2, y1 = (1 - first.y) * height / 2;
+    const x2 = (last.x + 1) * width / 2, y2 = (1 - last.y) * height / 2;
+    const length = Math.hypot(x2 - x1, y2 - y1);
+    if (length < 0.001 || ![x1, y1, x2, y2].every(Number.isFinite)) continue;
+    const color = arrow.color.trim().split(/[:\s]+/).map(Number);
+    const validColor = [3, 4].includes(color.length) &&
+      color.every(channel => Number.isFinite(channel) && channel >= 0 && channel <= 1);
+    const rgba = validColor
+      ? `rgb(${color.slice(0, 3).map(channel => Math.round(channel * 255)).join(",")})`
+      : "#000000";
+    const thickness = Number.isFinite(arrow.thickness) && arrow.thickness >= 0 ? arrow.thickness : 2;
+    const lineWidth = Math.max(0.75, thickness * scale);
+    const headSize = Math.min(length * 0.3, Math.max(2 * scale, lineWidth * 4));
+    const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+    const startInset = arrow.startStyle === "NoHeads" ? 0 : headSize;
+    const endInset = arrow.endStyle === "NoHeads" ? 0 : headSize;
+    context.save();
+    context.globalAlpha = validColor ? color[3] ?? 1 : 1;
+    context.strokeStyle = rgba; context.fillStyle = rgba; context.lineWidth = lineWidth;
+    context.beginPath();
+    context.moveTo(x1 + ux * startInset, y1 + uy * startInset);
+    context.lineTo(x2 - ux * endInset, y2 - uy * endInset);
+    context.stroke();
+    const head = (x: number, y: number, dx: number, dy: number, style: string) => {
+      if (style === "NoHeads") return;
+      const directionX = dx / length, directionY = dy / length;
+      const baseX = x - directionX * headSize, baseY = y - directionY * headSize;
+      const side = headSize * 0.45;
+      context.beginPath();
+      context.moveTo(x, y);
+      context.lineTo(baseX - directionY * side, baseY + directionX * side);
+      context.lineTo(baseX + directionY * side, baseY - directionX * side);
+      context.closePath();
+      if (style === "TriangleFilled") context.fill();
+      else context.stroke();
+    };
+    head(x1, y1, x1 - x2, y1 - y2, arrow.startStyle);
+    head(x2, y2, x2 - x1, y2 - y1, arrow.endStyle);
+    context.restore();
+  }
+}
 export const studioVector = (raw: string | undefined, length: number): number[] | undefined => {
   if (!raw?.trim()) return undefined;
   const values = raw.trim().split(/\s+/).map(Number);
@@ -33,13 +98,87 @@ export function supportedStudioCallout(node: StudioNode, nodes: StudioNode[]): b
 export const STUDIO_ARROW_HEADS = new Set(["NoHeads", "TriangleFilled", "TriangleEmpty"]);
 export function supportedStudioArrow(node: StudioNode, nodes: StudioNode[]): boolean {
   const parent = nodes[node.parent ?? -1];
+  const item = parent?.name === "BufferExchangeItemData" ? parent : undefined;
+  const buffer = item && nodes[item.parent ?? -1];
   const points = studioVector(node.attributes.PointList, 4);
   // Buffer-exchange arrows use model screen space, not page/slot coordinates.
-  return ["Page", "Slot"].includes(parent?.name) && !!points &&
+  const hasValidParent = ["Page", "Slot"].includes(parent?.name ?? "") ||
+    (!!item && buffer?.name === "BufferExchange" &&
+      nodes[buffer.parent ?? -1]?.name === "Step");
+  return hasValidParent && !!points &&
     (points[0] !== points[2] || points[1] !== points[3]) &&
     Number(node.attributes.Rotation ?? 0) === 0 &&
     STUDIO_ARROW_HEADS.has(node.attributes.StartStyle ?? "NoHeads") &&
     STUDIO_ARROW_HEADS.has(node.attributes.EndStyle ?? "TriangleFilled");
+}
+
+/**
+ * Native buffer-exchange points are stored in the source model camera's screen
+ * plane. Convert them back to model coordinates so the renderer can project
+ * them using the same (possibly auto-fitted) camera as the parts.
+ */
+export function studioBufferExchangeArrows(step: StudioNode, nodes: StudioNode[]): StudioModelArrow[] {
+  const preview = studioChildren(step, nodes, "StepPreview")[0];
+  const modelAngle = studioVector(preview?.attributes.modelAngle ??
+    preview?.attributes.DefaultCameraControlInfo_modelAngle, 3) ?? [0, 0, 0];
+  const cameraAngle = studioVector(preview?.attributes.cameraAngle ??
+    preview?.attributes.DefaultCameraControlInfo_cameraAngle, 2) ?? [-Math.PI / 6, Math.PI / 4];
+  const target = studioVector(preview?.attributes.TargetPos ??
+    preview?.attributes.DefaultCameraControlInfo_TargetPos, 3) ?? [0, 0, 0];
+  const phi = Math.max(0.001, Math.min(Math.PI - 0.001, Math.PI / 2 + cameraAngle[0]));
+  const camera = new OrthographicCamera();
+  camera.position.set(Math.sin(phi) * Math.sin(cameraAngle[1]), Math.cos(phi),
+    Math.sin(phi) * Math.cos(cameraAngle[1]));
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  const inverseModelRotation = new Quaternion().setFromEuler(new Euler(...modelAngle as [number, number, number])).invert();
+  const cameraToModel = camera.quaternion.clone().premultiply(inverseModelRotation);
+  const toModel = (x: number, y: number, displacement: number[]): [number, number, number] =>
+    new Vector3(x, -y, 0).applyQuaternion(cameraToModel).add(new Vector3(...target))
+      .add(new Vector3(...displacement)).toArray() as [number, number, number];
+  const displacementOf = (item: StudioNode): number[] => {
+    const value = Object.entries(item.attributes).find(([name]) =>
+      /^(?:displacement|offset|translation|positionoffset)$/i.test(name))?.[1];
+    const vector = studioVector(value, 3);
+    if (vector) return vector;
+    const axes = ["x", "y", "z"].map(axis => {
+      const raw = item.attributes[`Displacement${axis.toUpperCase()}`] ??
+        item.attributes[`Offset${axis.toUpperCase()}`] ??
+        item.attributes[axis] ?? item.attributes[axis.toUpperCase()];
+      return raw === undefined ? NaN : Number(raw);
+    });
+    if (axes.every(Number.isFinite)) return axes;
+    const child = nodes.find(candidate => candidate.parent === item.id &&
+      /^(?:Displacement|Offset|Translation)$/i.test(candidate.name));
+    if (child) {
+      const childVector = Object.values(child.attributes).map(Number);
+      if (childVector.length === 3 && childVector.every(Number.isFinite)) return childVector;
+      const childAxes = ["x", "y", "z"].map(axis =>
+        Number(child.attributes[axis] ?? child.attributes[axis.toUpperCase()]));
+      if (childAxes.every(Number.isFinite)) return childAxes;
+    }
+    return [0, 0, 0];
+  };
+  const result: StudioModelArrow[] = [];
+  for (const buffer of studioChildren(step, nodes, "BufferExchange")) {
+    for (const item of studioChildren(buffer, nodes, "BufferExchangeItemData")) {
+      if (item.attributes.showArrow?.toLowerCase() === "false") continue;
+      const displacement = displacementOf(item);
+      for (const arrow of studioChildren(item, nodes, "Arrow")) {
+        if (!supportedStudioArrow(arrow, nodes) || arrow.attributes.IsVisible?.toLowerCase() === "false") continue;
+        const points = studioVector(arrow.attributes.PointList, 4);
+        if (!points) continue;
+        result.push({
+          points: [toModel(points[0], points[1], displacement), toModel(points[2], points[3], displacement)],
+          startStyle: arrow.attributes.StartStyle ?? "NoHeads",
+          endStyle: arrow.attributes.EndStyle ?? "TriangleFilled",
+          thickness: Number(arrow.attributes.Thickness ?? 2),
+          color: arrow.attributes.Color ?? "0 0 0",
+        });
+      }
+    }
+  }
+  return result;
 }
 
 /** Studio's callout rect is normalized around the slot center, with Y upwards. */

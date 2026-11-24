@@ -14,6 +14,7 @@ import { createSoftwareInstructionRenderer, INSTRUCTION_RENDER_SIZE } from "./so
 import { instructionDisplayColor } from "./highlight-color";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
 import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderSize } from "./camera";
+import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
 export const INSTRUCTION_PDF_EDGE_WIDTH_PX = 4;
@@ -74,7 +75,8 @@ function configureInstructionEdges(root: Group, width: number, height: number): 
 }
 
 export interface InstructionImageRenderer {
-  image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>, fitAspect?: number): string;
+  image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>, fitAspect?: number,
+    modelArrows?: readonly StudioModelArrow[]): string;
   dispose(): void;
 }
 
@@ -166,7 +168,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds, fitAspect) {
+      image(visible, step, highlightIds, fitAspect, modelArrows = []) {
         signal?.throwIfAborted();
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
@@ -229,12 +231,18 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
               }
             }
           });
+          for (const arrowPoint of studioModelArrowPoints(modelArrows, center, rotation)) {
+            fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
+          }
           fitStudioCamera(camera, fitBounds, renderSize.width / renderSize.height);
         }
         renderer.render(scene, camera);
         const context = output.getContext("2d");
         if (!context) throw new Error("PDF-Bild konnte nicht zusammengesetzt werden.");
         context.drawImage(renderer.domElement, 0, 0);
+        if (modelArrows.length) {
+          drawStudioModelArrows(context, camera, modelArrows, center, rotation, renderSize.width, renderSize.height);
+        }
         if (highlightIds?.size) {
           const groups = groupInstructionHighlights(highlightOccurrences, new Set([...highlightIds].filter(id => visible.has(id))));
           drawInstructionOutlines(context, camera, instructionGroupFrames(groups, highlightOccurrences, assembly.matrixWorld),

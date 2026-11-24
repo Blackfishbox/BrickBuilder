@@ -9,6 +9,7 @@ import { createInstructionRenderer, INSTRUCTION_PDF_EDGE_WIDTH_PX } from "./rend
 import { exportInstructionPDF } from "./pdf";
 import { instructionDisplayColor } from "./highlight-color";
 import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
+import type { StudioModelArrow } from "./studio-objects";
 
 vi.mock("../engine/local-brick-geometry", async importOriginal => {
   const module = await importOriginal<typeof import("../engine/local-brick-geometry")>();
@@ -96,6 +97,39 @@ it("matches tilted and stacked local geometry and projected triangles in both PD
     }
     expect(JSON.stringify(document)).toBe(before);
   } finally { webgl.dispose(); software.dispose(); }
+});
+
+it("fits and projects model-space arrows with the same camera as the model", async () => {
+  const strokes: number[][] = [];
+  let path: number[] = [];
+  const context = {
+    fillRect() {}, drawImage() {}, save() {}, restore() {}, closePath() {},
+    beginPath() { path = []; },
+    moveTo(x: number, y: number) { path.push(x, y); },
+    lineTo(x: number, y: number) { path.push(x, y); },
+    stroke() { strokes.push(path.slice()); }, fill() {},
+  } as unknown as CanvasRenderingContext2D;
+  vi.stubGlobal("document", { createElement: () => ({
+    width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/png;base64,test",
+  }) });
+  const renderer = await createSoftwareInstructionRenderer(createEmptyDocument());
+  const arrow: StudioModelArrow = {
+    points: [[-12, 0, 0], [12, 0, 0]], startStyle: "TriangleEmpty",
+    endStyle: "TriangleFilled", thickness: 2, color: "0 0 1 0.5",
+  };
+  try {
+    renderer.image(new Set(), { id: "arrows", title: "", notes: "", partIds: [] }, undefined, 1, [arrow]);
+    const shaft = strokes[0];
+    expect(shaft).toHaveLength(4);
+    expect(shaft.every(Number.isFinite)).toBe(true);
+    expect(shaft[0]).toBeGreaterThanOrEqual(0);
+    expect(shaft[0]).toBeLessThanOrEqual(2000);
+    expect(shaft[2]).toBeGreaterThanOrEqual(0);
+    expect(shaft[2]).toBeLessThanOrEqual(2000);
+    expect(Math.abs(shaft[0] - shaft[2])).toBeGreaterThan(100);
+  } finally {
+    renderer.dispose();
+  }
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 

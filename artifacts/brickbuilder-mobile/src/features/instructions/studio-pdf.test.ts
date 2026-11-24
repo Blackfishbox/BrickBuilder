@@ -11,7 +11,7 @@ import { sourceInstructionPlan } from "./model";
 import { exportStudioLayoutPDF, orderStudioPageObjects, partListRect, studioPartCellLayout } from "./studio-pdf";
 import type { InstructionImageRenderer } from "./render";
 import { editStudioLayout, inspectStudioLayout, studioNodes } from "./studio-layout";
-import { studioCalloutRect, studioModelRect } from "./studio-objects";
+import { studioBufferExchangeArrows, studioCalloutRect, studioModelRect } from "./studio-objects";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { createSoftwareInstructionRenderer } from "./software-render";
 
@@ -207,10 +207,51 @@ it("keeps unsupported native callout arrowheads identified instead of drawing a 
   expect(inspectStudioLayout(layout).unsupportedDetails).toContain("CallOut × 1");
   const bufferArrow = '<BufferExchange><BufferExchangeItemData showArrow="True"><Arrow PointList="0 0 10 20" EndStyle="TriangleFilled"/></BufferExchangeItemData></BufferExchange>';
   const modelSpace = { sourceXml: xml.replace('<Step SerializedIndex="0"><CallOut>', `<Step SerializedIndex="0">${bufferArrow}<CallOut>`), edits: [] };
-  expect(inspectStudioLayout(modelSpace).unsupportedDetails).toContain("Arrow × 1");
+  expect(inspectStudioLayout(modelSpace).unsupportedDetails).not.toContain("Arrow × 1");
   const misplaced = { sourceXml: xml.replace('<Step SerializedIndex="0"><CallOut>', '<Step SerializedIndex="0"/><CallOut>')
     .replace('</CallOutItemData></CallOut></Step>', '</CallOutItemData></CallOut>'), edits: [] };
   expect(inspectStudioLayout(misplaced).unsupportedDetails).toContain("CallOut × 1");
+});
+
+it("passes visible BufferExchange arrows through the source camera transform", async () => {
+  const { document, renderer } = nativeFixture();
+  const layout = document.instructions!.studioLayout!;
+  layout.sourceXml = layout.sourceXml.replace(
+    '<Step SerializedIndex="0"><CallOut>',
+    `<Step SerializedIndex="0"><StepPreview cameraAngle="-0.5235988 0.7853982" modelAngle="0 1.5707963 0"
+      TargetPos="10 20 30"/><BufferExchange>
+      <BufferExchangeItemData showArrow="True" Displacement="2 3 4">
+        <Arrow PointList="0 0 0 20" StartStyle="TriangleEmpty" EndStyle="TriangleFilled"
+          Thickness="3" Color="1 0 0 0.5"/>
+      </BufferExchangeItemData>
+      <BufferExchangeItemData showArrow="True" Offset="-2 1 0">
+        <Arrow PointList="20 10 20 40" EndStyle="TriangleEmpty" Thickness="1" Color="0 0 1"/>
+      </BufferExchangeItemData>
+      <BufferExchangeItemData showArrow="False">
+        <Arrow PointList="0 0 10 10"/>
+      </BufferExchangeItemData>
+      </BufferExchange><CallOut>`,
+  );
+  const nodes = studioNodes(layout.sourceXml);
+  const step = nodes.find(node => node.name === "Step" && node.attributes.SerializedIndex === "0")!;
+  const arrows = studioBufferExchangeArrows(step, nodes);
+  expect(arrows).toHaveLength(2);
+  expect(arrows[0]).toMatchObject({
+    startStyle: "TriangleEmpty", endStyle: "TriangleFilled", thickness: 3, color: "1 0 0 0.5",
+  });
+  expect(arrows[1]).toMatchObject({ startStyle: "NoHeads", endStyle: "TriangleEmpty", thickness: 1, color: "0 0 1" });
+  expect(arrows[0].points[0]).not.toEqual([10, 20, 30]);
+  expect(arrows[0].points[1]).not.toEqual(arrows[0].points[0]);
+  const unshiftedLayout = { ...layout, sourceXml: layout.sourceXml.replace('Displacement="2 3 4"', "") };
+  const unshiftedNodes = studioNodes(unshiftedLayout.sourceXml);
+  const unshiftedStep = unshiftedNodes.find(node => node.name === "Step" && node.attributes.SerializedIndex === "0")!;
+  const unshiftedArrow = studioBufferExchangeArrows(unshiftedStep, unshiftedNodes)[0];
+  arrows[0].points.forEach((point, index) =>
+    point.forEach((coordinate, axis) => expect(coordinate - unshiftedArrow.points[index][axis]).toBeCloseTo([2, 3, 4][axis])));
+  expect(inspectStudioLayout(layout).unsupportedDetails).not.toContain("Arrow × 1");
+  expect(inspectStudioLayout(layout).unsupportedDetails).not.toContain("Arrow × 3");
+  await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+  expect(renderer.image.mock.calls.some(call => call[4]?.length === 2)).toBe(true);
 });
 
 it("fails explicitly for an unresolved callout step and disposes the renderer", async () => {

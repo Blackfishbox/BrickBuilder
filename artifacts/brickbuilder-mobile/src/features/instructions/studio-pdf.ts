@@ -11,7 +11,7 @@ import { createInstructionRenderer, type InstructionImageRenderer } from "./rend
 import { applyStudioLayout, inspectStudioLayout, studioNodes, type StudioNode } from "./studio-layout";
 import {
   studioCalloutRect, studioChildren, studioModelRect, studioVector, supportedStudioArrow, supportedStudioCallout,
-  type StudioRect,
+  studioBufferExchangeArrows, type StudioRect,
 } from "./studio-objects";
 import type { InstructionPlan, InstructionStep } from "./types";
 import type { InstructionPdfOptions } from "./pdf";
@@ -845,7 +845,8 @@ export async function exportStudioLayoutPDF(
         const [modelX, modelY, modelWidth, modelHeight] = studioModelRect(slot, occupied);
         const modelPreview = nativeStep && studioChildren(nativeStep, nodes, "StepPreview")[0];
         queuePageObject(modelPreview ?? nativeStep, () => {
-          fitImage(renderer.image(visible, step, highlightIds, modelWidth / modelHeight),
+          const modelArrows = nativeStep ? studioBufferExchangeArrows(nativeStep, nodes) : [];
+          fitImage(renderer.image(visible, step, highlightIds, modelWidth / modelHeight, modelArrows),
             modelX, modelY, modelWidth, modelHeight, pdf);
         });
         const resolvedStepNumber = Number.isFinite(stepNumber) ? stepNumber : entry.planIndex + 1;

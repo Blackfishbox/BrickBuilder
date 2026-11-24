@@ -221,7 +221,12 @@ export function inspectStudioLayout(layout: StudioLayout): StudioLayoutView {
       const page = { nodeId: node.id, template: node.attributes.template ?? "Unbekannt", steps: [], items: [item] };
       pages.push(page); pageByNode.set(node.id, page);
     }
-    const page = parent && (pageByNode.get(parent.id) ?? (parent.parent === undefined ? undefined : pageByNode.get(parent.parent)));
+    let ancestor = parent;
+    let page = ancestor && pageByNode.get(ancestor.id);
+    while (ancestor && !page) {
+      ancestor = ancestor.parent === undefined ? undefined : nodes[ancestor.parent];
+      page = ancestor && pageByNode.get(ancestor.id);
+    }
     if (page && node.name !== "Page") {
       pageByNode.set(node.id, page);
       if (node.name === "Step") {
