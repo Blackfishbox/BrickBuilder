@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n/I18nProvider";
-import { GESTURE_GUIDE_SECTIONS } from "./gesture-guide";
+import { GESTURE_GUIDE_SECTIONS, HELP_BUTTON_SECTIONS, HELP_MODE_OVERVIEW } from "./gesture-guide";
 
 export default function GestureHelpDialog({ onClose }: { onClose(): void }) {
   const { t } = useI18n();
@@ -19,6 +19,30 @@ export default function GestureHelpDialog({ onClose }: { onClose(): void }) {
           <DialogDescription className="gesture-guide-intro">{t("gesture.intro")}</DialogDescription>
         </DialogHeader>
         <div className="gesture-guide-sections">
+          <section aria-labelledby="help-mode-overview">
+            <h3 id="help-mode-overview">{t("help.section.modes")}</h3>
+            <div className="gesture-guide-modes">
+              {HELP_MODE_OVERVIEW.map(({ icon: Icon, title, description }) => (
+                <article className="gesture-guide-mode" key={title}>
+                  <span className="gesture-guide-button-visual" aria-hidden="true"><Icon size={18} /></span>
+                  <div><strong>{t(title)}</strong><p>{t(description)}</p></div>
+                </article>
+              ))}
+            </div>
+          </section>
+          {HELP_BUTTON_SECTIONS.map(section => (
+            <section key={section.title} aria-labelledby={`help-section-${section.title}`}>
+              <h3 id={`help-section-${section.title}`}>{t(section.title)}</h3>
+              <ul className="gesture-guide-buttons">
+                {section.buttons.map(({ icon: Icon, title, description }, index) => (
+                  <li key={`${title}-${index}`}>
+                    <span className="gesture-guide-button-visual" aria-hidden="true"><Icon size={17} /></span>
+                    <div><strong>{t(title)}</strong><p>{t(description)}</p></div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           {GESTURE_GUIDE_SECTIONS.map(section => (
             <section key={section.title} aria-labelledby={`gesture-section-${section.title}`}>
               <h3 id={`gesture-section-${section.title}`}>{t(section.title)}</h3>

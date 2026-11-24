@@ -1,5 +1,38 @@
 import type { MessageId } from "@/i18n/messages";
 import type { ToolMode } from "@/features/editor/model";
+import {
+  Box,
+  Cloud,
+  CircleHelp,
+  Eye,
+  FileDown,
+  FilePlus2,
+  FileUp,
+  FolderOpen,
+  Group,
+  HardDrive,
+  Hammer,
+  Languages,
+  Layers,
+  Link2,
+  Menu,
+  MousePointer2,
+  MousePointerClick,
+  Move3d,
+  PackageOpen,
+  Palette,
+  PanelTop,
+  Plus,
+  Rotate3d,
+  Save,
+  ShieldCheck,
+  Sun,
+  Trash2,
+  TriangleAlert,
+  Undo2,
+  Redo2,
+  type LucideIcon,
+} from "lucide-react";
 
 export const DOUBLE_TAP_INTERVAL_MS = 500;
 export const BUILD_SINGLE_TAP_DELAY_MS = DOUBLE_TAP_INTERVAL_MS + 80;
@@ -16,6 +49,77 @@ export interface GestureGuideSection {
   title: MessageId;
   gestures: readonly GestureGuideLine[];
 }
+
+export interface HelpButtonItem {
+  icon: LucideIcon;
+  title: MessageId;
+  description: MessageId;
+}
+
+export interface HelpButtonSection {
+  title: MessageId;
+  buttons: readonly HelpButtonItem[];
+}
+
+export const HELP_MODE_OVERVIEW: readonly HelpButtonItem[] = [
+  { icon: Eye, title: "editor.viewMode", description: "help.mode.view" },
+  { icon: Hammer, title: "editor.buildMode", description: "help.mode.build" },
+  { icon: MousePointer2, title: "editor.selectMode", description: "help.mode.select" },
+  { icon: Trash2, title: "editor.deleteMode", description: "help.mode.delete" },
+];
+
+/** Keep the button overview aligned with the controls rendered by App and BuilderCanvas. */
+export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
+  {
+    title: "help.section.header",
+    buttons: [
+      { icon: Menu, title: "help.button.project", description: "help.button.project.description" },
+      { icon: Sun, title: "help.button.theme", description: "help.button.theme.description" },
+      { icon: CircleHelp, title: "gesture.help", description: "help.button.help.description" },
+      { icon: Save, title: "save.action", description: "help.button.save.description" },
+    ],
+  },
+  {
+    title: "help.section.workspace",
+    buttons: [
+      { icon: PanelTop, title: "canvas.thickEdges", description: "help.button.edges.description" },
+      { icon: Undo2, title: "history.undo", description: "help.button.undo.description" },
+      { icon: Redo2, title: "history.redo", description: "help.button.redo.description" },
+      { icon: Palette, title: "editor.colorMode", description: "help.button.color.description" },
+      { icon: Plus, title: "editor.partsTool", description: "help.button.parts.description" },
+      { icon: Link2, title: "canvas.showConnections", description: "help.button.connections.description" },
+      { icon: TriangleAlert, title: "canvas.showCollisionWarning", description: "help.button.collision.description" },
+      { icon: Cloud, title: "canvas.showFloatingWarning", description: "help.button.floating.description" },
+    ],
+  },
+  {
+    title: "help.section.selectedPart",
+    buttons: [
+      { icon: Box, title: "help.button.height", description: "help.button.height.description" },
+      { icon: Move3d, title: "fine.title", description: "help.button.fine.description" },
+      { icon: Group, title: "group.title", description: "help.button.group.description" },
+      { icon: Rotate3d, title: "tilt.title", description: "help.button.rotation.description" },
+      { icon: Trash2, title: "editor.remove", description: "help.button.delete.description" },
+      { icon: MousePointer2, title: "help.button.buildSwitch", description: "help.button.buildSwitch.description" },
+      { icon: Layers, title: "help.button.connectedParts", description: "help.button.connectedParts.description" },
+      { icon: MousePointerClick, title: "help.button.directMultiSelect", description: "help.button.directMultiSelect.description" },
+      { icon: MousePointer2, title: "help.button.tapSelect", description: "help.button.tapSelect.description" },
+    ],
+  },
+  {
+    title: "help.section.projectMenu",
+    buttons: [
+      { icon: FilePlus2, title: "project.newAction", description: "help.menu.new.description" },
+      { icon: FileUp, title: "project.import", description: "help.menu.import.description" },
+      { icon: FileDown, title: "project.export", description: "help.menu.export.description" },
+      { icon: PackageOpen, title: "project.instructions", description: "help.menu.instructions.description" },
+      { icon: HardDrive, title: "project.storage", description: "help.menu.storage.description" },
+      { icon: ShieldCheck, title: "project.privacy", description: "help.menu.privacy.description" },
+      { icon: Languages, title: "language", description: "help.menu.language.description" },
+      { icon: FolderOpen, title: "project.device", description: "help.menu.projects.description" },
+    ],
+  },
+];
 
 /** Keep this user-facing guide aligned with the pointer handlers in BuilderCanvas. */
 export const GESTURE_GUIDE_SECTIONS: readonly GestureGuideSection[] = [

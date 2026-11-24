@@ -181,10 +181,13 @@ it("opens the English gesture guide from the header between theme and save", asy
 
   await act(async () => helpButton.click());
   const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
-  expect(dialog.textContent).toContain("Touch and mouse gestures");
+  expect(dialog.textContent).toContain("App guide: modes, buttons, and gestures");
   expect(dialog.textContent).toContain("Build mode");
   expect(dialog.textContent).toContain("Double-tap empty space");
   expect(dialog.textContent).toContain("Double-tap a rotation or tilt slider");
+  expect(dialog.textContent).toContain("Move connected upper parts");
+  expect(dialog.textContent).toContain("Import file");
+  expect(dialog.querySelectorAll(".gesture-guide-button-visual").length).toBeGreaterThan(20);
   expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
 });
 
@@ -193,13 +196,16 @@ it("shows every mode's gesture help in German", async () => {
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
   const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
 
-  expect(dialog.textContent).toContain("Touch- und Mausgesten");
+  expect(dialog.textContent).toContain("Hilfe: Modi, Schaltflächen und Gesten");
   expect(dialog.textContent).toContain("Ansichtsmodus");
   expect(dialog.textContent).toContain("Auswahlmodus");
   expect(dialog.textContent).toContain("Baumodus");
   expect(dialog.textContent).toContain("Löschmodus");
   expect(dialog.textContent).toContain("Doppeltipp auf freie Fläche");
   expect(dialog.textContent).toContain("Doppeltipp auf einen Dreh- oder Neigungsregler");
+  expect(dialog.textContent).toContain("Verbundene obere Teile mitbewegen");
+  expect(dialog.textContent).toContain("Datei importieren");
+  expect(dialog.querySelectorAll(".gesture-guide-button-visual").length).toBeGreaterThan(20);
   expect(editorCss).toContain(".dark .gesture-guide-dialog");
 });
 

@@ -407,6 +407,35 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
 .gesture-guide-sections ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .gesture-guide-sections li strong { display: block; font-size: 12px; line-height: 1.35; }
 .gesture-guide-sections li p { margin: 3px 0 0; color: #637068; font-size: 12px; line-height: 1.45; }
+.gesture-guide-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.gesture-guide-mode,
+.gesture-guide-buttons li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+}
+.gesture-guide-mode {
+  padding: 10px;
+  border: 1px solid #e4e2d8;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .72);
+}
+.gesture-guide-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gesture-guide-button-visual {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #deddd1;
+  border-radius: 11px;
+  background: #fffdf7;
+  color: #a34e39;
+  box-shadow: 0 2px 5px rgba(30, 40, 32, .08);
+}
+.gesture-guide-mode p { margin: 3px 0 0; color: #637068; font-size: 11px; line-height: 1.4; }
+.gesture-guide-mode strong,
+.gesture-guide-buttons strong { font-size: 12px; }
 .dark .gesture-guide-dialog {
   border-color: #46564b;
   background: #1f2b24;
@@ -415,6 +444,14 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
 .dark .gesture-guide-sections section { border-color: #3b4b40; background: #26362e; }
 .dark .gesture-guide-sections h3 { color: #ffab94; }
 .dark .gesture-guide-sections li p { color: #b7c4ba; }
+.dark .gesture-guide-mode { border-color: #3b4b40; background: #26362e; }
+.dark .gesture-guide-mode p { color: #b7c4ba; }
+.dark .gesture-guide-button-visual {
+  border-color: #4b5b50;
+  background: #1f2b24;
+  color: #ffab94;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .18);
+}
 
 @media (orientation: landscape) and (max-height: 560px) {
   .editor-shell { grid-template-rows: 50px minmax(0,1fr); }
@@ -425,6 +462,12 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .mobile-dock { display: none; }
   .tool-option { min-height: 48px; }
   .tool-rail { overflow-y: auto; }
+}
+
+@media (max-width: 520px) {
+  .gesture-guide-dialog { padding: 17px; }
+  .gesture-guide-modes,
+  .gesture-guide-buttons { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 380px) {
