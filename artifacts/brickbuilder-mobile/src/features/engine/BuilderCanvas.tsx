@@ -195,9 +195,11 @@ export class FallbackRenderer {
     placementGeometry?: PlacementPreviewGeometry | null,
     placementBrick?: Brick | null,
     thickEdges = false,
+    selectedIds?: readonly string[],
   ): void {
     const context = this.context;
     if (!context) return;
+    const selectionIds = new Set(selectedIds?.length ? selectedIds : selectedId ? [selectedId] : []);
     camera.updateMatrixWorld(true);
     const forward = target.clone().sub(camera.position).normalize();
     const right = new Vector3().crossVectors(forward, camera.up).normalize();
@@ -267,7 +269,7 @@ export class FallbackRenderer {
             if (Math.abs(area) < 0.08) continue;
             const id = imported.triangleIds[triangle];
             const color = imported.instructionColors?.[triangle] ?? imported.colors[triangle];
-            importedFaces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color, alpha: imported.alpha[triangle], opacity: 1, selected: id === selectedId });
+            importedFaces.push({ points, depth: points.reduce((s, p) => s + p.depth, 0) / 3, color, alpha: imported.alpha[triangle], opacity: 1, selected: selectionIds.has(id) });
       }
     }
     if (placementGeometry) {
@@ -433,7 +435,7 @@ export class FallbackRenderer {
         );
       }
 
-      if (selectedId === brick.id) {
+      if (selectionIds.has(brick.id)) {
         const selectionTop = [
           [-definition.studsX / 2, -definition.studsZ / 2],
           [definition.studsX / 2, -definition.studsZ / 2],
@@ -583,7 +585,7 @@ export function BuilderCanvas({
   const placementSourceMatrixRef = useRef<Affine | null>(null);
   const sceneModelRef = useRef<ImportedModel | undefined>(undefined);
   const sceneProjectRef = useRef<string | undefined>(undefined);
-  const selectionOutlineRef = useRef<Box3Helper | null>(null);
+  const selectionOutlineRef = useRef<Box3Helper[]>([]);
   const importedBoundsRef = useRef<Box3 | null>(null);
   const constructionAreaRef = useRef<ConstructionArea>(constructionArea(new Box3()));
   const constructionBoundsRef = useRef(new Box3());
@@ -688,19 +690,34 @@ export function BuilderCanvas({
       instance && model ? hasUsableConnections(model, instance.id) ? translateRef.current("canvas.noConnection") : translateRef.current("canvas.connectionDataUnavailable") : "");
   };
   const updateImportedSelection = () => {
-    const old = selectionOutlineRef.current;
-    const id = propsRef.current.selectedId, root = importedRootRef.current;
-    const bounds = id && root ? importedSelectionBounds(root, id) : null;
-    if (old && bounds) { old.box.copy(bounds); invalidatorRef.current?.(); return; }
-    if (old) { sceneRef.current?.remove(old); old.geometry.dispose(); disposeMaterial(old.material); selectionOutlineRef.current = null; }
-    if (id && root) {
-      if (bounds) {
+    const props = propsRef.current;
+    const root = importedRootRef.current;
+    const ids = props.selectedIds?.length ? props.selectedIds : props.selectedId ? [props.selectedId] : [];
+    const previous = new Map(selectionOutlineRef.current.map(outline => [outline.userData.selectionId as string, outline]));
+    const next: Box3Helper[] = [];
+    for (const id of ids) {
+      const bounds = root ? importedSelectionBounds(root, id) : null;
+      if (!bounds) continue;
+      const existing = previous.get(id);
+      if (existing) {
+        existing.box.copy(bounds);
+        next.push(existing);
+        previous.delete(id);
+      } else {
         const outline = new Box3Helper(bounds, 0xe45e32);
         for (const material of Array.isArray(outline.material) ? outline.material : [outline.material]) material.depthTest = false;
         outline.renderOrder = 100;
-        sceneRef.current?.add(outline); selectionOutlineRef.current = outline;
+        outline.userData.selectionId = id;
+        sceneRef.current?.add(outline);
+        next.push(outline);
       }
     }
+    for (const outline of previous.values()) {
+      sceneRef.current?.remove(outline);
+      outline.geometry.dispose();
+      disposeMaterial(outline.material);
+    }
+    selectionOutlineRef.current = next;
     invalidatorRef.current?.();
   };
   const invalidatorRef = useRef<(() => void) | null>(null);
@@ -970,6 +987,7 @@ export function BuilderCanvas({
             placementPreviewGeometryRef.current,
             placementPreviewBrickRef.current,
             propsRef.current.thickEdges,
+            propsRef.current.selectedIds,
           );
         }
         const marker = rotationAnchorMarkerRef.current;
@@ -1409,7 +1427,7 @@ export function BuilderCanvas({
     return () => controller.abort();
   }, [showCollisions, bricks, imported, projectId, buildAttempt]);
 
-  useEffect(() => { updateImportedSelection(); }, [selectedId]);
+  useEffect(() => { updateImportedSelection(); }, [selectedId, selectedIds]);
   useEffect(() => { refreshFloating(); }, [bricks]);
   useEffect(() => { refreshFloating(); }, [showFloating]);
 
@@ -1431,6 +1449,7 @@ export function BuilderCanvas({
 
     const nextRoot = new Group();
     const groups = new Map<string, Brick[]>();
+    const selectedBrickIds = new Set(selectedIds?.length ? selectedIds : selectedId ? [selectedId] : []);
     for (const brick of bricks) {
       const key = `${brick.type}|${brick.color.toLowerCase()}`;
       const group = groups.get(key) ?? [];
@@ -1461,8 +1480,8 @@ export function BuilderCanvas({
 
     for (const edgeBatch of createLocalBrickEdgeBatches(bricks)) nextRoot.add(edgeBatch);
 
-    const selected = bricks.find((brick) => brick.id === selectedId);
-    if (selected) {
+    const selectedBricks = bricks.filter(brick => selectedBrickIds.has(brick.id));
+    for (const selected of selectedBricks) {
       const { studsX: width, studsZ: depth } = BRICK_DEFINITIONS[selected.type];
       const outlineHeight = BRICK_HEIGHT + 0.24;
       const outlineGeometry = new EdgesGeometry(
@@ -1481,6 +1500,7 @@ export function BuilderCanvas({
         "XYZ",
       );
       outline.userData.isSelectionOutline = true;
+      outline.userData.selectionId = selected.id;
       nextRoot.add(outline);
     }
 
@@ -1489,7 +1509,7 @@ export function BuilderCanvas({
     refreshConstructionAreaRef.current?.();
     refreshInstructionFocus();
     invalidatorRef.current?.();
-  }, [bricks, selectedId]);
+  }, [bricks, selectedId, selectedIds]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1667,7 +1687,7 @@ export function BuilderCanvas({
         if (child instanceof InstancedMesh) {
           const index = (child.userData.brickIds as string[]).indexOf(brick.id);
           if (index >= 0) { child.setMatrixAt(index, dummy.matrix); child.instanceMatrix.needsUpdate = true; child.boundingSphere = null; }
-        } else if (child.userData.isSelectionOutline && brick.id === propsRef.current.selectedId) {
+        } else if (child.userData.isSelectionOutline && brick.id === child.userData.selectionId) {
           child.position.set(brick.x, brick.y, brick.z);
           child.rotation.set((brick.tiltX ?? 0) * Math.PI / 180, brick.rotation * Math.PI / 180, (brick.tiltZ ?? 0) * Math.PI / 180, "XYZ");
         }

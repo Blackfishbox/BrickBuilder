@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { useBuilder } from "./useBuilder";
+import { recolorSelectionDocument, useBuilder } from "./useBuilder";
 import { builderDatabase, loadProject } from "@/storage/database";
 import { activeConnections, constructionTransform } from "../connections/engine";
 import { prepareLibraryPart, placePreparedPart, moveImported } from "./ldraw-editing";
@@ -69,11 +69,19 @@ it("prepares actual catalog geometry and commits catalog/inventory plates throug
   const sources = JSON.stringify([editor.imported!.sourceText, editor.imported!.originalBytes, editor.imported!.resources]);
   const evidence = JSON.parse(new TextDecoder().decode(gunzipSync(readFileSync(resolve("public", evidenceManifest.url)))));
   updateColorEvidenceState({ status: "ready", index: indexColorEvidence(evidence) });
+  const localSelectionId = "local-selection";
+  const mixedDocument = {
+    ...editor.document,
+    bricks: [{ id: localSelectionId, type: "brick-1x2" as const, color: "#B40000", x: 4, y: 0, z: 0, rotation: 0 }],
+  };
+  const recoloredMixed = recolorSelectionDocument(mixedDocument, [localSelectionId, placed.id], "#1B2A34", "0");
+  expect(recoloredMixed.bricks[0].color).toBe("#1B2A34");
+  expect(recoloredMixed.imported!.instances.find(instance => instance.id === placed.id)!.colorCode).toBe("0");
   await act(async () => editor.select(placed.id));
   expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(beforeColors);
-  await act(async () => editor.setSelectedColor("#abcdef", "0x2ABCDEF", [editor.imported!.instances[0].id]));
+  await act(async () => editor.setSelectedColor("#abcdef", "0x2ABCDEF", [placed.id, editor.imported!.instances[0].id]));
   expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(beforeColors);
-  await act(async () => editor.setSelectedColor("#1B2A34", "0", [editor.imported!.instances[0].id]));
+  await act(async () => editor.setSelectedColor("#1B2A34", "0", [placed.id, editor.imported!.instances[0].id]));
   expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(["0", "0"]);
   expect(JSON.stringify([editor.imported!.sourceText, editor.imported!.originalBytes, editor.imported!.resources])).toBe(sources);
   await act(async () => editor.undo());
@@ -96,7 +104,7 @@ it("prepares actual catalog geometry and commits catalog/inventory plates throug
   expect(editor.imported!.instances[2].allocation).toEqual(allocated.allocation);
   await act(async () => editor.select(placed.id));
   const beforeMixed = editor.imported!.instances.map(instance => instance.colorCode);
-  await act(async () => editor.setSelectedColor("#1B2A34", "0", [allocated.id]));
+  await act(async () => editor.setSelectedColor("#1B2A34", "0", [placed.id, allocated.id]));
   expect(editor.imported!.instances.map(instance => instance.colorCode)).toEqual(["4", "0", "0"]);
   expect(editor.imported!.instances[2].allocation).toEqual(allocated.allocation);
   expect(beforeMixed).toEqual(["4", "4", "4"]);

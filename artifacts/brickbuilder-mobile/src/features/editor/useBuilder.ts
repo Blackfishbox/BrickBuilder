@@ -53,6 +53,19 @@ export interface ModelAnalysis {
   overlapCount: number;
 }
 
+export function recolorSelectionDocument(
+  document: BuilderDocument, selectedIds: readonly string[], color: string, code?: string,
+): BuilderDocument {
+  const ids = new Set(selectedIds);
+  const recoloredImported = document.imported?.instances.reduce((next, instance) =>
+    ids.has(instance.id) ? recolorImported(next, instance.id, color, code) : next, document) ?? document;
+  return {
+    ...recoloredImported,
+    updatedAt: new Date().toISOString(),
+    bricks: recoloredImported.bricks.map(brick => ids.has(brick.id) ? { ...brick, color } : brick),
+  };
+}
+
 interface AnalysisResponse extends ModelAnalysis {
   requestId: number;
 }
@@ -285,30 +298,22 @@ export function useBuilder() {
   }, [updateDocument]);
 
   const setSelectedColor = useCallback(
-    (color: string, code?: string, additionalIds: string[] = []) => {
+    (color: string, code?: string, selectedIds?: string[]) => {
       const document = historyRef.current.document;
-      const ids = new Set(selectedId ? [selectedId, ...additionalIds] : []);
+      const ids = new Set(selectedIds?.length ? selectedIds : selectedId ? [selectedId] : []);
       const instances = document.imported?.instances.filter(instance => ids.has(instance.id)) ?? [];
-      const references = instances.length ? instances.map(instance => instance.part.ldrawId)
-        : selectedId && document.bricks.some(brick => brick.id === selectedId)
-          ? [BRICK_DEFINITIONS[document.bricks.find(brick => brick.id === selectedId)!.type].ldrawId]
-          : placementRef.current ? [placementRef.current.prepared.part.ldrawId] : [];
+      const bricks = document.bricks.filter(brick => ids.has(brick.id));
+      const references = [
+        ...instances.map(instance => instance.part.ldrawId),
+        ...bricks.map(brick => BRICK_DEFINITIONS[brick.type].ldrawId),
+      ];
+      if (!references.length && placementRef.current) references.push(placementRef.current.prepared.part.ldrawId);
       const constraint = selectionColorEvidence(references, getColorEvidenceState().index);
       if (constraint.codes && (!code || !constraint.codes.includes(code))) return;
       setSelectedColorValue(color);
       setSelectedColorCode(code);
-      if (!selectedId) return;
-      if (instances.length) {
-        updateDocument(document => instances.reduce((next, instance) => recolorImported(next, instance.id, color, code), document));
-        return;
-      }
-      updateDocument((document) => ({
-        ...document,
-        updatedAt: new Date().toISOString(),
-        bricks: document.bricks.map((brick) =>
-          brick.id === selectedId ? { ...brick, color } : brick,
-        ),
-      }));
+      if (!ids.size) return;
+      updateDocument(document => recolorSelectionDocument(document, [...ids], color, code));
     },
     [selectedId, updateDocument],
   );

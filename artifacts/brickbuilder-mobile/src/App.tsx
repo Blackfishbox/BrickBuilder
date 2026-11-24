@@ -102,13 +102,18 @@ function App() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [gestureHelpOpen, setGestureHelpOpen] = useState(false);
   const [partsTab, setPartsTab] = useState<'ldraw' | 'inventory'>('ldraw');
-  const [additionalColorIds, setAdditionalColorIds] = useState<string[]>([]);
-  const [additionalRotationIds, setAdditionalRotationIds] = useState<string[]>([]);
+  const [additionalSelectionIds, setAdditionalSelectionIds] = useState<string[]>([]);
   const [rotationTargetQuery, setRotationTargetQuery] = useState("");
-  const [colorTargetsOpen, setColorTargetsOpen] = useState(false);
-  const [colorTargetQuery, setColorTargetQuery] = useState("");
+  const selectionMenuAnchorUpdateRef = useRef(false);
   useEffect(() => { setFinePositionOpen(false); }, [editor.selectedId, editor.toolMode]);
-  useEffect(() => { setGroupSelectionOpen(false); }, [editor.selectedId, editor.toolMode]);
+  useEffect(() => {
+    if (selectionMenuAnchorUpdateRef.current) {
+      selectionMenuAnchorUpdateRef.current = false;
+      return;
+    }
+    setGroupSelectionOpen(false);
+    setAdditionalSelectionIds([]);
+  }, [editor.selectedId, editor.toolMode]);
   useEffect(() => {
     if (openRotationForRef.current === editor.selectedId) {
       openRotationForRef.current = null;
@@ -116,8 +121,8 @@ function App() {
     }
     setTiltControlsOpen(false);
   }, [editor.selectedId, editor.toolMode]);
-  useEffect(() => { setAdditionalColorIds([]); }, [editor.selectedId, editor.document.id]);
-  useEffect(() => { setAdditionalRotationIds([]); setRotationTargetQuery(""); }, [editor.selectedId, editor.document.id]);
+  useEffect(() => { setAdditionalSelectionIds([]); setRotationTargetQuery(""); }, [editor.document.id]);
+  useEffect(() => { setRotationTargetQuery(""); }, [editor.selectedId]);
   useEffect(() => { applyColorTheme(theme); }, [theme]);
   useEffect(() => {
     if (!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen) return;
@@ -181,10 +186,24 @@ function App() {
     });
     return [...localTargets, ...importedTargets];
   }, [catalog, editor.document, locale]);
-  const availableRotationIds = new Set(availableRotationTargets.map(target => target.id));
-  const rotationTargetIds = editor.selectedId
-    ? [editor.selectedId, ...additionalRotationIds.filter(id => id !== editor.selectedId && availableRotationIds.has(id))]
-    : [];
+  const rotationTargetIds = useMemo(() => editor.selectedId
+    ? [editor.selectedId, ...additionalSelectionIds.filter(id =>
+      id !== editor.selectedId && availableRotationTargets.some(target => target.id === id))]
+    : [], [editor.selectedId, additionalSelectionIds, availableRotationTargets]);
+  const selectionIdSet = useMemo(() => new Set(rotationTargetIds), [rotationTargetIds]);
+  const toggleSelectionTarget = (id: string, checked: boolean) => {
+    const nextIds = checked
+      ? [...new Set([...rotationTargetIds, id])]
+      : rotationTargetIds.filter(selectedId => selectedId !== id);
+    if (id === editor.selectedId && !checked) {
+      if (!nextIds.length) return;
+      selectionMenuAnchorUpdateRef.current = true;
+      setAdditionalSelectionIds(nextIds.slice(1));
+      editor.select(nextIds[0]);
+      return;
+    }
+    setAdditionalSelectionIds(nextIds.filter(selectedId => selectedId !== editor.selectedId));
+  };
   const rotationSelection = (mobile = false) => (
     <div key={`rotation-selection-${editor.selectedId ?? "none"}-${editor.toolMode}`}
       className={`rotation-selection${mobile ? " rotation-selection-mobile" : ""}`}
@@ -208,19 +227,18 @@ function App() {
         </label>
         <p>{t("group.selectedSummary", { count: rotationTargetIds.length })}</p>
         <div className="rotation-selection-list">
-          {availableRotationTargets.filter(target => target.id !== editor.selectedId &&
+          {availableRotationTargets.filter(target =>
             target.searchText.toLowerCase().includes(rotationTargetQuery.trim().toLowerCase())).map(target => (
             <GroupSelectionItem key={target.id} target={target} document={editor.document}
-              checked={additionalRotationIds.includes(target.id)}
-              onChange={checked => setAdditionalRotationIds(ids => checked
-                ? [...ids, target.id] : ids.filter(id => id !== target.id))} />
+              checked={selectionIdSet.has(target.id)}
+              onChange={checked => toggleSelectionTarget(target.id, checked)} />
           ))}
         </div>
       </DraggablePanel>
     </div>
   );
-  const colorInstances = editor.imported?.instances.filter(instance =>
-    instance.id === editor.selectedId || (editor.selectedId && additionalColorIds.includes(instance.id))) ?? [];
+  const colorInstances = editor.imported?.instances.filter(instance => selectionIdSet.has(instance.id)) ?? [];
+  const colorBricks = editor.document.bricks.filter(brick => selectionIdSet.has(brick.id));
   const selectedLegacy = editor.document.bricks.find(brick => brick.id === editor.selectedId);
   const importedAngles = editor.selectedInstance ? importedControlAngles(editor.selectedInstance) : null;
   const rotationControlValue = importedAngles?.rotationY ?? selectedLegacy?.rotation ?? 0;
@@ -246,17 +264,26 @@ function App() {
   }, [editor.selectedId, editor.document.id]);
   const selectedPartNumber = editor.selectedInstance?.part.ldrawId
     ?? (selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId : editor.selectedPart?.ldrawId);
-  const colorReferences = colorInstances.length ? colorInstances.map(instance => instance.part.ldrawId)
-    : [selectedLegacy ? BRICK_DEFINITIONS[selectedLegacy.type].ldrawId
-      : editor.selectedPart?.ldrawId].filter((id): id is string => Boolean(id));
-  const currentColors = colorInstances.length ? colorInstances.map(instance => ({
+  const colorReferences = [
+    ...colorInstances.map(instance => instance.part.ldrawId),
+    ...colorBricks.map(brick => BRICK_DEFINITIONS[brick.type].ldrawId),
+  ];
+  if (!colorReferences.length && editor.selectedPart?.ldrawId) colorReferences.push(editor.selectedPart.ldrawId);
+  const currentColors = colorInstances.length || colorBricks.length ? [
+    ...colorInstances.map(instance => ({
     ldrawCode: instance.colorCode, name: instance.color?.name ?? resolveColor(instance.colorCode)?.name ?? `LDraw ${instance.colorCode}`,
     value: instance.color?.hex ?? resolveColor(instance.colorCode)?.hex ?? "#ff00ff",
-  })) : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? t("color.custom"),
+    })),
+    ...colorBricks.map(brick => ({
+      ldrawCode: `0x2${brick.color.replace("#", "").toUpperCase()}`,
+      name: displayColorName(COLORS.find(color => color.value.toLowerCase() === brick.color.toLowerCase())?.name ?? t("color.custom")),
+      value: brick.color,
+    })),
+  ] : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? t("color.custom"),
     value: editor.selectedColor, ldrawCode: editor.selectedColorCode ?? "" }];
   const colorPicker = (mobile = false) => <EvidencedColorPicker palette={COLORS} current={currentColors}
     references={colorReferences} locked={false} mobile={mobile}
-    onChange={color => { editor.setSelectedColor(color.value, color.ldrawCode, additionalColorIds); if (mobile) setColorsOpen(false); }} />;
+    onChange={color => { editor.setSelectedColor(color.value, color.ldrawCode, rotationTargetIds); if (mobile) setColorsOpen(false); }} />;
   const activeInventoryRow = editor.selectedInventory && editor.document.inventory?.id === editor.selectedInventory.listId
     ? editor.document.inventory.rows.find(row => row.id === editor.selectedInventory!.rowId) : undefined;
   useEffect(() => {
@@ -579,7 +606,7 @@ function App() {
             </button>
             <div className="color-heading"><span>{t("editor.color")}</span><span className="color-name">{selectedColor.name}</span></div>
             {colorPicker()}
-            {editor.selectedInstance && <button type="button" className="selection-action"
+            {rotationTargetIds.length > 1 && editor.toolMode !== "view" && <button type="button" className="selection-action"
               onClick={() => setColorsOpen(true)}>{t("editor.moreColors")}</button>}
           </div>
 
@@ -660,25 +687,10 @@ function App() {
               <div><p className="popover-eyebrow">{t("editor.sectionColor")}</p><h2 id="colors-title">{t("color.title")}</h2></div>
               <button type="button" className="icon-button" onClick={() => setColorsOpen(false)} aria-label={t("color.close")} data-testid="button-close-colors"><X size={18} /></button>
             </div>
-            {editor.selectedInstance && <details className="color-evidence-status"
-              onToggle={event => setColorTargetsOpen(event.currentTarget.open)}>
-              <summary>{t("editor.moreColors")}</summary>
-              <p>{t("color.additionalHelp")}</p>
-              {colorTargetsOpen && <>
-              <input aria-label={t("color.searchParts")} value={colorTargetQuery}
-                onChange={event => setColorTargetQuery(event.target.value)} placeholder={t("editor.idOrName")} />
-              <p>{t("color.results", { count: additionalColorIds.length })}</p>
-              <div style={{ maxHeight: 180, overflowY: "auto" }}>
-              {editor.imported?.instances.map((instance, index) => ({ instance, index })).filter(({ instance }) =>
-                instance.id !== editor.selectedId && `${instance.part.ldrawId} ${instance.part.name ?? ""}`
-                  .toLowerCase().includes(colorTargetQuery.trim().toLowerCase())).slice(0, 40).map(({ instance, index }) =>
-                <label key={instance.id} style={{ display: "block", minHeight: 44 }}>
-                  <input type="checkbox" checked={additionalColorIds.includes(instance.id)}
-                    onChange={event => setAdditionalColorIds(ids => event.target.checked ? [...ids, instance.id] : ids.filter(id => id !== instance.id))} />
-                  {" "}#{index + 1} · LDraw {instance.part.ldrawId} · {instance.color?.name ?? instance.colorCode}
-                </label>)}
-              </div></>}
-            </details>}
+            {rotationTargetIds.length > 1 && <p className="color-evidence-status" data-testid="text-color-selection-count">
+              {t("color.multiSelectionHint", { count: rotationTargetIds.length })}
+            </p>}
+            {editor.selectedInstance && <p className="color-evidence-status">{t("color.additionalHelp")}</p>}
             {colorPicker(true)}
           </section>
         </div>

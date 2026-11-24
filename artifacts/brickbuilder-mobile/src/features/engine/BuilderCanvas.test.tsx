@@ -545,6 +545,21 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   expect(software.records.size).toBe(1);
 });
 
+it("outlines every selected local part in the compatibility renderer", () => {
+  const bricks: Brick[] = [
+    { id: "outline-first", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 },
+    { id: "outline-second", type: "brick-1x2", color: "#1E5AA8", x: 5, y: 0, z: 0, rotation: 0 },
+  ];
+  const renderer = new FallbackRenderer();
+  renderer.setSize(600, 600);
+  const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
+  camera.position.set(10, 10, 10);
+  camera.lookAt(0, 0, 0);
+  renderer.render(camera, new Vector3(), bricks, bricks[0].id, undefined, 0, false, undefined,
+    constructionArea(new Box3()), false, null, null, false, bricks.map(brick => brick.id));
+  expect(observedStrokes.filter(stroke => stroke.color === "#b84e37")).toHaveLength(2);
+});
+
 describe("frame-coalesced drag transactions", () => {
   for (const webgl of [true, false]) {
     const rendererName = webgl ? "WebGL" : "Kompatibilitätsansicht";
@@ -1705,6 +1720,11 @@ describe("frame-coalesced drag transactions", () => {
     act(() => root.render(<BuilderCanvas {...props} />));
     host = element.querySelector("[data-testid='canvas-3d']")!;
     flushFrame();
+    const outlinedIds: string[] = [];
+    observed.scene3d!.traverse(object => {
+      if (object.userData.isSelectionOutline) outlinedIds.push(object.userData.selectionId);
+    });
+    expect(outlinedIds.sort()).toEqual(bricks.map(brick => brick.id).sort());
     observed.camera!.updateMatrixWorld(true);
     const project = (point: Vector3) => {
       const projected = point.project(observed.camera!);
@@ -1740,6 +1760,25 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene).toBeDefined();
     return { model, onMove, props, point: pickPoint() };
   }
+  it("outlines every selected imported part in the WebGL scene", async () => {
+    observed.webglEnabled = true;
+    const model = engineFixture(2, 3), selectedIds = model.instances.slice(0, 2).map(instance => instance.id);
+    const props = { projectId: "multi-selected-import", bricks: [], imported: model,
+      selectedId: selectedIds[0], selectedIds, selectedType: "brick-2x4" as const,
+      selectedColor: "#B40000", toolMode: "select" as const,
+      onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+    act(() => root.render(<BuilderCanvas {...props} />));
+    host = element.querySelector("[data-testid='canvas-3d']")!;
+    await act(async () => {
+      await vi.waitFor(() => expect(observed.scene3d?.children.some(child => instanceIndex(child as Group))).toBe(true));
+    });
+    flushFrame();
+    const outlinedIds: string[] = [];
+    observed.scene3d!.traverse(object => {
+      if (typeof object.userData.selectionId === "string") outlinedIds.push(object.userData.selectionId);
+    });
+    expect(outlinedIds.sort()).toEqual(selectedIds.sort());
+  });
   it("selects a part after a short, stationary tap in view mode", async () => {
     const { props, point, model } = await mount("view");
     pointer("pointerdown", point.x, point.y);

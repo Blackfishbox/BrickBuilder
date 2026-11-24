@@ -39,7 +39,10 @@ vi.mock("@/features/engine/BuilderCanvas", () => ({
   },
 }));
 vi.mock("@/features/parts/PartsLibrary", () => ({ default: () => <div>Teilekatalog</div> }));
-vi.mock("@/features/catalog/EvidencedColorPicker", () => ({ default: () => <div>Farbauswahl</div> }));
+vi.mock("@/features/catalog/EvidencedColorPicker", () => ({
+  default: (props: { onChange?: (color: { value: string; ldrawCode: string }) => void }) =>
+    <button type="button" data-testid="mock-color-picker" onClick={() => props.onChange?.({ value: "#112233", ldrawCode: "1" })}>Farbauswahl</button>,
+}));
 vi.mock("@/features/inventory/InventoryThumbnail", () => ({ default: () => <div aria-hidden="true" /> }));
 vi.mock("@/storage/management", () => ({
   getStorageOverview,
@@ -80,6 +83,12 @@ async function mount(theme: "light" | "dark", withSelection = false, language: "
   localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
 
   const document = createEmptyDocument("Mobile-Dialoge");
+  if (withSelection) {
+    document.bricks = [
+      { id: "selected-brick", type: "brick-2x2", color: "#d75b3f", x: 0, y: 0, z: 0, rotation: 0 },
+      { id: "second-brick", type: "brick-1x2", color: "#1e5aa8", x: 4, y: 0, z: 0, rotation: 0 },
+    ];
+  }
   document.inventory = parseInventory("part_id,color_id,quantity\n3001,5,2", "mobile.csv");
   Object.assign(editor, {
     isReady: true,
@@ -313,6 +322,28 @@ it("marks open mobile control menus and closes each one on an outside tap", asyn
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.classList.contains("is-open")).toBe(false);
   }
+});
+
+it("keeps multi-selection checkboxes in sync with viewport selection and applies color to all checked parts", async () => {
+  const container = await mount("light", true);
+  const menu = container.querySelector<HTMLElement>('[data-testid="group-selection-menu"]')!;
+  await act(async () => menu.querySelector<HTMLButtonElement>('[data-testid="button-group-selection"]')!.click());
+
+  const primary = container.querySelector<HTMLInputElement>('[data-testid="group-selection-item-selected-brick"] input')!;
+  const secondary = container.querySelector<HTMLInputElement>('[data-testid="group-selection-item-second-brick"] input')!;
+  expect(primary.checked).toBe(true);
+  expect(secondary.checked).toBe(false);
+  expect(container.textContent).toContain("Mehrfachauswahl");
+
+  await act(async () => secondary.click());
+  expect(secondary.checked).toBe(true);
+  expect(canvasProps.current.selectedIds).toEqual(["selected-brick", "second-brick"]);
+  expect(container.querySelector<HTMLInputElement>('[data-testid="group-selection-item-selected-brick"] input')!.checked).toBe(true);
+
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-colors"]')!.click());
+  const colorButton = documentRef.body.querySelector<HTMLButtonElement>('[data-testid="drawer-colors"] [data-testid="mock-color-picker"]')!;
+  await act(async () => colorButton.click());
+  expect(editor.setSelectedColor).toHaveBeenCalledWith("#112233", "1", ["selected-brick", "second-brick"]);
 });
 
 it("preserves part selection on the tap that closes a menu and allows selection on the next tap", async () => {
