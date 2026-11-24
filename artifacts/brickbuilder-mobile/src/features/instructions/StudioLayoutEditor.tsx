@@ -61,7 +61,12 @@ function FieldEditor({ item, field, layout, onChange }: { item: StudioLayoutItem
     rotation: "studio.field.rotation", opacity: "studio.field.opacity", fliped_H: "studio.field.flipH", fliped_V: "studio.field.flipV",
     IsUseBgColor: "studio.field.useBackground", BgColor: "studio.field.background", IsUseBorder: "studio.field.useBorder",
     BorderColor: "studio.field.borderColor", BorderThickness: "studio.field.borderThickness", BorderRadius: "studio.field.cornerRadius",
-    Thickness: "studio.field.arrowThickness", Color: "studio.field.arrowColor", IsVisible: "studio.field.dividerVisible",
+    Thickness: "studio.field.arrowThickness", Color: "studio.field.arrowColor",
+    IsVisible: item.label === "Divider" ? "studio.field.dividerVisible" : "studio.field.visible",
+    Rect: "studio.field.calloutRect", MultiplierValue: "studio.field.multiplierValue",
+    MultiplierPosition: "studio.field.multiplierPosition", CalloutGridMaxPerLine: "studio.field.calloutGrid",
+    IsCalloutAsRows: "studio.field.calloutRows", ArrowPosition: "studio.field.arrowPosition",
+    PointList: "studio.field.arrowPoints", StartStyle: "studio.field.arrowStart", EndStyle: "studio.field.arrowEnd",
     DividerThickness: "studio.field.lineThickness", DividerColor: "studio.field.lineColor", LRBT: "studio.field.padding",
     Horizontal: "studio.field.horizontalMargin", Vertical: "studio.field.verticalMargin",
     FontFamily: "studio.field.fontFamily", FontStyle: "studio.field.fontStyle", FontColor: "studio.field.fontColor",
@@ -129,6 +134,8 @@ function itemName(item: StudioLayoutItem, t: ReturnType<typeof useI18n>["t"]): s
     StepNumber: "studio.name.stepNumber", PartCount: "studio.name.partCount", PartsList: "studio.name.partsList",
     Multiplier: "studio.name.multiplier", Font: "studio.name.font", SubModelPreview: "studio.name.submodelPreview",
     Spacing: "studio.name.spacing", AssemblyMargin: "studio.name.margin",
+    CallOut: "studio.name.callout", CallOutItemData: "studio.name.callout", CallOutArrowItemData: "studio.name.arrow",
+    Arrow: "studio.name.arrow",
   };
   return keys[item.label] ? t(keys[item.label]) : item.label;
 }

@@ -1,5 +1,6 @@
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import type { StudioLayout } from "./types";
+import { supportedStudioArrow, supportedStudioCallout } from "./studio-objects";
 
 export interface StudioNode {
   id: number;
@@ -84,12 +85,31 @@ function fieldsFor(node: StudioNode, nodes: StudioNode[]): StudioLayoutField[] {
   const inGlobalStyle = isInGlobalStyle(node, nodes);
   if (node.name === "Page" && parent?.name === "Pages") fields = [f("IsLocked", "Seite sperren", "boolean")];
   if (node.name === "Step" && parent?.name === "Slot") fields = [f("RectOffset", "Schrittversatz (Studio-Werte)", "vector4")];
+  if (node.name === "CallOutItemData") fields = [
+    f("Rect", "Callout-Position und Größe (relativ zum Schritt)", "vector4"),
+    f("IsVisible", "Callout sichtbar", "boolean"),
+    f("MultiplierValue", "Anzahl", "number"),
+    f("MultiplierPosition", "Anzahlversatz", "vector2"),
+    f("CalloutGridMaxPerLine", "Schritte pro Zeile", "number"),
+    f("IsCalloutAsRows", "Zeilenweise anordnen", "boolean"),
+  ];
+  if (node.name === "CallOutArrowItemData") fields = [
+    f("ArrowPosition", "Pfeilanfang und Ziel (Studio-Werte)", "vector4"),
+    f("IsVisible", "Pfeil sichtbar", "boolean"),
+  ];
+  if (node.name === "Arrow" && ["Page", "Slot"].includes(parent?.name ?? "")) fields = [
+    f("PointList", "Pfeilanfang und Ziel (Studio-Werte)", "vector4"),
+    f("IsVisible", "Pfeil sichtbar", "boolean"),
+    f("StartStyle", "Pfeilanfang", "text"), f("EndStyle", "Pfeilspitze", "text"),
+    f("Thickness", "Pfeilstärke", "number"),
+  ];
   if (node.name === "Image" && parent?.name === "Slot") fields = [
     f("rect", "Position X / Y und Breite / Höhe (Studio-Werte)", "vector4"),
     f("rotation", "Drehung (Grad)", "number"), f("opacity", "Deckkraft (0–1)", "number"),
     f("fliped_H", "Horizontal spiegeln", "boolean"), f("fliped_V", "Vertikal spiegeln", "boolean"),
   ];
   if (inGlobalStyle) {
+    if (["CallOut", "Multiplier"].includes(node.name)) fields = [f("IsVisible", "Sichtbar", "boolean")];
     if (node.name === "Colors") fields = [
       f("IsUseBgColor", "Hintergrund verwenden", "boolean"), f("BgColor", "Hintergrund RGBA (0–1)", "color"),
       f("IsUseBorder", "Rahmen verwenden", "boolean"), f("BorderColor", "Rahmen RGBA (0–1)", "color"),
@@ -101,10 +121,10 @@ function fieldsFor(node: StudioNode, nodes: StudioNode[]): StudioLayoutField[] {
     if (node.name === "Margin" || node.name === "Spacing" || node.name === "AssemblyMargin") fields = [
       f("Horizontal", "Horizontaler Abstand", "number"), f("Vertical", "Vertikaler Abstand", "number"),
     ];
-    if (["Font", "StepNumber", "PartCount", "Multiplier"].includes(node.name)) fields = [
+    if (["Font", "StepNumber", "PartCount", "Multiplier"].includes(node.name)) fields.push(
       f("FontFamily", "Schriftfamilie", "text"), f("FontStyle", "Schriftschnitt", "text"),
       f("FontColor", "Schriftfarbe RGBA (0–1)", "color"), f("FontSize", "Schriftgröße", "number"),
-    ];
+    );
     if (node.name === "Page" && parent?.name === "GlobalStyle") fields = [
       f("SlotSpacing", "Abstand zwischen Schritten", "vector2"),
     ];
@@ -122,7 +142,9 @@ function checkValue(field: StudioLayoutField, value: string) {
   if (!value.trim() || values.length !== count || !values.every(n => Number.isFinite(n) && Math.abs(n) <= 1e6)) return false;
   if (field.kind === "color" || field.attribute === "opacity") return values.every(n => n >= 0 && n <= 1);
   if (/Thickness|Radius/.test(field.attribute)) return values[0] >= 0;
-  if (field.attribute === "rect") return values[2] > 0 && values[3] > 0;
+  if (field.attribute === "rect" || field.attribute === "Rect") return values[2] > 0 && values[3] > 0;
+  if (field.attribute === "MultiplierValue") return Number.isInteger(values[0]) && values[0] >= 1;
+  if (field.attribute === "CalloutGridMaxPerLine") return Number.isInteger(values[0]) && values[0] >= 0;
   return true;
 }
 
@@ -207,7 +229,9 @@ export function inspectStudioLayout(layout: StudioLayout): StudioLayoutView {
         if (node.attributes.SerializedIndex !== undefined && Number.isInteger(index) && index >= 0) page.steps.push(index);
       }
       if (fields.length) page.items.push({ ...item, ...(node.name === "Image" ? { imagePath: node.attributes.imagePath } : {}) });
-      if (["CallOut", "Arrow", "ContentItem", "BrickBuilderNotes", "SizeGuide", "ColorGuide"].includes(node.name)) {
+      if ((node.name === "CallOut" && !supportedStudioCallout(node, nodes)) ||
+          (node.name === "Arrow" && !supportedStudioArrow(node, nodes)) ||
+          ["ContentItem", "BrickBuilderNotes", "SizeGuide", "ColorGuide"].includes(node.name)) {
         unsupportedCount++;
         unsupportedElementCounts.set(node.name, (unsupportedElementCounts.get(node.name) ?? 0) + 1);
       }

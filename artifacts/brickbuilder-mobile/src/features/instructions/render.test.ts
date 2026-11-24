@@ -427,3 +427,68 @@ it("releases the WebGL renderer and context when PDF setup is canceled during im
     vi.unstubAllGlobals();
   }
 });
+
+it("fits only the visible Studio geometry into a narrow slot and keeps ordinary PDF cameras unchanged", async () => {
+  const document = createEmptyDocument("Studio fit");
+  document.bricks = [
+    { id: "first", type: "brick-2x4", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 25 },
+    { id: "future", type: "brick-2x4", color: "#00ff00", x: 10000, y: 1000, z: 0, rotation: 0 },
+  ];
+  const softwarePoints: number[] = [];
+  const canvases: { width: number; height: number }[] = [];
+  const context = {
+    fillRect() {}, drawImage() {}, beginPath() {}, closePath() {}, fill() {}, stroke() {},
+    moveTo(x: number, y: number) { softwarePoints.push(x, y); },
+    lineTo(x: number, y: number) { softwarePoints.push(x, y); },
+  };
+  vi.stubGlobal("document", { createElement: () => {
+    const canvas = { width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/png;base64,test" };
+    canvases.push(canvas); return canvas;
+  } });
+  const webgl = await createInstructionRenderer(document);
+  const software = await createSoftwareInstructionRenderer(document);
+  const saved = {
+    theta: 0.6, phi: 0.9, distance: 200, referenceDistance: 20,
+    target: [40, 0, 50] as [number, number, number], referenceTarget: [0, 0, 0] as [number, number, number],
+  };
+  const step = { id: "fit", title: "", notes: "", partIds: ["first"], camera: saved, rotation: [10, 30, 0] as [number, number, number] };
+  const before = JSON.stringify(document);
+  try {
+    const visible = new Set(["first"]);
+    webgl.image(visible, step);
+    const normalCamera = (frames.mock.lastCall![1] as import("three").OrthographicCamera).clone();
+    webgl.image(visible, step, undefined, 0.5);
+    const [scene, camera] = frames.mock.lastCall! as [Scene, import("three").OrthographicCamera];
+    expect(camera.zoom).toBe(1);
+    expect(rendererSetSize).toHaveBeenLastCalledWith(1000, 2000);
+    const points: Vector3[] = [];
+    scene.traverse(object => {
+      if (!(object instanceof Mesh) || object.parent?.userData.partId !== "first") return;
+      const positions = object.geometry.getAttribute("position");
+      for (let index = 0; index < positions.count; index++) {
+        points.push(new Vector3().fromBufferAttribute(positions, index).applyMatrix4(object.matrixWorld).project(camera));
+      }
+    });
+    const ndcX = points.map(point => point.x), ndcY = points.map(point => point.y);
+    expect(Math.min(...ndcX)).toBeGreaterThan(-1);
+    expect(Math.max(...ndcX)).toBeLessThan(1);
+    expect(Math.min(...ndcY)).toBeGreaterThan(-1);
+    expect(Math.max(...ndcY)).toBeLessThan(1);
+    expect(Math.max(Math.max(...ndcX) - Math.min(...ndcX), Math.max(...ndcY) - Math.min(...ndcY))).toBeCloseTo(2 / 1.06, 5);
+    software.image(visible, step, undefined, 0.5);
+    expect(canvases.at(-1)).toMatchObject({ width: 1000, height: 2000 });
+    const xs = softwarePoints.filter((_, index) => index % 2 === 0).map(x => x / 500 - 1);
+    const ys = softwarePoints.filter((_, index) => index % 2 === 1).map(y => 1 - y / 1000);
+    expect(Math.min(...xs)).toBeCloseTo(Math.min(...ndcX), 4);
+    expect(Math.max(...xs)).toBeCloseTo(Math.max(...ndcX), 4);
+    expect(Math.min(...ys)).toBeCloseTo(Math.min(...ndcY), 4);
+    expect(Math.max(...ys)).toBeCloseTo(Math.max(...ndcY), 4);
+    webgl.image(visible, step);
+    const restored = frames.mock.lastCall![1] as import("three").OrthographicCamera;
+    expect(restored.zoom).toBe(normalCamera.zoom);
+    expect(restored.position.toArray()).toEqual(normalCamera.position.toArray());
+    expect(restored.projectionMatrix.elements).toEqual(normalCamera.projectionMatrix.elements);
+    expect(rendererSetSize).toHaveBeenLastCalledWith(2000, 1520);
+    expect(JSON.stringify(document)).toBe(before);
+  } finally { webgl.dispose(); software.dispose(); }
+});

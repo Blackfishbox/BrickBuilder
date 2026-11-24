@@ -1,4 +1,4 @@
-import { OrthographicCamera, Vector3 } from "three";
+import { Box3, OrthographicCamera, Vector3 } from "three";
 import {
   DEFAULT_INSTRUCTION_PHI,
   DEFAULT_INSTRUCTION_THETA,
@@ -35,4 +35,24 @@ export function applyPdfStepCamera(camera: OrthographicCamera, radius: number, s
     setPdfDefaultCamera(camera, radius);
   }
   camera.lookAt(target); camera.updateMatrixWorld(true); camera.updateProjectionMatrix();
+}
+
+/** Bounds are in camera space, so tilted models fill even narrow Studio slots. */
+export function fitStudioCamera(camera: OrthographicCamera, bounds: Box3, aspect: number): void {
+  if (bounds.isEmpty()) return;
+  const center = bounds.getCenter(new Vector3()), size = bounds.getSize(new Vector3());
+  const height = Math.max(size.y, size.x / aspect, 0.01) * 1.06;
+  camera.zoom = 1;
+  camera.left = center.x - height * aspect / 2;
+  camera.right = center.x + height * aspect / 2;
+  camera.top = center.y + height / 2;
+  camera.bottom = center.y - height / 2;
+  camera.updateProjectionMatrix();
+}
+
+export function studioRenderSize(aspect: number): { width: number; height: number } {
+  const safeAspect = Math.max(0.1, Math.min(10, aspect));
+  return safeAspect >= 1
+    ? { width: 2000, height: Math.round(2000 / safeAspect) }
+    : { width: Math.round(2000 * safeAspect), height: 2000 };
 }

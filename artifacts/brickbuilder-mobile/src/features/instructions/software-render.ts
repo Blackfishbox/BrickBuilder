@@ -7,7 +7,7 @@ import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
-import { applyPdfStepCamera, setPdfDefaultCamera } from "./camera";
+import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderSize } from "./camera";
 import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 
 const MAX_TRIANGLES = 120_000;
@@ -34,7 +34,8 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
   size: { width: number; height: number; minRadius?: number } = { ...INSTRUCTION_RENDER_SIZE, minRadius: 1 }): Promise<InstructionImageRenderer> {
   const canvas = globalThis.document.createElement("canvas");
   canvas.width = size.width; canvas.height = size.height;
-  const width = canvas.width, height = canvas.height, aspect = width / height;
+  let width = canvas.width, height = canvas.height;
+  const aspect = width / height;
   const context = canvas.getContext("2d");
   if (!context) {
     canvas.width = 1; canvas.height = 1;
@@ -120,12 +121,30 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     const rotationNormal = new Matrix3();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds) {
+      image(visible, step, highlightIds, fitAspect) {
         signal?.throwIfAborted();
+        const renderSize = fitAspect ? studioRenderSize(fitAspect) : size;
+        width = renderSize.width; height = renderSize.height;
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width; canvas.height = height;
+        }
+        camera.left = -radius * 1.12 * aspect; camera.right = -camera.left;
+        camera.top = radius * 1.12; camera.bottom = -camera.top;
         applyPdfStepCamera(camera, radius, step.camera);
         const rotation = new Matrix4().makeRotationFromEuler(new Euler(
           ...(step.rotation ?? [0, 0, 0]).map(angle => angle * Math.PI / 180) as [number, number, number],
         ));
+        if (fitAspect) {
+          const fitBounds = new Box3();
+          for (const face of faces) {
+            if (!visible.has(face.id)) continue;
+            for (let offset = 0; offset < 9; offset += 3) {
+              fitBounds.expandByPoint(vertex.fromArray(face.points, offset).sub(center)
+                .applyMatrix4(rotation).applyMatrix4(camera.matrixWorldInverse));
+            }
+          }
+          fitStudioCamera(camera, fitBounds, width / height);
+        }
         const projected: { points: number[]; depth: number; color: string; alpha: number }[] = [];
         const highlighted = new Set<string>();
         for (const face of faces) {
