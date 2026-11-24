@@ -334,14 +334,12 @@ describe("local construction instructions", () => {
     expect(progress).toHaveBeenLastCalledWith(2, 2);
   });
 
-  it("keeps step labels, every part and callout, and long notes across PDF continuation pages", async () => {
+  it("omits step names and keeps every part, callout, and long note across PDF continuation pages", async () => {
     const source = Array.from({ length: 50 }, (_, index) =>
       `1 4 ${index * 40} 0 0 1 0 0 0 1 0 0 0 1 test-part-${String(index).padStart(2, "0")}.dat`,
     ).join("\n");
     const doc = fixture(source), step = doc.instructions!.steps[0];
-    const maxStepTitle = ["MaxTitle", ...Array.from({ length: 15 }, (_, index) => `Section${String(index + 1).padStart(2, "0")}`), "X"].join(" ");
-    expect(maxStepTitle).toHaveLength(160);
-    step.title = maxStepTitle;
+    step.title = ["MaxTitle", ...Array.from({ length: 15 }, (_, index) => `Section${String(index + 1).padStart(2, "0")}`), "X"].join(" ");
     step.notes = Array.from({ length: 37 }, (_, index) =>
       `NOTE-CONTENT-${String(index).padStart(3, "0")} continues beyond the diagram and must remain readable.`,
     ).join(" ");
@@ -375,28 +373,11 @@ describe("local construction instructions", () => {
       expect(block, `missing visible PDF text: ${marker}`).toBeDefined();
       return Number(block!.match(/[\d.]+\s+([\d.]+)\s+Td/)?.[1]);
     };
-    const stepTitleBottomY = (pageIndex: number) => {
-      const block = pageTexts[pageIndex].match(/BT[\s\S]*?ET/g)?.find(candidate =>
-        candidate.includes("(1. MaxTitle") && candidate.includes("Section15 X"),
-      );
-      expect(block, "missing the complete step title from a PDF page").toBeDefined();
-      const startY = Number(block!.match(/[\d.]+\s+([\d.]+)\s+Td/)?.[1]);
-      const lineHeight = Number(block!.match(/([\d.]+)\s+TL/)?.[1]);
-      const lineCount = block!.match(/\) Tj/g)?.length ?? 1;
-      return startY - lineHeight * (lineCount - 1);
-    };
-
     expect(decode(bytes.slice(0, 8))).toContain("%PDF-1.");
     expect(output).toContain("/Count 6");
     expect(pageTexts).toHaveLength(6);
-    for (const pageText of pageTexts) {
-      let cursor = 0;
-      for (const word of maxStepTitle.split(" ")) {
-        const position = pageText.indexOf(word, cursor);
-        expect(position, `missing ${word} from a page's complete step title`).toBeGreaterThanOrEqual(cursor);
-        cursor = position + word.length;
-      }
-    }
+    expect(pageTexts.join("\n")).not.toContain("MaxTitle");
+    expect(pageTexts.every(pageText => pageText.includes("(1."))).toBe(true);
     const contentMarkers = [
       "Teile und Baugruppen in diesem Schritt",
       "NOTE-CONTENT-036",
@@ -405,9 +386,7 @@ describe("local construction instructions", () => {
       "LDraw test-part-06",
       "LDraw test-part-42",
     ];
-    contentMarkers.forEach((marker, pageIndex) => {
-      expect(stepTitleBottomY(pageIndex) - textY(pageIndex, marker)).toBeGreaterThan(15);
-    });
+    contentMarkers.forEach((marker, pageIndex) => expect(textY(pageIndex, marker)).toBeGreaterThan(0));
     expect(pageTexts[0]).toContain("Teile und Baugruppen in diesem Schritt");
     expect(pageTexts[1]).toContain("Hinweise \\(Fortsetzung\\)");
     expect(pageTexts[1]).toContain("NOTE-CONTENT-036");

@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import type { BuilderDocument } from "../editor/model";
-import type { InstructionPart } from "./parts";
+import { instructionColorLabel, type InstructionPart } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { instructionCalloutImage } from "./callouts";
 import type { InstructionCallout } from "./types";
@@ -76,7 +76,7 @@ export async function drawInstructionPartBox(
     const number = (pdf.splitTextToSize(entry.number, 26) as string[]).slice(0, 2);
     pdf.text(number, x + 15, top + 21, { align: "center" });
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5);
-    const color = (pdf.splitTextToSize(entry.colorName, 26) as string[]).slice(0, 2);
+    const color = (pdf.splitTextToSize(instructionColorLabel(entry.colorName), 26) as string[]).slice(0, 2);
     pdf.text(color, x + 15, top + 28, { align: "center" });
   }
   pdf.setTextColor(0);

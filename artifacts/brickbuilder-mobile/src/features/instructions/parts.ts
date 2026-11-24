@@ -13,6 +13,14 @@ export type InstructionPart = {
   count: number;
 } & ({ kind: "imported"; part: ImportedPart } | { kind: "legacy"; part: LegacyPart });
 
+export function instructionColorLabel(name: string): string {
+  return name.replaceAll("_", " ");
+}
+
+export function instructionStepNumber(number: number): string {
+  return `${number}.`;
+}
+
 /** Count occurrences, but only combine identical geometry references and colors. */
 export function instructionPartGroups(document: BuilderDocument, ids: string[]): InstructionPart[] {
   const selected = new Set(ids), groups = new Map<string, InstructionPart>();

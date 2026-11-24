@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsPDF } from "jspdf";
 import { createEmptyDocument } from "../editor/model";
 import { parseLDraw } from "../formats/ldraw/parser";
-import { instructionPartDocument, instructionPartGroups } from "./parts";
+import { instructionColorLabel, instructionPartDocument, instructionPartGroups, instructionStepNumber } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { drawInstructionPartBox } from "./pdf-parts";
@@ -47,6 +47,16 @@ function fixture() {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("step parts illustrations", () => {
+  it("removes underscores from displayed part color names", () => {
+    expect(instructionColorLabel("Dark_Green")).toBe("Dark Green");
+    expect(instructionColorLabel("Dark_Bluish_Grey")).toBe("Dark Bluish Grey");
+  });
+
+  it("formats instruction step headings as a number and period only", () => {
+    expect(instructionStepNumber(1)).toBe("1.");
+    expect(instructionStepNumber(2)).toBe("2.");
+  });
+
   it.each([
     { rotation: 135, tiltX: 35, tiltZ: -20 },
     { rotation: 90 },
@@ -169,6 +179,19 @@ describe("step parts illustrations", () => {
     await expect(drawInstructionPartBox(pdf, doc, groups, 24, controller.signal, abort)).rejects.toThrow();
   });
 
+  it("prints color names with spaces in the standard PDF parts box", async () => {
+    pdfTexts.length = 0;
+    const doc = fixture();
+    const entry = instructionPartGroups(doc, [doc.imported!.instances[0].id])[0];
+    entry.colorName = "Dark_Green";
+    const pdf = new jsPDF();
+    await drawInstructionPartBox(pdf, doc, [entry], 24, undefined,
+      async () => "data:image/png;base64,fixture", [], undefined, "en");
+
+    expect(JSON.stringify(pdfTexts)).toContain("Dark Green");
+    expect(JSON.stringify(pdfTexts)).not.toContain("Dark_Green");
+  });
+
   it("illustrates every group on overflow pages and places its first parts box above the model image", async () => {
     const doc = createEmptyDocument("Many parts");
     doc.bricks = Array.from({ length: 55 }, (_, index) => ({
@@ -197,7 +220,7 @@ describe("step parts illustrations", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("localizes all standard instruction PDF labels and default step titles to English", async () => {
+  it("localizes instruction labels while showing only step numbers", async () => {
     const doc = createEmptyDocument("English instructions");
     doc.bricks = [{ id: "one", type: "brick-1x2", color: "#d75b3f", x: 0, y: 0, z: 0, rotation: 0 }];
     const plan: InstructionPlan = { version: 1, source: "manual", edited: true, warnings: [], steps: [
@@ -210,7 +233,9 @@ describe("step parts illustrations", () => {
     }), async () => image);
     const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
       .filter((value): value is string => typeof value === "string");
-    expect(strings).toContain("1. Step 1");
+    expect(strings).toContain("1.");
+    expect(strings).not.toContain("Step 1");
+    expect(strings).not.toContain("Schritt 1");
     expect(strings).toContain("Parts in this step");
     expect(strings).toContain("1 new part · 1 part through this step");
     expect(strings.some(value => /Schritt|Teile|Baugruppen|Vorschau fehlt|Hinweis:/.test(value))).toBe(false);

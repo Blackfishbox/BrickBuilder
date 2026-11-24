@@ -5,7 +5,7 @@ import { parseLDraw } from "../formats/ldraw/parser";
 import { writeZip } from "../formats/zip";
 import { readStudioInstructions } from "./studio";
 import { sourceInstructionPlan } from "./model";
-import { exportStudioLayoutPDF, partListRect } from "./studio-pdf";
+import { exportStudioLayoutPDF, partListRect, studioPartCellLayout } from "./studio-pdf";
 import type { InstructionImageRenderer } from "./render";
 
 const sourceText = [
@@ -77,6 +77,22 @@ it("moves a Studio parts box away from an overlapping step name", () => {
     { quadrant: "LeftTop" },
     0, 0, 100, 100, 1,
   )).toEqual([66, 0, 34, 27]);
+});
+
+it("aligns Studio part labels beside the part image and centers both vertically", () => {
+  const cell = studioPartCellLayout(10, 20, 50, 38, 2, 1, 7, 5);
+  const numberLineHeight = 7 * 1.15 * 25.4 / 72;
+  const colorLineHeight = 5 * 1.15 * 25.4 / 72;
+  const labelTop = 20 + (38 - 2 * numberLineHeight - 0.5 - colorLineHeight) / 2;
+  const labelBottom = cell.colorY;
+  const labelCenter = (labelTop + labelBottom) / 2;
+  const imageCenter = cell.imageY + cell.imageSize / 2;
+
+  expect(cell.textX).toBeGreaterThan(cell.imageX + cell.imageSize);
+  expect(cell.textWidth).toBeGreaterThan(0);
+  expect(cell.numberY).toBeCloseTo(labelTop + numberLineHeight, 8);
+  expect(cell.colorY).toBeCloseTo(labelTop + 2 * numberLineHeight + 0.5 + colorLineHeight, 8);
+  expect(labelCenter).toBeCloseTo(imageCenter, 8);
 });
 
 it("exports the Studio custom paper size using its configured units and orientation", async () => {

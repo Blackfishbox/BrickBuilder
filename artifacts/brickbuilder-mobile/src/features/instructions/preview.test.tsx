@@ -501,7 +501,7 @@ it("passes the enabled highlight option to PDF export", async () => {
   expect(onExportPDF.mock.calls[0][3]).toBe(true);
 });
 
-it("shows the Studio-layout PDF export only for imported IO layouts", () => {
+it("shows the Studio-layout PDF export only when a page groups multiple steps", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();
   source.bricks = [{ id: "local", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
@@ -510,12 +510,25 @@ it("shows the Studio-layout PDF export only for imported IO layouts", () => {
   act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
   expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).toBeNull();
 
-  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat\n0 STEP\n";
-  const imported = { version: 1 as const, format: "io" as const, sourceName: "fixture.io", originalBytes: [],
-    sourceText, ...parseLDraw(sourceText), resources: {}, legalDocuments: [] };
-  const xml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='OneByOne'><Slot><Step SerializedIndex='0'/></Slot></Page></Pages></Instruction>";
-  const withStudioLayout = { ...source, imported, instructions: readStudioInstructions(xml, sourceInstructionPlan(imported)) };
-  act(() => root!.render(<InstructionsPanel document={withStudioLayout} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
+  const singleStepText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat\n0 STEP\n";
+  const singleImported = { version: 1 as const, format: "io" as const, sourceName: "single.io", originalBytes: [],
+    sourceText: singleStepText, ...parseLDraw(singleStepText), resources: {}, legalDocuments: [] };
+  const singleXml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='OneByOne'><Slot><Step SerializedIndex='0'/></Slot></Page></Pages></Instruction>";
+  const singleStepLayout = { ...source, imported: singleImported,
+    instructions: readStudioInstructions(singleXml, sourceInstructionPlan(singleImported)) };
+  act(() => root!.render(<InstructionsPanel document={singleStepLayout} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
+  expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).toBeNull();
+
+  const multiStepText = [
+    "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat", "0 STEP",
+    "1 4 20 0 0 1 0 0 0 1 0 0 0 1 3003.dat", "0 STEP",
+  ].join("\n");
+  const multiImported = { ...singleImported, sourceName: "multiple.io", sourceText: multiStepText,
+    ...parseLDraw(multiStepText) };
+  const multiXml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='TwoByOne'><Slot><Step SerializedIndex='0'/></Slot><Slot><Step SerializedIndex='1'/></Slot></Page></Pages></Instruction>";
+  const multiStepLayout = { ...source, imported: multiImported,
+    instructions: readStudioInstructions(multiXml, sourceInstructionPlan(multiImported)) };
+  act(() => root!.render(<InstructionsPanel document={multiStepLayout} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} onExportStudioPDF={onExportStudioPDF} />));
   expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).not.toBeNull();
 });
 
@@ -525,10 +538,13 @@ it("keeps the instruction header actions available at narrow mobile widths with 
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
   const source = createEmptyDocument();
   source.bricks = [{ id: "local", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
-  const sourceText = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat\n0 STEP\n";
+  const sourceText = [
+    "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat", "0 STEP",
+    "1 4 20 0 0 1 0 0 0 1 0 0 0 1 3003.dat", "0 STEP",
+  ].join("\n");
   const imported = { version: 1 as const, format: "io" as const, sourceName: "fixture.io", originalBytes: [],
     sourceText, ...parseLDraw(sourceText), resources: {}, legalDocuments: [] };
-  const xml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='OneByOne'><Slot><Step SerializedIndex='0'/></Slot></Page></Pages></Instruction>";
+  const xml = "<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType></PageSetup></GlobalSetting><Pages><Page template='TwoByOne'><Slot><Step SerializedIndex='0'/></Slot><Slot><Step SerializedIndex='1'/></Slot></Page></Pages></Instruction>";
   const withStudioLayout = { ...source, imported, instructions: readStudioInstructions(xml, sourceInstructionPlan(imported)) };
   const render = (document: BuilderDocument) => act(() => root!.render(
     <InstructionsPanel document={document} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}}

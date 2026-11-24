@@ -2,7 +2,9 @@ import { XMLParser } from "fast-xml-parser";
 import { GState, jsPDF } from "jspdf";
 import type { BuilderDocument } from "../editor/model";
 import { readZip } from "../formats/zip";
-import { instructionPartGroups, type InstructionPart } from "./parts";
+import {
+  instructionColorLabel, instructionPartGroups, instructionStepNumber, type InstructionPart,
+} from "./parts";
 import { instructionPartImage } from "./part-images";
 import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
 import { createInstructionRenderer, type InstructionImageRenderer } from "./render";
@@ -444,20 +446,43 @@ function paddingOf(style: StudioBoxStyle, scale: number): [number, number, numbe
 
 function renderStepNumber(
   pdf: jsPDF,
-  step: InstructionStep,
   stepNumber: number,
   x: number,
   y: number,
   width: number,
   style: StudioFontStyle,
   unitScale: number,
-  locale: Locale,
 ) {
   applyFont(pdf, style, unitScale, 6, 96);
-  const title = /^(?:step|schritt)\s+\d+$/i.test(step.title.trim())
-    ? translate(locale, "instruction.stepNumber", { number: stepNumber })
-    : step.title;
-  withTextOpacity(pdf, style.color, () => pdf.text(`${stepNumber}. ${title}`, x, y, { maxWidth: width }));
+  withTextOpacity(pdf, style.color, () => pdf.text(instructionStepNumber(stepNumber), x, y, { maxWidth: width }));
+}
+
+export function studioPartCellLayout(
+  cellX: number,
+  cellY: number,
+  cellWidth: number,
+  rowHeight: number,
+  numberLineCount: number,
+  colorLineCount: number,
+  numberFontSize: number,
+  colorFontSize: number,
+) {
+  const imageSize = Math.max(1, Math.min(22, cellWidth * 0.38, rowHeight - 2));
+  const imageX = cellX + 1;
+  const imageY = cellY + (rowHeight - imageSize) / 2;
+  const textX = imageX + imageSize + 2;
+  const textWidth = Math.max(1, cellX + cellWidth - 1 - textX);
+  const numberLineHeight = numberFontSize * 1.15 * 25.4 / 72;
+  const colorLineHeight = colorFontSize * 1.15 * 25.4 / 72;
+  const gap = 0.5;
+  const numberHeight = numberLineHeight * numberLineCount;
+  const colorHeight = colorLineHeight * colorLineCount;
+  const blockTop = cellY + (rowHeight - numberHeight - gap - colorHeight) / 2;
+  return {
+    imageX, imageY, imageSize, textX, textWidth,
+    numberY: blockTop + numberLineHeight,
+    colorY: blockTop + numberHeight + gap + colorLineHeight,
+  };
 }
 
 async function renderStudioPartList(
@@ -515,33 +540,37 @@ async function renderStudioPartList(
     const row = index % rows;
     const cellX = left + col * (cellWidth + gap);
     const cellY = contentTop + row * (rowHeight + gap);
-    const imageWidth = Math.min(21, cellWidth * 0.42, Math.max(5, rowHeight - 2));
-    const imageHeight = Math.max(1, rowHeight - 2);
-    const textX = cellX + imageWidth + 1.5;
-    const textWidth = Math.max(1, cellWidth - imageWidth - 2);
+    const imageSize = Math.max(1, Math.min(22, cellWidth * 0.38, rowHeight - 2));
+    const imageX = cellX + 1, imageY = cellY + (rowHeight - imageSize) / 2;
     try {
       const image = await renderPart(document, entry, signal ?? new AbortController().signal);
       signal?.throwIfAborted();
-      fitImage(image, cellX, cellY + 0.5, imageWidth, imageHeight, pdf);
+      fitImage(image, imageX, imageY, imageSize, imageSize, pdf);
     } catch {
       signal?.throwIfAborted();
       pdf.setFont(style.font.family, "normal");
       pdf.setFontSize(5);
       pdf.setTextColor(142, 61, 40);
       pdf.text(translate(locale, "instruction.pdf.previewUnavailable"),
-        cellX, cellY + Math.min(5, rowHeight), { maxWidth: imageWidth + textWidth });
+        imageX + imageSize / 2, cellY + rowHeight / 2 + 2, { align: "center", maxWidth: imageSize });
     }
 
     const bodySize = Math.max(5, Math.min(7, style.font.size ?? 8));
+    const colorSize = Math.max(4, Math.min(6, bodySize - 1));
+    const textWidth = Math.max(1, cellWidth - imageSize - 4);
     applyFont(pdf, style.font, unitScale, 5, 8);
     pdf.setFontSize(bodySize);
-    const number = pdf.splitTextToSize(`${entry.count}× ${entry.number}`, textWidth) as string[];
+    const number = (pdf.splitTextToSize(`${entry.count}× ${entry.number}`, textWidth) as string[]).slice(0, 2);
+    const color = (pdf.splitTextToSize(instructionColorLabel(entry.colorName), textWidth) as string[]).slice(0, 2);
+    const layout = studioPartCellLayout(cellX, cellY, cellWidth, rowHeight,
+      number.length, color.length, bodySize, colorSize);
+    pdf.setFontSize(bodySize);
     withTextOpacity(pdf, style.font.color, () =>
-      pdf.text(number.slice(0, 2), textX, cellY + Math.min(3.5, rowHeight * 0.3), { maxWidth: textWidth }));
+      pdf.text(number, layout.textX, layout.numberY, { maxWidth: layout.textWidth }));
     pdf.setFont(style.font.family, "normal");
-    pdf.setFontSize(Math.max(4, Math.min(6, bodySize - 1)));
+    pdf.setFontSize(colorSize);
     withTextOpacity(pdf, style.font.color, () =>
-      pdf.text(entry.colorName, textX, cellY + Math.max(5, rowHeight - 1.5), { maxWidth: textWidth }));
+      pdf.text(color, layout.textX, layout.colorY, { maxWidth: layout.textWidth }));
   }
   const overflow = groups.length - shown;
   if (overflow > 0) {
@@ -635,8 +664,8 @@ export async function exportStudioLayoutPDF(
         }
         if (showNumber) {
           const [numberX, numberY, numberWidth] = componentRect(entry.placements.StepNumber, x, imageY, cellWidth, previewHeight, scale);
-          renderStepNumber(pdf, step, resolvedStepNumber,
-            numberX + 2, numberY + 7, Math.max(10, numberWidth - 4), styles.stepNumber, scale, locale);
+          renderStepNumber(pdf, resolvedStepNumber,
+            numberX + 2, numberY + 7, Math.max(10, numberWidth - 4), styles.stepNumber, scale);
         }
         const callouts = step.callouts ?? [];
         if (showCallouts && callouts.length) {
@@ -687,7 +716,7 @@ export async function exportStudioLayoutPDF(
 export function hasStudioPdfLayout(document: BuilderDocument, plan: InstructionPlan): boolean {
   if (document.imported?.format !== "io" || !plan.studioLayout) return false;
   try {
-    return inspectStudioLayout(plan.studioLayout).pages.length > 0;
+    return inspectStudioLayout(plan.studioLayout).pages.some(page => new Set(page.steps).size > 1);
   } catch {
     return false;
   }

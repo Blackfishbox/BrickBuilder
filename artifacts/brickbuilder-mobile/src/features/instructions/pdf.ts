@@ -3,7 +3,7 @@ import type { BuilderDocument } from "../editor/model";
 import { effectiveInstructions } from "./model";
 import type { InstructionPlan } from "./types";
 import { createInstructionRenderer, type InstructionImageRenderer } from "./render";
-import { instructionPartGroups } from "./parts";
+import { instructionColorLabel, instructionPartGroups, instructionStepNumber } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { drawInstructionPartBox } from "./pdf-parts";
 import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
@@ -16,14 +16,8 @@ export interface InstructionPdfOptions {
   locale?: Locale;
 }
 
-function localizedStepTitle(title: string, number: number, locale: Locale): string {
-  return /^(?:step|schritt)\s+\d+$/i.test(title.trim())
-    ? translate(locale, "instruction.stepNumber", { number })
-    : title;
-}
-
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
-  return instructionPartGroups(document, ids).map(entry => `${entry.count} × ${entry.number} · ${entry.colorName}`);
+  return instructionPartGroups(document, ids).map(entry => `${entry.count} × ${entry.number} · ${instructionColorLabel(entry.colorName)}`);
 }
 
 export async function exportInstructionPDF(
@@ -50,10 +44,8 @@ export async function exportInstructionPDF(
       options.signal?.throwIfAborted();
       if (index) pdf.addPage();
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
-      const stepTitle = localizedStepTitle(step.title, index + 1, locale);
-      const title = pdf.splitTextToSize(`${index + 1}. ${stepTitle}`, 178) as string[];
-      pdf.text(title, 16, 20);
-      let imageY = 24 + (title.length - 1) * 7;
+      pdf.text(instructionStepNumber(index + 1), 16, 20);
+      let imageY = 24;
       const groups = instructionPartGroups(document, step.partIds);
       const callouts = step.callouts ?? [];
       const firstPageParts = callouts.length ? 6 : 12;
@@ -70,7 +62,7 @@ export async function exportInstructionPDF(
         pdf.addPage();
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
         const continued = translate(locale, "instruction.pdf.continued");
-        const heading = pdf.splitTextToSize(`${index + 1}. ${stepTitle} – ${section} (${continued})`, 178) as string[];
+        const heading = pdf.splitTextToSize(`${instructionStepNumber(index + 1)} ${section} (${continued})`, 178) as string[];
         pdf.text(heading, 16, 20);
         return 24 + (heading.length - 1) * 6;
       };
