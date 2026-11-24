@@ -11,6 +11,11 @@
 .sle-meta dt { color: #9a6656; font: 500 9px var(--app-font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .sle-meta dd { margin: 2px 0 0; font: 600 12px var(--app-font-mono); overflow-wrap: anywhere; }
 .sle-status { display: flex; align-items: center; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 9px; background: #fbefe8; color: #8e3a27; font-size: 11px; }
+.sle-preview { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sle-preview > strong { color: #9a6656; font: 500 9px var(--app-font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.sle-preview > p { margin: 0; color: #859087; font-size: 11px; }
+.sle-preview canvas { display: block; width: 100%; height: auto; max-height: 420px; object-fit: contain; border: 1px solid #ddd8c9; border-radius: 9px; background: #f0ece0; }
+.sle-preview canvas[hidden] { display: none; }
 .sle-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .sle-item { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #e6e2d4; border-radius: 11px; background: #fffdf6; }
 .sle-itemhead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

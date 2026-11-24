@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ImageOff, RotateCcw, Undo2 } from "lucide-react";
 import { readZip } from "@/features/formats/zip";
 import { editStudioLayout, inspectStudioLayout, type StudioLayoutField, type StudioLayoutItem } from "./studio-layout";
-import type { StudioLayout } from "./types";
+import type { BuilderDocument } from "../editor/model";
+import type { InstructionPlan, StudioLayout } from "./types";
+import { exportStudioLayoutPDF } from "./studio-pdf";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "./studio-layout.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { MessageId } from "@/i18n/messages";
 
-interface Props { layout: StudioLayout; originalBytes?: number[]; onChange: (layout: StudioLayout) => void }
+interface Props {
+  document: BuilderDocument; plan: InstructionPlan; layout: StudioLayout;
+  originalBytes?: number[]; onChange: (layout: StudioLayout) => void;
+}
 
 const MAX_IMAGE = 8 * 1024 * 1024;
 const MAX_IMAGES = 64;
@@ -141,8 +147,8 @@ function itemName(item: StudioLayoutItem, t: ReturnType<typeof useI18n>["t"]): s
   return keys[item.label] ? t(keys[item.label]) : item.label;
 }
 
-export default function StudioLayoutEditor({ layout, originalBytes, onChange }: Props) {
-  const { t } = useI18n();
+export default function StudioLayoutEditor({ document, plan, layout, originalBytes, onChange }: Props) {
+  const { t, locale } = useI18n();
   const { view, error } = useMemo(() => {
     try { return { view: inspectStudioLayout(layout), error: null }; }
     catch (e) { return { view: null, error: e instanceof Error ? e.message : t("studio.layoutError") }; }
@@ -150,10 +156,56 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
   const [pageIndex, setPageIndex] = useState(0);
   const [history, setHistory] = useState<StudioLayout[]>([]);
   const [showStyles, setShowStyles] = useState(false);
+  const [preview, setPreview] = useState<
+    { status: "loading" } | { status: "ready" } | { status: "error"; message: string }
+  >({ status: "loading" });
+  const previewCanvas = useRef<HTMLCanvasElement>(null);
 
   const pages = view?.pages ?? [];
   const current = Math.min(pageIndex, Math.max(0, pages.length - 1));
   const page = pages[current];
+  const previewPlan = useMemo(() => ({ ...plan, studioLayout: layout }), [plan, layout]);
+  useEffect(() => {
+    if (!page) return;
+    const controller = new AbortController();
+    let active = true;
+    let destroyPdf: (() => Promise<void>) | undefined;
+    let cancelRender: (() => void) | undefined;
+    setPreview({ status: "loading" });
+    void exportStudioLayoutPDF(document, previewPlan, {
+      signal: controller.signal, locale, previewPageIndex: current,
+    }).then(async bytes => {
+      if (!active) return;
+      const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
+      if (!active) return;
+      GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      const loadingTask = getDocument({ data: Uint8Array.from(bytes) });
+      destroyPdf = () => loadingTask.destroy();
+      const pdf = await loadingTask.promise;
+      const pdfPage = await pdf.getPage(1);
+      if (!active) return;
+      const canvas = previewCanvas.current;
+      const context = canvas?.getContext("2d");
+      if (!canvas || !context) throw new Error(t("studio.previewUnavailable"));
+      const scale = Math.min(window.devicePixelRatio || 1, 2);
+      const viewport = pdfPage.getViewport({ scale });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const renderTask = pdfPage.render({ canvas, canvasContext: context, viewport });
+      cancelRender = () => renderTask.cancel();
+      await renderTask.promise;
+      if (active) setPreview({ status: "ready" });
+    }).catch(error => {
+      if (!active || controller.signal.aborted) return;
+      setPreview({ status: "error", message: error instanceof Error ? error.message : t("studio.previewUnavailable") });
+    });
+    return () => {
+      active = false;
+      controller.abort();
+      cancelRender?.();
+      void destroyPdf?.().catch(() => undefined);
+    };
+  }, [document, previewPlan, current, page?.nodeId, locale, t]);
   const imagePaths = useMemo(() => [...new Set(pages.flatMap(p => p.items.map(i => i.imagePath).filter((p): p is string => !!p)))].sort(), [pages]);
   const images = useStudioImages(imagePaths, originalBytes);
 
@@ -197,6 +249,18 @@ export default function StudioLayoutEditor({ layout, originalBytes, onChange }: 
             <div><dt>{t("studio.template")}</dt><dd data-testid="text-studio-layout-template">{page.template}</dd></div>
             <div><dt>{t("studio.stepsStudio")}</dt><dd data-testid="text-studio-layout-steps">{page.steps.length ? page.steps.join(", ") : t("studio.none")}</dd></div>
           </dl>
+          <section className="sle-preview" aria-label={t("studio.preview")} data-testid="preview-studio-layout">
+            <strong>{t("studio.preview")}</strong>
+            {preview.status === "loading" && <p role="status">{t("studio.previewLoading")}</p>}
+            {preview.status === "error" && <p role="status" className="sle-status">{t("studio.previewUnavailable")}: {preview.message}</p>}
+            <canvas
+              ref={previewCanvas}
+              hidden={preview.status !== "ready"}
+              role="img"
+              aria-label={t("studio.preview")}
+              data-testid="canvas-studio-layout-preview"
+            />
+          </section>
           {images.status === "error" && <p className="sle-status" role="status" data-testid="status-studio-layout-images"><ImageOff size={14} /> {t("studio.imagesUnavailable", { reason: images.message })}</p>}
           {images.status === "ready" && images.skipped > 0 && <p className="sle-status" role="status" data-testid="status-studio-layout-images">{t("studio.imagesMissing", { count: images.skipped })}</p>}
 

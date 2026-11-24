@@ -97,6 +97,7 @@
     "fast-xml-parser": "^5.12.1",
     "fflate": "^0.8.3",
     "jspdf": "^4.2.1",
+    "pdfjs-dist": "^6.5.438",
     "three": "^0.187.0",
     "workbox-window": "^7.4.1"
   }

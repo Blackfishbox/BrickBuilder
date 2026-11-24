@@ -554,7 +554,8 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           </div>
 
           {plan.studioLayout && (
-            <StudioLayoutEditor layout={plan.studioLayout} originalBytes={document.imported?.originalBytes}
+            <StudioLayoutEditor document={document} plan={plan} layout={plan.studioLayout}
+              originalBytes={document.imported?.originalBytes}
               onChange={next => onChange({ ...plan, studioLayout: next, edited: true })} />
           )}
           {(plan.source === "studio" || document.imported?.format === "io") && (

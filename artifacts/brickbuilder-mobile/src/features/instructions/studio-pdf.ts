@@ -42,7 +42,7 @@ type StudioPdfStyles = {
   pageTitle: StudioFontStyle; stepSpacing?: [number, number];
   showStepNumber: boolean; showPartsList: boolean; showSubmodelPreview: boolean;
 };
-type StudioPdfPage = { source: XmlRecord; images: StudioPageImage[]; slotRects?: [number, number, number, number][]; steps: {
+type StudioPdfPage = { sourceIndex: number; source: XmlRecord; images: StudioPageImage[]; slotRects?: [number, number, number, number][]; steps: {
   source: XmlRecord; planStep: InstructionStep; planIndex: number; placements: Partial<Record<string, ComponentLayout>>;
 }[] };
 
@@ -292,7 +292,7 @@ function customPaperSize(value: unknown, unitScale: number): [number, number] | 
   return millimeters as [number, number];
 }
 
-function studioPages(document: BuilderDocument, input: InstructionPlan, locale: Locale): {
+function studioPages(document: BuilderDocument, input: InstructionPlan, locale: Locale, previewPageIndex?: number): {
   pages: StudioPdfPage[]; size: [number, number]; margins: [number, number, number, number];
   scale: number; imageData: Record<string, { data: string; format: "PNG" | "JPEG" }>;
   styles: StudioPdfStyles;
@@ -331,7 +331,7 @@ function studioPages(document: BuilderDocument, input: InstructionPlan, locale: 
   const nativeNodes = studioNodes(layout.sourceXml);
   const nativePages = nativeNodes.filter(node => node.name === "Page" && nativeNodes[node.parent ?? -1]?.name === "Pages");
 
-  const pages = pageNodes.map((page, pageIndex) => {
+  const allPages = pageNodes.map((page, pageIndex) => {
     const nativePage = nativePages[pageIndex];
     const slots = asList(page.Slot);
     const directSlotRects = slots.map(parseSlotRect);
@@ -373,8 +373,13 @@ function studioPages(document: BuilderDocument, input: InstructionPlan, locale: 
         order,
       }];
     });
-    return { source: page, images, ...(slotRects ? { slotRects } : {}), steps: pageSteps };
+    return { sourceIndex: pageIndex, source: page, images, ...(slotRects ? { slotRects } : {}), steps: pageSteps };
   });
+  if (previewPageIndex !== undefined &&
+      (!Number.isInteger(previewPageIndex) || previewPageIndex < 0 || previewPageIndex >= allPages.length)) {
+    throw new Error(translate(locale, "instruction.pdf.noReadableStudioPages"));
+  }
+  const pages = previewPageIndex === undefined ? allPages : [allPages[previewPageIndex]];
   const scale = unitScale;
   const paths = [...new Set(pages.flatMap(page => page.images.map(image => image.path)))];
   const imageData: Record<string, { data: string; format: "PNG" | "JPEG" }> = Object.create(null);
@@ -722,14 +727,15 @@ async function renderStudioPartList(
 export async function exportStudioLayoutPDF(
   document: BuilderDocument,
   input: InstructionPlan,
-  options: InstructionPdfOptions = {},
+  options: InstructionPdfOptions & { previewPageIndex?: number } = {},
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
   renderPart = instructionPartImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   if (plan.studioLayout) plan.studioLayout = { sourceXml: applyStudioLayout(plan.studioLayout), edits: [] };
   const locale = options.locale ?? "de";
-  const { pages, size, margins, scale, imageData, styles } = studioPages(document, plan, locale);
+  const { pages, size, margins, scale, imageData, styles } =
+    studioPages(document, plan, locale, options.previewPageIndex);
   const nodes = studioNodes(plan.studioLayout!.sourceXml);
   const pageNodes = nodes.filter(node => node.name === "Page" && nodes[node.parent ?? -1]?.name === "Pages");
   const globalCallout = nodes.find(node => node.name === "CallOut" && nodes[node.parent ?? -1]?.name === "GlobalStyle");
@@ -772,7 +778,7 @@ export async function exportStudioLayoutPDF(
       if (pageIndex) pdf.addPage(size, size[0] > size[1] ? "landscape" : "portrait");
       drawStyledBox(pdf, 0, 0, pageWidth, pageHeight, styles.page, scale);
       const entries = sourcePage.steps;
-      const nativePage = pageNodes[pageIndex];
+      const nativePage = pageNodes[sourcePage.sourceIndex];
       const nativeSteps = studioChildren(nativePage, nodes, "Slot").flatMap(slot => studioChildren(slot, nodes, "Step"));
       const pageObjects: StudioPageObject<() => void | Promise<void>>[] = [];
       const queuePageObject = (node: StudioNode | undefined, draw: () => void | Promise<void>, depth = nativeDepth(node)) => {

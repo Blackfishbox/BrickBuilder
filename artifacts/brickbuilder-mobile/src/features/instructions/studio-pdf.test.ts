@@ -390,6 +390,21 @@ it("exports one PDF page per imported Studio page with the source format and ste
   expect(partImageCalls).toEqual(["LDraw 3004", "LDraw 3003"]);
   expect(progress).toEqual([[0, 2], [1, 2], [2, 2]]);
   expect(renderer.dispose).toHaveBeenCalledOnce();
+
+  const originalLayoutXml = document.instructions.studioLayout!.sourceXml;
+  const previewCalls: string[] = [];
+  const previewRenderer: InstructionImageRenderer = {
+    image(_visible, step) { previewCalls.push(step.id); return image; },
+    dispose: vi.fn(),
+  };
+  const previewBytes = await exportStudioLayoutPDF(document, document.instructions, {
+    previewPageIndex: 1,
+  }, async () => previewRenderer, async () => image);
+  const previewPdf = new TextDecoder().decode(previewBytes);
+  expect(previewPdf).toMatch(/\/Count\s+1\b/);
+  expect(previewCalls).toEqual([document.instructions.steps[1].id]);
+  expect(previewRenderer.dispose).toHaveBeenCalledOnce();
+  expect(document.instructions.studioLayout!.sourceXml).toBe(originalLayoutXml);
 });
 
 it("moves a Studio parts box away from an overlapping step name", () => {
