@@ -52,6 +52,7 @@ import EvidencedColorPicker from '@/features/catalog/EvidencedColorPicker';
 import { resolveColor } from '@/features/formats/colors';
 import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/color-theme';
 import { useI18n } from '@/i18n/I18nProvider';
+import { isAndroidBuild } from '@/features/privacy/geometry-consent';
 import { isGeneratedProjectName } from '@/i18n/project-name';
 import { rotationAnchors } from '@/features/connections/rotation-anchors';
 import { importedControlAngles, importedRotationOffset, importedTiltOffset } from '@/features/editor/imported-control-angles';
@@ -436,7 +437,7 @@ function App() {
                 <HardDrive size={16} /> {t("project.storage")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setPrivacyOpen(true); setProjectMenu(false); }} data-testid="button-open-privacy">
-                <FilePlus2 size={16} /> {t("project.privacy")}
+                <FilePlus2 size={16} /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
               </button>
               <label className="language-row">
                 <span>{t("language")}</span>

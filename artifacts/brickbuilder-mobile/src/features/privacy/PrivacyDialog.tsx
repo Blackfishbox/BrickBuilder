@@ -11,7 +11,7 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
   const apiStart = geometryInfo.indexOf(GEOMETRY_API);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="max-w-3xl w-[calc(100%-24px)] p-3 sm:p-5" aria-describedby={undefined}>
-      <DialogHeader><DialogTitle>{t("privacy.title")}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{t(isAndroidBuild() ? "privacy.title" : "privacy.policyTitle")}</DialogTitle></DialogHeader>
       {isAndroidBuild() && <section className="rounded-md border p-3 text-sm">
         <label className="flex min-h-12 items-center gap-3 font-medium">
           <input type="checkbox" className="h-6 w-6 shrink-0" checked={enabled}
