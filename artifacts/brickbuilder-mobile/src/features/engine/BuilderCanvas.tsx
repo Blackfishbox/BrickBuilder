@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 import { renderView, ViewExportError, type ViewExporter } from "./view-export";
 import { Link2, TriangleAlert, Cloud, MousePointer2, Layers, MousePointerClick } from "lucide-react";
 import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
@@ -704,7 +704,9 @@ export function BuilderCanvas({
     refreshFloating();
     const overlay = overlayRef.current, model = propsRef.current.imported, id = propsRef.current.selectedId;
     if (!overlay) return;
-    if (model !== sceneModelRef.current) { overlay.contacts = []; overlay.previews = []; setConnectionStatus(""); return; }
+    if (model !== sceneModelRef.current || sceneProjectRef.current !== propsRef.current.projectId) {
+      overlay.contacts = []; overlay.previews = []; setConnectionStatus(""); return;
+    }
     overlay.contacts = model && id ? activeConnections(model, id) : [];
     overlay.previews = [];
     const instance = model?.instances.find(value => value.id === id);
@@ -713,7 +715,7 @@ export function BuilderCanvas({
   };
   const updateImportedSelection = () => {
     const props = propsRef.current;
-    const root = importedRootRef.current;
+    const root = sceneProjectRef.current === props.projectId ? importedRootRef.current : null;
     const ids = props.selectedIds?.length ? props.selectedIds : props.selectedId ? [props.selectedId] : [];
     const previous = new Map(selectionOutlineRef.current.map(outline => [outline.userData.selectionId as string, outline]));
     const next: Box3Helper[] = [];
@@ -778,6 +780,64 @@ export function BuilderCanvas({
     multiSelectOnTap,
     onToggleSelection,
   });
+  const displayedProjectRef = useRef(projectId);
+  useLayoutEffect(() => {
+    if (displayedProjectRef.current === projectId) return;
+    displayedProjectRef.current = projectId;
+    buildControllerRef.current?.abort();
+    rollbackRef.current?.();
+
+    if (importedRootRef.current) importedRootRef.current.visible = false;
+    if (brickRootRef.current) brickRootRef.current.visible = false;
+    softwareSceneRef.current = undefined;
+    importedBoundsRef.current = null;
+    importedOffsetRef.current = 0;
+    constructionBoundsRef.current.makeEmpty();
+    instructionOutlineCacheRef.current = null;
+
+    if (placementRootRef.current) {
+      sceneRef.current?.remove(placementRootRef.current);
+      disposePlacementRoot(placementRootRef.current);
+      placementRootRef.current = null;
+    }
+    placementIndexRef.current = null;
+    placementPreviewGeometryRef.current = null;
+    placementPreviewBrickRef.current = null;
+    placementSourceMatrixRef.current = null;
+    placementTargetRef.current = null;
+    placementMatrixRef.current = null;
+
+    for (const outline of selectionOutlineRef.current) {
+      sceneRef.current?.remove(outline);
+      outline.geometry.dispose();
+      disposeMaterial(outline.material);
+    }
+    selectionOutlineRef.current = [];
+    if (overlayRef.current) {
+      overlayRef.current.contacts = [];
+      overlayRef.current.previews = [];
+      overlayRef.current.floating = new Map();
+    }
+    setConnectionStatus("");
+    setFloatingCount(0);
+    rotationAnchorMarkerRef.current?.style.setProperty("display", "none");
+
+    const cameraState = cameraStateRef.current;
+    cameraState.theta = DEFAULT_INSTRUCTION_THETA;
+    cameraState.phi = DEFAULT_INSTRUCTION_PHI;
+    cameraState.distance = 17;
+    cameraState.target.set(0, 0, 0);
+    cameraReferenceRef.current = {
+      theta: cameraState.theta, phi: cameraState.phi, distance: cameraState.distance,
+      target: cameraState.target.clone(),
+    };
+    const camera = cameraRef.current;
+    if (camera) makeCameraPosition(camera, cameraState.target, cameraState.theta, cameraState.phi, cameraState.distance);
+    refreshConstructionAreaRef.current?.();
+    updateImportedSelection();
+    invalidatorRef.current?.();
+  }, [projectId]);
+
   const pointersRef = useRef(new Map<number, PointerPoint>());
   const pointerLastRef = useRef(new Map<number, PointerPoint>());
   const gestureStartRef = useRef<GestureStart | null>(null);
@@ -931,7 +991,7 @@ export function BuilderCanvas({
       if (!candidate) {
         for (const brick of propsRef.current.bricks) bounds.union(brickConstructionBounds(brick));
         const model = propsRef.current.imported;
-        if (model && sceneModelRef.current === model) {
+        if (model && sceneProjectRef.current === propsRef.current.projectId && sceneModelRef.current === model) {
           const root = importedRootRef.current;
           if (root) {
             root.updateMatrixWorld(true);
@@ -1360,6 +1420,8 @@ export function BuilderCanvas({
         if (previous) { scene.remove(previous); disposeImported(previous); }
         importedRootRef.current = null; softwareSceneRef.current = undefined;
         importedBoundsRef.current = null; importedOffsetRef.current = 0; sceneModelRef.current = undefined;
+        sceneProjectRef.current = projectId;
+        if (brickRootRef.current) brickRootRef.current.visible = true;
         updateImportedSelection();
         refreshConnections();
         refreshConstructionAreaRef.current?.();
@@ -1411,6 +1473,7 @@ export function BuilderCanvas({
       softwareSceneRef.current = software;
       sceneModelRef.current = imported;
       sceneProjectRef.current = projectId;
+      if (brickRootRef.current) brickRootRef.current.visible = true;
       if (!bounds.isEmpty()) {
         const offset = sameModel ? previousOffset : Math.max(0, -bounds.min.y);
         if (root) root.position.y = offset;
@@ -1508,6 +1571,7 @@ export function BuilderCanvas({
     });
 
     const nextRoot = new Group();
+    nextRoot.visible = sceneProjectRef.current === projectId;
     const groups = new Map<string, Brick[]>();
     const selectedBrickIds = new Set(selectedIds?.length ? selectedIds : selectedId ? [selectedId] : []);
     for (const brick of bricks) {

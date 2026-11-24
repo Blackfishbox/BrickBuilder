@@ -227,6 +227,46 @@ it.each([false, true])("tries historical WebGL before software and rebuilds it (
   expect(observed.cameraPose).toEqual(initialCamera);
 });
 
+it("hides the previous project's model until the next WebGL scene is ready", async () => {
+  observed.webglEnabled = true;
+  const previousModel = engineFixture(1, 3);
+  const nextModel = engineFixture(2, 3);
+  const props = { bricks: [], selectedId: null, selectedType: "brick-2x4" as const, selectedColor: "#B40000",
+    toolMode: "view" as const, onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+  const newProjectBrick = { id: "next-local-brick", type: "brick-2x4" as const, color: "#B40000",
+    x: 0, y: 0, z: 0, rotation: 0 };
+  const originalBuild = importedScenes.createImportedGroupAsync;
+  let finishNextBuild!: (group: Group) => void;
+  const waitingForNext = new Promise<Group>(resolve => { finishNextBuild = resolve; });
+  vi.spyOn(importedScenes, "createImportedGroupAsync").mockImplementation((model, options) =>
+    model === nextModel ? waitingForNext : originalBuild(model, options));
+
+  act(() => root.render(<BuilderCanvas {...props} projectId="previous-project" imported={previousModel} />));
+  await act(async () => {
+    await vi.waitFor(() => expect(observed.scene3d?.children.some(child => instanceIndex(child as Group))).toBe(true));
+  });
+  const oldRoot = observed.scene3d!.children.find(child => instanceIndex(child as Group))!;
+  expect(oldRoot.visible).toBe(true);
+
+  await act(async () => {
+    root.render(<BuilderCanvas {...props} projectId="next-project" bricks={[newProjectBrick]} imported={nextModel} />);
+  });
+  flushFrame();
+  expect(oldRoot.visible).toBe(false);
+  expect(observed.scene3d?.getObjectByName("construction-floor")?.visible).toBe(true);
+  expect(observed.scene3d!.children.filter(child => instanceIndex(child as Group)).every(child => !child.visible)).toBe(true);
+  expect(observed.scene3d?.getObjectByName("brick-group-brick-2x4")?.parent?.visible).toBe(false);
+
+  const completedRoot = await originalBuild(nextModel, { viewport: "standard" });
+  await act(async () => {
+    finishNextBuild(completedRoot);
+    await vi.waitFor(() =>
+      expect(observed.scene3d?.children.some(child => instanceIndex(child as Group) && child.visible)).toBe(true));
+  });
+  expect(observed.scene3d!.children).not.toContain(oldRoot);
+  expect(observed.scene3d?.getObjectByName("brick-group-brick-2x4")?.parent?.visible).toBe(true);
+});
+
 it("tries the historical WebGL scene when the modern scene exceeds its GPU budget", async () => {
   observed.webglEnabled = true;
   const original = importedScenes.createImportedGroupAsync;
