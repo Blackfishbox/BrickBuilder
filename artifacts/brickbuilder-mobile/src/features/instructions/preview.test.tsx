@@ -30,14 +30,17 @@ afterEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
 });
 
-it("uses English default step names and singular instruction summary", () => {
+it("hides editable step names and keeps the singular instruction summary", () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   localStorage.setItem(LANGUAGE_STORAGE_KEY, "en");
   const source = createEmptyDocument();
   source.bricks = [{ id: "one", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, edited: true, source: "manual", warnings: [],
+    steps: [{ id: "one", title: "Custom step name", notes: "", partIds: ["one"] }] };
   host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
   act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} />));
-  expect(host.querySelector<HTMLInputElement>('[data-testid="input-instructions-step-title"]')!.value).toBe("Step 1");
+  expect(host.querySelector('[data-testid="input-instructions-step-title"]')).toBeNull();
+  expect(host.querySelector(".ins-card")?.textContent).not.toContain("Custom step name");
   expect(host.querySelector('[data-testid="text-instructions-summary"]')!.textContent).toBe("1 step · 1 part");
 });
 
@@ -566,10 +569,11 @@ it("keeps the instruction header actions available at narrow mobile widths with 
   expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
 
   const css = readFileSync("src/features/instructions/instructions.css", "utf8");
-  expect(css).toMatch(/@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*?\.ins-head\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+44px/);
+  expect(css).toMatch(/@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*?\.ins-head\s*\{[^}]*grid-template-columns:\s*max-content\s+44px/);
   expect(css).toMatch(/\.ins-head\.has-studio-pdf\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)\s+44px/);
   expect(css).toMatch(/\.ins-head-title strong\s*\{[^}]*overflow-wrap:\s*anywhere/);
-  expect(css).toMatch(/\.ins-head > \.ins-primary\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  expect(css).toMatch(/\.ins-head > \.ins-primary\s*\{[^}]*width:\s*auto[^}]*overflow-wrap:\s*anywhere/);
+  expect(css).toMatch(/\.ins-head\.has-studio-pdf > \.ins-primary\s*\{[^}]*width:\s*100%/);
 });
 
 it("saves a focused angle edit before passing the plan to PDF export", async () => {

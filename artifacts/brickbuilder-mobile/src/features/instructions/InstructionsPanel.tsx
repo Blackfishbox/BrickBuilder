@@ -358,7 +358,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       )}
 
       <div className="ins-body">
-        <section className="ins-preview" aria-label={`${t("format.preview")} ${t("instruction.stepNumber", { number: current + 1 })}: ${step.title}`}>
+        <section className="ins-preview" aria-label={`${t("format.preview")} ${t("instruction.stepNumber", { number: current + 1 })}`}>
           <StepPartsBox document={document} partIds={step.partIds} callouts={step.callouts} paused={Boolean(exporting)} />
           <div className="ins-model">
           {exporting ? (
@@ -412,7 +412,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
               const i = from + k;
               return (
                 <button key={s.id} className={i === current ? "is-active" : ""} onClick={() => go(i)} aria-current={i === current ? "step" : undefined}
-                  aria-label={t("instruction.stepLabel", { title: s.title || t("instruction.stepNumber", { number: i + 1 }), count: s.partIds.length })} data-testid={`button-instructions-step-${s.id}`}>
+                  aria-label={t("instruction.stepLabel", { title: t("instruction.stepNumber", { number: i + 1 }), count: s.partIds.length })} data-testid={`button-instructions-step-${s.id}`}>
                   <b>{i + 1}</b><small>{s.partIds.length}</small>
                 </button>
               );
@@ -424,12 +424,6 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
               onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
               {t("instruction.highlight", { state: highlight ? t("instruction.on") : t("instruction.off") })}
             </button>
-            <div className="ins-row">
-              <label className="ins-field ins-grow">
-                <span>{t("instruction.stepTitle")}</span>
-                <input value={step.title} maxLength={160} onChange={e => patchStep({ title: e.target.value })} data-testid="input-instructions-step-title" />
-              </label>
-            </div>
             <label className="ins-field">
               <span>{t("instruction.notes")}</span>
               <textarea rows={2} value={step.notes} maxLength={2000} onChange={e => patchStep({ notes: e.target.value })} placeholder={t("instruction.notesExample")} data-testid="input-instructions-step-notes" />

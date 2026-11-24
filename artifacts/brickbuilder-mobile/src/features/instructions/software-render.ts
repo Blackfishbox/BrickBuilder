@@ -7,7 +7,7 @@ import { instructionDisplayColor } from "./highlight-color";
 import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
-import { applyPdfStepCamera } from "./camera";
+import { applyPdfStepCamera, setPdfDefaultCamera } from "./camera";
 
 const MAX_TRIANGLES = 120_000;
 export const INSTRUCTION_RENDER_SIZE = { width: 2000, height: 1520 } as const;
@@ -80,8 +80,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     const radius = bounds.isEmpty() ? 2 : Math.max(size.minRadius ?? 1, bounds.getSize(new Vector3()).length() / 2);
     const camera = new OrthographicCamera(-radius * 1.12 * aspect, radius * 1.12 * aspect,
       radius * 1.12, -radius * 1.12, 0.01, Math.max(100, radius * 12));
-    camera.position.set(1.1, 0.85, 1.3).normalize().multiplyScalar(radius * 4);
-    camera.lookAt(0, 0, 0); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+    setPdfDefaultCamera(camera, radius);
     const a = new Vector3(), b = new Vector3(), c = new Vector3(), normal = new Vector3();
     const light = new Vector3(0.4, 0.8, 0.5).normalize(), color = new Color();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
@@ -127,7 +126,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           const groups = groupInstructionHighlights(highlightOccurrences, new Set(outlines.keys()));
           drawInstructionOutlines(context, camera, instructionGroupBounds(groups, outlines), width, height);
         }
-        return canvas.toDataURL("image/jpeg", 0.9);
+        return canvas.toDataURL("image/png");
       },
       dispose,
     };

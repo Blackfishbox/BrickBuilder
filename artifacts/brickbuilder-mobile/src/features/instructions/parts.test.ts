@@ -52,9 +52,9 @@ describe("step parts illustrations", () => {
     expect(instructionColorLabel("Dark_Bluish_Grey")).toBe("Dark Bluish Grey");
   });
 
-  it("formats instruction step headings as a number and period only", () => {
-    expect(instructionStepNumber(1)).toBe("1.");
-    expect(instructionStepNumber(2)).toBe("2.");
+  it("formats instruction step headings as numbers without punctuation", () => {
+    expect(instructionStepNumber(1)).toBe("1");
+    expect(instructionStepNumber(2)).toBe("2");
   });
 
   it.each([
@@ -233,7 +233,8 @@ describe("step parts illustrations", () => {
     }), async () => image);
     const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
       .filter((value): value is string => typeof value === "string");
-    expect(strings).toContain("1.");
+    expect(strings).toContain("1");
+    expect(strings).not.toContain("1.");
     expect(strings).not.toContain("Step 1");
     expect(strings).not.toContain("Schritt 1");
     expect(strings).toContain("Parts in this step");

@@ -377,7 +377,7 @@ describe("local construction instructions", () => {
     expect(output).toContain("/Count 6");
     expect(pageTexts).toHaveLength(6);
     expect(pageTexts.join("\n")).not.toContain("MaxTitle");
-    expect(pageTexts.every(pageText => pageText.includes("(1."))).toBe(true);
+    expect(pageTexts.join("\n")).not.toContain("(1.");
     const contentMarkers = [
       "Teile und Baugruppen in diesem Schritt",
       "NOTE-CONTENT-036",

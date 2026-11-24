@@ -12,6 +12,7 @@ import {
 import { drawInstructionOutlines } from "./outlines";
 import { instructionStepSchema } from "./types";
 import { readStudioInstructions, writeStudioInstructions } from "./studio";
+import { DEFAULT_INSTRUCTION_PHI } from "../engine/instruction-camera";
 
 it("keeps new parts unchanged and fades old parts without removing their hue", () => {
   const original = new Color("#e21b30");
@@ -42,6 +43,7 @@ it("stores and restores a step camera including zoom and pan", () => {
   applyPdfStepCamera(camera, 5);
   expect(camera.zoom).toBe(1);
   expect(camera.position.length()).toBeCloseTo(20);
+  expect(camera.position.y / camera.position.length()).toBeCloseTo(Math.cos(DEFAULT_INSTRUCTION_PHI));
 });
 
 it("converts combined orbit and XYZ rotations to one equivalent instruction rotation", () => {

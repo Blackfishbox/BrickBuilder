@@ -5,7 +5,7 @@ import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { brickTransformMatrix } from "../editor/brick-transform";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { parseLDraw } from "../formats/ldraw/parser";
-import { createInstructionRenderer } from "./render";
+import { createInstructionRenderer, INSTRUCTION_PDF_EDGE_WIDTH_PX } from "./render";
 import { exportInstructionPDF } from "./pdf";
 import { instructionDisplayColor } from "./highlight-color";
 
@@ -115,7 +115,7 @@ function stubCanvas() {
     save: vi.fn(), restore: vi.fn(), stroke: vi.fn(),
   };
   const canvas = { width: 0, height: 0, getContext: () => context,
-    toDataURL: () => "data:image/jpeg;base64,test" };
+    toDataURL: vi.fn(() => "data:image/png;base64,test") };
   vi.stubGlobal("document", { createElement: () => canvas });
   return { canvas, context };
 }
@@ -170,7 +170,7 @@ it("releases cached WebGL geometry and occurrence materials after a later prepar
 });
 
 it("builds and flattens software geometry once per type without sharing occurrence visibility", async () => {
-  const { context } = stubCanvas();
+  const { canvas, context } = stubCanvas();
   const flatten = vi.spyOn(BufferGeometry.prototype, "toNonIndexed");
   const document = repeatedDocument(3);
   const renderer = await createSoftwareInstructionRenderer(document);
@@ -179,6 +179,7 @@ it("builds and flattens software geometry once per type without sharing occurren
     expect(flatten).toHaveBeenCalledOnce();
     const step = { id: "s", title: "", notes: "", partIds: [] };
     renderer.image(new Set([document.bricks[0].id]), step);
+    expect(canvas.toDataURL).toHaveBeenCalledWith("image/png");
     const trianglesPerBrick = context.fill.mock.calls.length;
     expect(trianglesPerBrick).toBeGreaterThan(100);
     context.fill.mockClear();
@@ -272,9 +273,9 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
     ({ id: `local-${i}`, type: "brick-2x2", color: "#ff0000", x, y: 0, z: 8, rotation: 0 }));
   const context = { drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(),
     moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), strokeStyle: "", lineWidth: 0, globalAlpha: 1 };
-  vi.stubGlobal("document", { createElement: () => ({
-    width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/jpeg;base64,outlined",
-  }) });
+  const outputCanvas = { width: 0, height: 0, getContext: () => context,
+    toDataURL: vi.fn(() => "data:image/png;base64,outlined") };
+  vi.stubGlobal("document", { createElement: () => outputCanvas });
   const ids = [...document.imported.instances.map(part => part.id), ...document.bricks.map(part => part.id)];
   const before = JSON.stringify(document);
   const renderer = await createInstructionRenderer(document);
@@ -290,6 +291,7 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
       if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
         !(object.material instanceof ShaderMaterial)) return;
       expect(object.material.uniforms.resolution.value.toArray()).toEqual([2000, 1520]);
+      expect(object.material.uniforms.lineWidth.value).toBe(INSTRUCTION_PDF_EDGE_WIDTH_PX);
       configuredEdges++;
     });
     expect(configuredEdges).toBeGreaterThan(0);
@@ -304,7 +306,8 @@ it("unions imported material batches before outlining groups in the WebGL PDF pa
     context.drawImage.mockClear();
     const snapshot = renderer.image(new Set(ids), { id: "s", title: "", notes: "", partIds: ids });
     expect(context.drawImage).toHaveBeenCalledOnce();
-    expect(snapshot).toBe("data:image/jpeg;base64,outlined");
+    expect(snapshot).toBe("data:image/png;base64,outlined");
+    expect(outputCanvas.toDataURL).toHaveBeenCalledWith("image/png");
     renderer.image(new Set([ids[0]]), { id: "s", title: "", notes: "", partIds: ids }, new Set(ids));
     expect(context.stroke).toHaveBeenCalledOnce();
     expect(JSON.stringify(document)).toBe(before);

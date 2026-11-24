@@ -18,7 +18,7 @@ export function instructionColorLabel(name: string): string {
 }
 
 export function instructionStepNumber(number: number): string {
-  return `${number}.`;
+  return `${number}`;
 }
 
 /** Count occurrences, but only combine identical geometry references and colors. */

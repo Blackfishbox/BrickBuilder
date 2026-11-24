@@ -12,9 +12,10 @@ import type { InstructionStep } from "./types";
 import { createSoftwareInstructionRenderer, INSTRUCTION_RENDER_SIZE } from "./software-render";
 import { instructionDisplayColor } from "./highlight-color";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupBounds } from "./outlines";
-import { applyPdfStepCamera } from "./camera";
+import { applyPdfStepCamera, setPdfDefaultCamera } from "./camera";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
+export const INSTRUCTION_PDF_EDGE_WIDTH_PX = 4;
 const FOCUS_VERTEX_HEADER = "attribute float instructionFocus;\nvarying float vInstructionFocus;\n";
 const FOCUS_FRAGMENT_HEADER = "varying float vInstructionFocus;\n";
 const FOCUS_VERTEX = "vInstructionFocus = instructionFocus;";
@@ -65,6 +66,7 @@ function configureInstructionEdges(root: Group, width: number, height: number): 
   root.traverse(object => {
     if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
       !(object.material instanceof ShaderMaterial)) return;
+    object.material.uniforms.lineWidth.value = INSTRUCTION_PDF_EDGE_WIDTH_PX;
     setWideLineResolution(object.material, width, height);
   });
 }
@@ -141,8 +143,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     camera.left = -radius * 1.12 * aspect; camera.right = -camera.left;
     camera.top = radius * 1.12; camera.bottom = -camera.top;
     camera.far = Math.max(100, radius * 12);
-    camera.position.set(1.1, 0.85, 1.3).normalize().multiplyScalar(radius * 4);
-    camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
+    setPdfDefaultCamera(camera, radius);
     const matrices = new Map<InstancedMesh, Float32Array>();
     const rows = new Map<InstancedBufferGeometry, Float32Array[]>();
     assembly.traverse(object => {
@@ -214,7 +215,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           drawInstructionOutlines(context, camera, instructionGroupBounds(groups, boxes),
             INSTRUCTION_RENDER_SIZE.width, INSTRUCTION_RENDER_SIZE.height);
         }
-        return output.toDataURL("image/jpeg", 0.9);
+        return output.toDataURL("image/png");
       },
       dispose,
     };
