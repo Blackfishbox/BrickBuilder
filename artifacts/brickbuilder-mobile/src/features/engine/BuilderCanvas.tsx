@@ -163,7 +163,7 @@ interface PlacementPreviewGeometry {
 
 const PLACEMENT_PREVIEW_ID = "placement-preview";
 
-type GraphicsProfile = "standard" | "recovery" | "software";
+type GraphicsProfile = "standard" | "recovery" | "faces" | "software";
 
 export class FallbackRenderer {
   readonly domElement = document.createElement("canvas");
@@ -848,7 +848,10 @@ export function BuilderCanvas({
       if (rendererRef.current !== renderer || failedRenderer === renderer) return;
       failedRenderer = renderer;
       buildControllerRef.current?.abort();
-      setGraphicsProfile(rendererProfileRef.current === "standard" ? "recovery" : "software");
+      // Restore normal edges first, then keep solid surfaces without edges if
+      // the device loses WebGL again. Software is the last resort.
+      const profile = rendererProfileRef.current;
+      setGraphicsProfile(profile === "standard" ? "recovery" : profile === "recovery" ? "faces" : "software");
     };
     const contextLost = (event: Event) => {
       const renderer = rendererRef.current;
@@ -988,7 +991,7 @@ export function BuilderCanvas({
         const activeRenderer = rendererRef.current;
         if (!activeRenderer || activeRenderer === failedRenderer) return;
         if (activeRenderer instanceof WebGLRenderer) {
-          const ratio = interactive || rendererProfileRef.current === "recovery" ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
+          const ratio = interactive || rendererProfileRef.current !== "standard" ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
           if (ratio !== lastPixelRatio || lastWebGLRenderer !== activeRenderer) {
             activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; lastWebGLRenderer = activeRenderer;
           }
@@ -1343,7 +1346,7 @@ export function BuilderCanvas({
         try {
           root = await createImportedGroupAsync(imported, {
             signal: controller.signal, onProgress: progress("canvas.sceneStage"), maxGeometryBytes,
-            viewport: graphicsProfile === "recovery" ? "recovery" : "standard",
+            viewport: graphicsProfile === "software" ? undefined : graphicsProfile,
           });
         } catch (error) {
           if (!(error instanceof SceneBudgetExceeded)) throw error;

@@ -198,17 +198,19 @@ it.skipIf(!largeModelPath)("keeps every resolved triangle of a local Studio mode
       }
     }
     const budget = 32 * 1024 * 1024;
-    const group = await createImportedGroupAsync(model, { maxGeometryBytes: budget, viewport: "standard" });
-    try {
-      const stats = measureImportedScene(group);
-      const resolved = model.instances.filter(instance => instance.part.status === "resolved").length;
-      expect(resolved).toBeGreaterThan(0);
-      expect(drawnFaces(group)).toBe(faces);
-      expect(stats.bufferBytes).toBeLessThanOrEqual(budget);
-      expect(new InstanceIndex(group, model, budget).records.size).toBe(model.instances.length);
-      console.info({ parts: model.instances.length, resolved, unique: counts.size, faces, uniqueFaceBytes, segments, repeatedSegments,
-        ...stats, ...importedSceneDetail(group) });
-    } finally { disposeImportedScene(group); }
+    for (const viewport of ["standard", "recovery"] as const) {
+      const group = await createImportedGroupAsync(model, { maxGeometryBytes: budget, viewport });
+      try {
+        const stats = measureImportedScene(group);
+        const resolved = model.instances.filter(instance => instance.part.status === "resolved").length;
+        expect(resolved).toBeGreaterThan(0);
+        expect(drawnFaces(group)).toBe(faces);
+        expect(stats.bufferBytes).toBeLessThanOrEqual(budget);
+        expect(new InstanceIndex(group, model, budget).records.size).toBe(model.instances.length);
+        console.info({ viewport, parts: model.instances.length, resolved, unique: counts.size, faces, uniqueFaceBytes, segments, repeatedSegments,
+          ...stats, ...importedSceneDetail(group) });
+      } finally { disposeImportedScene(group); }
+    }
   } finally { await builderDatabase.delete(); }
 }, 240000);
 

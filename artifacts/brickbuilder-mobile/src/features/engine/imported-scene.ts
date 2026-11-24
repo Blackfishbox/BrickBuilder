@@ -20,7 +20,7 @@ export interface SceneBuildOptions {
   signal?: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
   maxGeometryBytes?: number;
-  viewport?: "standard" | "recovery";
+  viewport?: "standard" | "recovery" | "faces";
 }
 export interface ImportedSceneDetail {
   compactFaces: boolean;
@@ -272,7 +272,7 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
         for (const surface of surfaces) {
           rawFaceBytes += surface.positions.byteLength * (surface.colorCode === "16" ? 2 : 3);
         }
-        if (viewport !== "recovery") {
+        if (viewport !== "faces") {
           const segments = visibleEdgeCount(surfaces);
           if (segments > 0) {
             wideEdgeBytes += segments * WIDE_EDGE_BYTES_PER_SEGMENT + instances.length * 55;
@@ -283,7 +283,8 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
         await yieldFrame();
       }
     }
-    const compactFaces = viewport === "recovery" || !!(viewport && rawFaceBytes > budget * 0.75);
+    const compactFaces = viewport === "recovery" || viewport === "faces" ||
+      !!(viewport && rawFaceBytes > budget * 0.75);
     let done = 0;
     const total = parts.size * 2;
     for (const [reference, instances] of parts) {
@@ -294,8 +295,8 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
       await yieldFrame();
     }
     const edgeBudget = budget - measureImportedScene(root).bufferBytes;
-    const edges = viewport === "recovery" ? "none"
-      : !viewport || (wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES) ? "wide"
+    const edges = viewport === "faces" ? "none"
+      : !viewport || (viewport === "standard" && wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES) ? "wide"
       : thinEdgeBytes <= edgeBudget ? "thin"
       : "none";
     root.userData.importedSceneDetail = { compactFaces, edges } satisfies ImportedSceneDetail;
