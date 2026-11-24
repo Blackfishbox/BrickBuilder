@@ -38,7 +38,7 @@ import {
   instructionRotationFromCameraPose,
 } from "./instruction-camera";
 import { applyInstructionFocus, installInstructionFocus, instructionDisplayColor } from "./instruction-focus";
-import { createImportedGroup, createImportedGroupAsync, disposeImportedScene, SceneBudgetExceeded } from "./imported-scene";
+import { createImportedGroup, createImportedGroupAsync, disposeImportedScene, importedSceneDetail, SceneBudgetExceeded } from "./imported-scene";
 import { prepareGeometry } from "./prepare-geometry";
 import { compilePart, reuseGeometryCache, worldMatrix } from "./ldraw-geometry";
 import { createLocalBrickEdgeBatches } from "./local-brick-edge-batches";
@@ -162,6 +162,8 @@ interface PlacementPreviewGeometry {
 }
 
 const PLACEMENT_PREVIEW_ID = "placement-preview";
+
+type GraphicsProfile = "standard" | "recovery" | "software";
 
 export class FallbackRenderer {
   readonly domElement = document.createElement("canvas");
@@ -637,7 +639,11 @@ export function BuilderCanvas({
   }, [viewExporterRef]);
   const [renderWarning, setRenderWarning] = useState<string | null>(null);
   const [buildAttempt, setBuildAttempt] = useState(0);
-  const [forceCompatibility, setForceCompatibility] = useState(false);
+  const [graphicsProfile, setGraphicsProfile] = useState<GraphicsProfile>("standard");
+  const [rendererVersion, setRendererVersion] = useState(0);
+  const rendererProfileRef = useRef<GraphicsProfile>("standard");
+  const requestedProfileRef = useRef<GraphicsProfile>("standard");
+  const replaceRendererRef = useRef<((profile: GraphicsProfile) => void) | null>(null);
   const pendingPreviewRef = useRef<(() => void) | null>(null);
   const rollbackRef = useRef<(() => void) | null>(null);
   const previewBrickRef = useRef<Brick | null>(null);
@@ -835,43 +841,55 @@ export function BuilderCanvas({
     const scene = new Scene();
     scene.background = new Color(darkMode ? "#111a18" : "#eef1ec");
     const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
-    let renderer: WebGLRenderer | FallbackRenderer;
-    const renderCanvas = document.createElement("canvas");
-    const webglContext = renderCanvas.getContext("webgl2", {
-      antialias: true,
-      alpha: false,
-      powerPreference: "high-performance",
-    });
-    if (webglContext) {
-      renderer = new WebGLRenderer({
-        canvas: renderCanvas,
-        context: webglContext,
-        antialias: false,
-        alpha: false,
-        powerPreference: "high-performance",
-      });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
-      renderer.outputColorSpace = SRGBColorSpace;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = PCFSoftShadowMap;
-    } else {
-      renderer = new FallbackRenderer();
-      renderer.domElement.setAttribute("data-renderer", "canvas-fallback");
-    }
-    renderer.domElement.setAttribute("class", "builder-webgl-canvas");
-    renderer.domElement.setAttribute("aria-label", "Interactive 3D brick building area");
-    renderer.domElement.setAttribute("role", "application");
-    renderer.domElement.style.touchAction = "none";
-    renderer.domElement.style.userSelect = "none";
-    host.appendChild(renderer.domElement);
     const overlay = new ConnectionOverlay(host);
     overlayRef.current = overlay;
-    const contextLost = (event: Event) => {
-      if (rendererRef.current !== renderer) return;
-      event.preventDefault();
-      setForceCompatibility(true);
+    let failedRenderer: WebGLRenderer | null = null;
+    const recover = (renderer: WebGLRenderer) => {
+      if (rendererRef.current !== renderer || failedRenderer === renderer) return;
+      failedRenderer = renderer;
+      buildControllerRef.current?.abort();
+      setGraphicsProfile(rendererProfileRef.current === "standard" ? "recovery" : "software");
     };
-    renderer.domElement.addEventListener("webglcontextlost", contextLost);
+    const contextLost = (event: Event) => {
+      const renderer = rendererRef.current;
+      if (!(renderer instanceof WebGLRenderer) || event.target !== renderer.domElement) return;
+      event.preventDefault();
+      recover(renderer);
+    };
+    const removeRenderer = () => {
+      const renderer = rendererRef.current;
+      rendererRef.current = null;
+      if (!renderer) return;
+      renderer.domElement.removeEventListener("webglcontextlost", contextLost);
+      if (renderer instanceof WebGLRenderer) {
+        renderer.dispose();
+        renderer.forceContextLoss();
+      }
+      renderer.domElement.remove();
+    };
+    const replaceRenderer = (profile: GraphicsProfile) => {
+      removeRenderer();
+      failedRenderer = null;
+      rendererProfileRef.current = profile;
+      const renderer = createViewportRenderer(profile);
+      const canvas = renderer.domElement;
+      canvas.className = "builder-webgl-canvas";
+      canvas.setAttribute("data-renderer", renderer instanceof WebGLRenderer ? "webgl" : "canvas-fallback");
+      canvas.setAttribute("aria-label", renderer instanceof WebGLRenderer
+        ? "Interactive 3D brick building area" : translateRef.current("canvas.fallbackAria"));
+      canvas.setAttribute("role", "application");
+      canvas.style.touchAction = "none";
+      canvas.style.userSelect = "none";
+      if (renderer instanceof WebGLRenderer) canvas.addEventListener("webglcontextlost", contextLost);
+      const { width, height } = host.getBoundingClientRect();
+      if (width > 0 && height > 0) setRendererSize(renderer, width, height);
+      // Keep the connection overlay above either canvas after replacements.
+      host.prepend(canvas);
+      rendererRef.current = renderer;
+      setRendererVersion(version => version + 1);
+    };
+    replaceRendererRef.current = replaceRenderer;
+    replaceRenderer("standard");
 
     scene.add(createBuilderLighting());
 
@@ -939,7 +957,6 @@ export function BuilderCanvas({
     scene.add(brickRoot);
     sceneRef.current = scene;
     cameraRef.current = camera;
-    rendererRef.current = renderer;
     brickRootRef.current = brickRoot;
 
     const cameraState = cameraStateRef.current;
@@ -953,7 +970,8 @@ export function BuilderCanvas({
 
     let animationFrame: number | null = null;
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
-    let lastPixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
+    let lastPixelRatio = -1;
+    let lastWebGLRenderer: WebGLRenderer | null = null;
     const invalidate = () => {
       if (animationFrame !== null) return;
       animationFrame = window.requestAnimationFrame(() => {
@@ -967,10 +985,13 @@ export function BuilderCanvas({
         const state = cameraStateRef.current;
         makeCameraPosition(camera, state.target, state.theta, state.phi, state.distance);
         applyInstructionCameraRotation(camera, state.target, propsRef.current.viewRotation);
-        const activeRenderer = rendererRef.current ?? renderer;
+        const activeRenderer = rendererRef.current;
+        if (!activeRenderer || activeRenderer === failedRenderer) return;
         if (activeRenderer instanceof WebGLRenderer) {
-          const ratio = interactive ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
-          if (ratio !== lastPixelRatio) { activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; }
+          const ratio = interactive || rendererProfileRef.current === "recovery" ? 0.85 : Math.min(window.devicePixelRatio || 1, 1.25);
+          if (ratio !== lastPixelRatio || lastWebGLRenderer !== activeRenderer) {
+            activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; lastWebGLRenderer = activeRenderer;
+          }
           scene.traverse(object => {
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
@@ -979,15 +1000,10 @@ export function BuilderCanvas({
             object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
             object.material.uniforms.blackLineWidth.value = enabled ? NORMAL_EDGE_WIDTH_PX * ratio : 0;
             if (object.name.startsWith("brick-edges-")) object.visible = true;
-            setWideLineResolution(object.material, renderCanvas.width, renderCanvas.height);
+            setWideLineResolution(object.material, activeRenderer.domElement.width, activeRenderer.domElement.height);
           });
-            importedRootRef.current?.children.forEach(child => {
-              if (child.name === "ldraw:instanced-edges") {
-                child.visible = true;
-              }
-            });
           try { activeRenderer.render(scene, camera); }
-          catch { setForceCompatibility(true); }
+          catch { recover(activeRenderer); }
         } else {
           activeRenderer.render(
             camera,
@@ -1084,7 +1100,7 @@ export function BuilderCanvas({
     const resizeObserver = new ResizeObserver(() => {
       const { width, height } = host.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
-      setRendererSize(rendererRef.current ?? renderer, width, height);
+      if (rendererRef.current) setRendererSize(rendererRef.current, width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       // The user may have deliberately zoomed the model. UI changes such as
@@ -1101,7 +1117,6 @@ export function BuilderCanvas({
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
       clearTimeout(settleTimer);
       invalidatorRef.current = null;
-      renderer.domElement.removeEventListener("webglcontextlost", contextLost);
       if (importedRootRef.current) {
         scene.remove(importedRootRef.current);
         disposeImported(importedRootRef.current);
@@ -1126,12 +1141,10 @@ export function BuilderCanvas({
           object.geometry.dispose();
         }
       });
-      if (renderer instanceof WebGLRenderer) renderer.dispose();
-      renderer.domElement.remove();
-      if (rendererRef.current && rendererRef.current !== renderer) rendererRef.current.domElement.remove();
+      removeRenderer();
+      replaceRendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
-      rendererRef.current = null;
       brickRootRef.current = null;
       refreshConstructionAreaRef.current = null;
     };
@@ -1241,7 +1254,7 @@ export function BuilderCanvas({
       }
     }
     invalidatorRef.current?.();
-  }, [placementPreview, projectId, selectedColor, selectedColorCode, selectedType, toolMode]);
+  }, [placementPreview, projectId, selectedColor, selectedColorCode, selectedType, toolMode, rendererVersion]);
 
   useEffect(() => {
     invalidatorRef.current?.();
@@ -1258,19 +1271,31 @@ export function BuilderCanvas({
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     if (!scene || !camera) return;
-    const previous = importedRootRef.current;
     const previousModel = sceneModelRef.current;
     const sameModel = sceneProjectRef.current === projectId && !!imported && previousModel?.originalBytes === imported.originalBytes;
     const previousOffset = importedOffsetRef.current;
     rollbackRef.current?.();
-    const retry = attemptRef.current !== buildAttempt;
+    const retry = attemptRef.current >= 0 && attemptRef.current !== buildAttempt;
     attemptRef.current = buildAttempt;
+    const replace = retry || requestedProfileRef.current !== graphicsProfile ||
+      (!sameModel && rendererProfileRef.current !== graphicsProfile);
+    requestedProfileRef.current = graphicsProfile;
+    if (replace) {
+      if (importedRootRef.current) {
+        scene.remove(importedRootRef.current);
+        disposeImported(importedRootRef.current);
+        importedRootRef.current = null;
+      }
+      replaceRendererRef.current?.(graphicsProfile);
+    }
+    const previous = importedRootRef.current;
     if (imported) reuseGeometryCache(previousModel, imported);
-    if (imported && sameModel && !retry && !forceCompatibility) {
+    if (imported && sameModel && !replace) {
       try {
         const index = previous && instanceIndex(previous);
         const software = softwareSceneRef.current;
-        if ((index && index.update(imported)) || (software && updateSoftwareScene(software, imported))) {
+        if ((index && index.update(imported)) ||
+          (rendererRef.current instanceof FallbackRenderer && software && updateSoftwareScene(software, imported))) {
           refreshInstructionFocus();
           sceneModelRef.current = imported;
           setSceneStatus(null);
@@ -1281,22 +1306,13 @@ export function BuilderCanvas({
           return;
         }
       } catch (error) {
-        setRenderWarning(translateRef.current("canvas.renderUpdateError", { reason: error instanceof Error ? error.message : String(error) }));
-        return;
-      }
-    }
-    // Software stays incremental after an explicit switch to compatibility mode.
-    if (imported && sameModel && !retry && softwareSceneRef.current && forceCompatibility) {
-      try {
-        if (updateSoftwareScene(softwareSceneRef.current, imported)) {
-          refreshInstructionFocus();
-          sceneModelRef.current = imported; setSceneStatus(null);
-          refreshConstructionAreaRef.current?.();
-          refreshConnections();
-          setRenderWarning(softwareWarning(softwareSceneRef.current, localeRef.current, translateRef.current));
-          invalidatorRef.current?.(); return;
+        // Replan the scene if an edit makes the previously chosen GPU detail
+        // exceed its budget. The index has not mutated its live draws yet.
+        if (!(error instanceof SceneBudgetExceeded)) {
+          setRenderWarning(translateRef.current("canvas.renderUpdateError", { reason: error instanceof Error ? error.message : String(error) }));
+          return;
         }
-      } catch (error) { setRenderWarning(translateRef.current("canvas.compatibilityUpdateError", { reason: String(error) })); return; }
+      }
     }
     const controller = new AbortController();
     buildControllerRef.current = controller;
@@ -1321,12 +1337,13 @@ export function BuilderCanvas({
       await prepareGeometry(imported, { signal: controller.signal, onProgress: progress("canvas.geometryStage") });
       let root: Group | null = null, bounds: Box3;
       let software: SoftwareScene | undefined;
-      if (rendererRef.current instanceof WebGLRenderer && !forceCompatibility) {
+      const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
+      const maxGeometryBytes = (memory <= 1 ? 32 : memory <= 2 ? 64 : 96) * 1024 * 1024;
+      if (rendererRef.current instanceof WebGLRenderer) {
         try {
-          const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
-          const maxGeometryBytes = (memory <= 1 ? 32 : memory <= 2 ? 64 : 96) * 1024 * 1024;
           root = await createImportedGroupAsync(imported, {
             signal: controller.signal, onProgress: progress("canvas.sceneStage"), maxGeometryBytes,
+            viewport: graphicsProfile === "recovery" ? "recovery" : "standard",
           });
         } catch (error) {
           if (!(error instanceof SceneBudgetExceeded)) throw error;
@@ -1336,28 +1353,14 @@ export function BuilderCanvas({
       }
       if (root) {
         try {
-          const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
-          new InstanceIndex(root, imported, (memory <= 1 ? 32 : memory <= 2 ? 64 : 96) * 1024 * 1024);
+          new InstanceIndex(root, imported, maxGeometryBytes);
           bounds = new Box3().setFromObject(root);
         } catch (error) { disposeImported(root); throw error; }
       }
       else {
         software = await createSoftwareScene(imported, { signal: controller.signal, onProgress: progress("canvas.compatibilityStage") });
         controller.signal.throwIfAborted();
-        if (rendererRef.current instanceof WebGLRenderer) {
-          const previousRenderer = rendererRef.current;
-          previousRenderer.dispose();
-          previousRenderer.domElement.remove();
-          const fallback = new FallbackRenderer();
-          fallback.domElement.className = "builder-webgl-canvas";
-          fallback.domElement.setAttribute("data-renderer", "canvas-fallback");
-          fallback.domElement.setAttribute("aria-label", translateRef.current("canvas.fallbackAria"));
-          fallback.domElement.style.touchAction = "none";
-          const rectangle = hostRef.current!.getBoundingClientRect();
-          fallback.setSize(rectangle.width, rectangle.height);
-          hostRef.current!.appendChild(fallback.domElement);
-          rendererRef.current = fallback;
-        }
+        if (rendererRef.current instanceof WebGLRenderer) replaceRendererRef.current?.("software");
         bounds = software.bounds.clone();
         setRenderWarning(softwareWarning(software, localeRef.current, translateRef.current));
       }
@@ -1402,7 +1405,7 @@ export function BuilderCanvas({
     return () => {
       controller.abort();
     };
-  }, [imported, buildAttempt, forceCompatibility, projectId]);
+  }, [imported, buildAttempt, graphicsProfile, projectId]);
 
   useEffect(() => { rollbackRef.current?.(); }, [projectId, toolMode]);
   useEffect(() => {
@@ -2291,6 +2294,9 @@ export function BuilderCanvas({
   const compatibilityHint = rendererRef.current instanceof FallbackRenderer && bricks.length > 1200
     ? t("canvas.compatibilityLarge")
     : null;
+  const edgeDetailHint = thickEdges && importedRootRef.current && importedSceneDetail(importedRootRef.current).edges !== "wide"
+    ? t("canvas.reducedEdges")
+    : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
     <div ref={rotationAnchorMarkerRef} data-testid="rotation-anchor-marker" aria-hidden="true"
       style={{
@@ -2319,7 +2325,7 @@ export function BuilderCanvas({
     </div>}
     {showFloating && floatingCount > 0 && <div role="status" aria-live="polite" data-testid="floating-warning"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg border border-red-300 bg-red-50/95 p-3 text-xs text-red-900 shadow"
-      style={{ pointerEvents: "none", top: sceneStatus || renderWarning || compatibilityHint ? 100 : 8 }}>
+      style={{ pointerEvents: "none", top: sceneStatus || renderWarning || compatibilityHint || edgeDetailHint ? 100 : 8 }}>
       <strong>{t(floatingCount === 1 ? "canvas.floatingOne" : "canvas.floatingMany", { count: floatingCount })}</strong>
       <p>{t("canvas.floatingInfo")}</p>
     </div>}
@@ -2401,12 +2407,12 @@ export function BuilderCanvas({
         <MousePointer2 size={20} aria-hidden="true" />
       </button>
     </div>}
-    {(sceneStatus || renderWarning || compatibilityHint) && <div
+    {(sceneStatus || renderWarning || compatibilityHint || edgeDetailHint) && <div
       role="status"
       className="absolute left-2 right-2 top-2 z-10 rounded-lg bg-white/95 p-3 text-xs text-stone-700 shadow"
       style={{ pointerEvents: "none" }}
     >
-      <p>{sceneStatus ?? renderWarning ?? compatibilityHint}</p>
+      <p>{sceneStatus ?? renderWarning ?? compatibilityHint ?? edgeDetailHint}</p>
       {sceneStatus ? <button type="button" className="mt-2 underline"
         style={{ pointerEvents: "auto" }}
         onPointerDown={event => event.stopPropagation()}
@@ -2414,10 +2420,13 @@ export function BuilderCanvas({
           buildControllerRef.current?.abort();
           setSceneStatus(null);
           setRenderWarning(t("canvas.cancelled"));
-        }}>{t("canvas.cancelBuild")}</button> : <button type="button" className="mt-2 underline"
+        }}>{t("canvas.cancelBuild")}</button> : (renderWarning || compatibilityHint) && <button type="button" className="mt-2 underline"
           style={{ pointerEvents: "auto" }}
           onPointerDown={event => event.stopPropagation()}
-          onClick={() => setBuildAttempt(value => value + 1)}>{t("canvas.retryRender")}</button>}
+          onClick={() => {
+            setGraphicsProfile("recovery");
+            setBuildAttempt(value => value + 1);
+          }}>{t("canvas.retryRender")}</button>}
     </div>}
   </div>;
 }
@@ -2467,6 +2476,27 @@ function disposePlacementRoot(root: Mesh | Group): void {
 
 function disposeImported(root: Group): void {
   disposeImportedScene(root);
+}
+
+function createViewportRenderer(profile: GraphicsProfile): WebGLRenderer | FallbackRenderer {
+  if (profile === "software") return new FallbackRenderer();
+  const canvas = document.createElement("canvas");
+  const standard = profile === "standard";
+  try {
+    const context = canvas.getContext("webgl2", {
+      antialias: standard, alpha: false, powerPreference: standard ? "high-performance" : "default",
+    });
+    if (context) {
+      const renderer = new WebGLRenderer({ canvas, context });
+      renderer.outputColorSpace = SRGBColorSpace;
+      renderer.shadowMap.enabled = standard;
+      renderer.shadowMap.type = PCFSoftShadowMap;
+      return renderer;
+    }
+  } catch (error) {
+    console.warn("Failed to initialize the builder WebGL renderer.", error);
+  }
+  return new FallbackRenderer();
 }
 
 function setRendererSize(

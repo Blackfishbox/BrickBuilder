@@ -51,6 +51,7 @@ vi.mock("three", async importOriginal => {
     setSize() {}
     render(scene: Scene, camera: PerspectiveCamera) { observed.scene3d = scene; observed.camera = camera; }
     dispose() {}
+    forceContextLoss() {}
   }
   return { ...actual, WebGLRenderer: TestWebGLRenderer };
 });
@@ -165,6 +166,47 @@ beforeEach(() => {
   element = document.createElement("div"); document.body.appendChild(element); root = createRoot(element);
 });
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+it("tries fresh lightweight WebGL after losing a context and can retry WebGL from compatibility mode", async () => {
+  observed.webglEnabled = true;
+  const model = engineFixture(1, 3);
+  const props = { projectId: "graphics-recovery", bricks: [], imported: model, selectedId: null,
+    selectedType: "brick-2x4" as const, selectedColor: "#B40000", toolMode: "view" as const,
+    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+  const gpuCanvas = () => element.querySelector<HTMLCanvasElement>("[data-renderer='webgl']")!;
+  const waitForModel = async () => {
+    await act(async () => {
+      await vi.waitFor(() => expect(observed.scene3d?.children.some(child => instanceIndex(child as Group))).toBe(true));
+    });
+    flushFrame();
+  };
+  act(() => root.render(<BuilderCanvas {...props} />));
+  await waitForModel();
+  const initialCamera = observed.cameraPose;
+  const first = gpuCanvas();
+  act(() => { first.dispatchEvent(new Event("webglcontextlost", { cancelable: true })); });
+  await waitForModel();
+  const second = gpuCanvas();
+  expect(second).not.toBe(first);
+  expect(first.isConnected).toBe(false);
+  expect(observed.preparations).toBe(0);
+  expect(observed.cameraPose).toEqual(initialCamera);
+  expect(vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.filter(([kind]) => kind === "webgl2").at(-1))
+    .toEqual(["webgl2", expect.objectContaining({ antialias: false })]);
+
+  act(() => { second.dispatchEvent(new Event("webglcontextlost", { cancelable: true })); });
+  await act(async () => {
+    await vi.waitFor(() => expect(observed.scene).toBeDefined());
+  });
+  expect(element.querySelector("[data-renderer='canvas-fallback']")).not.toBeNull();
+  const retry = [...element.querySelectorAll("button")].find(button => button.textContent === "Darstellung neu aufbauen")!;
+  expect(retry).toBeDefined();
+  act(() => retry.click());
+  await waitForModel();
+  expect(gpuCanvas()).not.toBe(second);
+  expect(element.querySelector("[data-renderer='canvas-fallback']")).toBeNull();
+  expect(observed.cameraPose).toEqual(initialCamera);
+});
 
 describe("temporary rotation anchor marker", () => {
   for (const webgl of [true, false]) {

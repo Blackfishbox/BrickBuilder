@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { Color, InstancedBufferGeometry, InstancedMesh, Mesh, SRGBColorSpace } from "three";
+import { Color, InstancedBufferGeometry, InstancedMesh, LineSegments, Mesh, SRGBColorSpace } from "three";
 import type { ImportedModel } from "../formats/types";
 import { parseLDraw } from "../formats/ldraw/parser";
-import { compilePart, createImportedGroup, hasCompiledPart } from "./ldraw-geometry";
-import { createImportedGroupAsync, disposeImportedScene, measureImportedScene, SceneBudgetExceeded } from "./imported-scene";
+import { compilePart, createImportedGroup, hasCompiledPart, visibleEdgeCount } from "./ldraw-geometry";
+import { createImportedGroupAsync, disposeImportedScene, importedSceneDetail, measureImportedScene, SceneBudgetExceeded } from "./imported-scene";
+import { InstanceIndex } from "./instance-index";
 import { prepareGeometry } from "./prepare-geometry";
 import { createSoftwareScene, SOFTWARE_TRIANGLE_BUDGET } from "./software-scene";
 import { importIO } from "../formats/io/import";
@@ -25,6 +26,11 @@ function fixture(count = 1): ImportedModel {
   };
   model.instances.forEach(instance => { instance.part.status = "resolved"; });
   return model;
+}
+function drawnFaces(root: Awaited<ReturnType<typeof createImportedGroupAsync>>) {
+  return root.children.reduce((total, draw) => draw instanceof InstancedMesh
+    ? total + (draw.geometry.index?.count ?? draw.geometry.getAttribute("position").count) / 3 * draw.count
+    : total, 0);
 }
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -84,6 +90,40 @@ describe("bounded large-model rendering", () => {
     expect(root.children).toHaveLength(4);
     disposeImportedScene(root);
   });
+  it("packs faces and uses thin black GPU lines rather than dropping triangles when edges exceed the budget", async () => {
+    const model = fixture(100);
+    model.resources["parts/test.dat"].content += "\n" +
+      "3 16 0 0 0 20 0 0 0 20 0\n".repeat(200) + "2 24 0 0 0 0 20 0\n".repeat(80);
+    const budget = 30 * 1024;
+    const root = await createImportedGroupAsync(model, { maxGeometryBytes: budget, viewport: "standard" });
+    try {
+      expect(importedSceneDetail(root)).toEqual({ compactFaces: true, edges: "thin" });
+      expect(measureImportedScene(root).bufferBytes).toBeLessThanOrEqual(budget);
+      expect(drawnFaces(root)).toBe(40_100);
+      const faces = root.children.find(child => child instanceof InstancedMesh && child.userData.inherited) as InstancedMesh;
+      expect(faces.geometry.getAttribute("position").count).toBe(3);
+      expect(faces.geometry.getAttribute("normal").normalized).toBe(true);
+      expect(faces.geometry.index?.count).toBe(1_200);
+      expect(root.getObjectByName("ldraw:instanced-edges")).toBeInstanceOf(LineSegments);
+      // Changing alpha keeps the editing index and compact draws in sync.
+      const next = { ...model, instances: model.instances.map(part =>
+        part.id === model.instances[0].id ? { ...part, colorCode: "47" } : part) };
+      const index = new InstanceIndex(root, model, budget * 2);
+      expect(index.update(next)).toBe(true);
+      expect(index.bounds(next.instances[0].id)?.isEmpty()).toBe(false);
+      expect(drawnFaces(root)).toBe(40_100);
+    } finally { disposeImportedScene(root); }
+  });
+  it("limits shaded edge work even when instanced edge buffers fit", async () => {
+    const model = fixture(7_000);
+    model.resources["parts/test.dat"].content += "\n" + "2 24 0 0 0 0 20 0\n".repeat(80);
+    const root = await createImportedGroupAsync(model, { viewport: "standard" });
+    try {
+      expect(importedSceneDetail(root).edges).toBe("thin");
+      expect(drawnFaces(root)).toBe(1_407_000);
+      expect(root.getObjectByName("ldraw:instanced-edges")).toBeInstanceOf(LineSegments);
+    } finally { disposeImportedScene(root); }
+  });
   it("bounds the software preview while preserving the full model and source", async () => {
     const model = fixture(10_000);
     const source = model.sourceText, started = performance.now();
@@ -128,6 +168,50 @@ describe("bounded large-model rendering", () => {
 });
 
 const privateReference = new URL("../../../../../attached_assets/40649-size_1793502923137.io", import.meta.url);
+
+const largeModelPath = process.env.BRICKBUILDER_LARGE_IO;
+it.skipIf(!largeModelPath)("keeps every resolved triangle of a local Studio model within the Android graphics budget", async () => {
+  const base = process.env.BRICKBUILDER_BENCH_URL;
+  const nativeFetch = globalThis.fetch;
+  if (base) {
+    vi.stubGlobal("window", { location: { href: base } });
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) =>
+      nativeFetch(new URL(String(input), base), init));
+  }
+  await builderDatabase.open();
+  try {
+    const bytes = new Uint8Array(await readFile(largeModelPath!));
+    const model = (await importIO(bytes, "private-reference.io", { online: !!base })).imported!;
+    const counts = new Map<string, number>();
+    for (const part of model.instances) {
+      if (part.part.status === "resolved") counts.set(part.reference, (counts.get(part.reference) ?? 0) + 1);
+    }
+    let segments = 0, repeatedSegments = 0, faces = 0, uniqueFaceBytes = 0;
+    for (const [reference, count] of counts) {
+      const surfaces = compilePart(model, reference, "16");
+      const partSegments = visibleEdgeCount(surfaces);
+      segments += partSegments;
+      repeatedSegments += partSegments * count;
+      for (const surface of surfaces) {
+        faces += surface.positions.length / 9 * count;
+        uniqueFaceBytes += surface.positions.byteLength + surface.normals.byteLength;
+      }
+    }
+    const budget = 32 * 1024 * 1024;
+    const group = await createImportedGroupAsync(model, { maxGeometryBytes: budget, viewport: "standard" });
+    try {
+      const stats = measureImportedScene(group);
+      const resolved = model.instances.filter(instance => instance.part.status === "resolved").length;
+      expect(resolved).toBeGreaterThan(0);
+      expect(drawnFaces(group)).toBe(faces);
+      expect(stats.bufferBytes).toBeLessThanOrEqual(budget);
+      expect(new InstanceIndex(group, model, budget).records.size).toBe(model.instances.length);
+      console.info({ parts: model.instances.length, resolved, unique: counts.size, faces, uniqueFaceBytes, segments, repeatedSegments,
+        ...stats, ...importedSceneDetail(group) });
+    } finally { disposeImportedScene(group); }
+  } finally { await builderDatabase.delete(); }
+}, 240000);
+
 describe.skipIf(!process.env.BRICKBUILDER_BENCH_URL || !existsSync(privateReference))("private reference performance", () => {
   it("measures the real encrypted 8,590-instance IO model with verified archive geometry", async () => {
     const nativeFetch = globalThis.fetch;

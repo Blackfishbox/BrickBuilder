@@ -1,13 +1,14 @@
 import {
   Box3, BufferAttribute, BufferGeometry, Color, DoubleSide, Group,
   InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh,
-  LineSegments, Material, Mesh, MeshLambertMaterial, SRGBColorSpace,
+  LineSegments, Material, Mesh, MeshLambertMaterial, ShaderMaterial, SRGBColorSpace,
 } from "three";
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
-import { compilePart, visibleEdgeData, worldMatrix, type Surface } from "./ldraw-geometry";
-import { installInstructionFocus, FOCUS_ATTRIBUTE } from "./instruction-focus";
+import { compilePart, visibleEdgeCount, visibleEdgeData, visibleEdgeLines, worldMatrix, type Surface } from "./ldraw-geometry";
+import { installInstructionFocus, FOCUS_ATTRIBUTE, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER } from "./instruction-focus";
 import { expandWideLines, wideLineMaterial } from "./wide-lines";
+import { compactFaceAttributes } from "./compact-faces";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
 function sharedAttribute(array: Float32Array): BufferAttribute {
   let attribute = sharedAttributes.get(array);
@@ -19,9 +20,21 @@ export interface SceneBuildOptions {
   signal?: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
   maxGeometryBytes?: number;
+  viewport?: "standard" | "recovery";
+}
+export interface ImportedSceneDetail {
+  compactFaces: boolean;
+  edges: "wide" | "thin" | "none";
+}
+const FULL_DETAIL: ImportedSceneDetail = { compactFaces: false, edges: "wide" };
+export function importedSceneDetail(root: Group): ImportedSceneDetail {
+  return root.userData.importedSceneDetail ?? FULL_DETAIL;
 }
 export const DEFAULT_GEOMETRY_BUDGET = 96 * 1024 * 1024;
-const MAX_WIDE_EDGE_SEGMENTS = 100_000;
+// Wide edges expand each occurrence to two shaded triangles; bound frame work
+// independently from the memory used by unique geometry buffers.
+const MAX_WIDE_EDGE_OCCURRENCES = 500_000;
+const WIDE_EDGE_BYTES_PER_SEGMENT = 6 * 18 * Float32Array.BYTES_PER_ELEMENT;
 export class SceneBudgetExceeded extends Error {
   constructor() { super("Das Modell überschreitet das mobile Grafik-Speicherbudget."); }
 }
@@ -52,11 +65,13 @@ function material(alpha: number, vertexColors = false): MeshLambertMaterial {
   });
 }
 
-function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[], alpha: number, inherited: boolean): void {
+function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[], alpha: number, inherited: boolean, compact: boolean): void {
   const length = surfaces.reduce((sum, surface) => sum + surface.positions.length, 0);
   if (!length || !instances.length) return;
   const geometry = new BufferGeometry();
-  if (surfaces.length === 1) {
+  if (compact) {
+    compactFaceAttributes(geometry, surfaces, !inherited);
+  } else if (surfaces.length === 1) {
     geometry.setAttribute("position", sharedAttribute(surfaces[0].positions));
     geometry.setAttribute("normal", sharedAttribute(surfaces[0].normals));
   } else {
@@ -69,7 +84,7 @@ function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[
     geometry.setAttribute("position", new BufferAttribute(positions, 3));
     geometry.setAttribute("normal", new BufferAttribute(normals, 3));
   }
-  if (!inherited) {
+  if (!inherited && !compact) {
     const colors = new Float32Array(length);
     let offset = 0;
     for (const surface of surfaces) {
@@ -99,29 +114,62 @@ function addFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[
   root.add(mesh);
 }
 
-/** One instanced line draw per part, never one Object3D per brick. */
-function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[]): void {
-  const source = visibleEdgeData(surfaces);
-  const length = source.positions.length;
-  if (!length) return;
-  if (length / 6 > MAX_WIDE_EDGE_SEGMENTS) throw new SceneBudgetExceeded();
-  const expanded = expandWideLines(source.positions, source.normals, source.alternateNormals);
-  const geometry = new InstancedBufferGeometry();
-  for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
-  expanded.dispose();
-  const edgeBaseColors = new Float32Array(source.positions.length * 3);
-  const edgeUseInstanceColor = new Float32Array(source.positions.length);
-  const color = new Color();
-  source.colorCodes.forEach((code, segment) => {
-    const inherited = code === "16";
-    const base = color.set(inherited ? "#ffffff" : resolveColor(code)?.hex ?? "#ff00ff");
-    for (let vertex = 0; vertex < 6; vertex++) {
-      edgeBaseColors.set([base.r, base.g, base.b], (segment * 6 + vertex) * 3);
-      edgeUseInstanceColor[segment * 6 + vertex] = inherited ? 1 : 0;
-    }
+function compactLineMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { instructionFocusEnabled: { value: false } },
+    vertexShader: FOCUS_VERTEX_HEADER + `
+      attribute vec4 instanceRow0;
+      attribute vec4 instanceRow1;
+      attribute vec4 instanceRow2;
+      void main() {
+        ${FOCUS_VERTEX}
+        vec4 p = vec4(position, 1.0);
+        vec3 v = vec3(dot(instanceRow0, p), dot(instanceRow1, p), dot(instanceRow2, p));
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(v, 1.0);
+        gl_Position.z -= 0.000002 * gl_Position.w;
+      }`,
+    fragmentShader: FOCUS_FRAGMENT_HEADER + `
+      uniform bool instructionFocusEnabled;
+      void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        if (instructionFocusEnabled) {
+          gl_FragColor = vInstructionFocus > 1.5
+            ? vec4(0.6, 0.015, 0.01, 0.95)
+            : vec4(vec3(0.45), 0.12);
+        }
+        #include <colorspace_fragment>
+      }`,
   });
-  geometry.setAttribute("edgeBaseColor", new BufferAttribute(edgeBaseColors, 3));
-  geometry.setAttribute("edgeUseInstanceColor", new BufferAttribute(edgeUseInstanceColor, 1));
+}
+
+/** One instanced line draw per part, never one Object3D per brick. */
+function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[], mode: ImportedSceneDetail["edges"]): void {
+  if (mode === "none") return;
+  const geometry = new InstancedBufferGeometry();
+  if (mode === "thin") {
+    const positions = visibleEdgeLines(surfaces);
+    if (!positions.length) return;
+    geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  } else {
+    const source = visibleEdgeData(surfaces);
+    if (!source.positions.length) return;
+    const expanded = expandWideLines(source.positions, source.normals, source.alternateNormals);
+    for (const [name, attribute] of Object.entries(expanded.attributes)) geometry.setAttribute(name, attribute);
+    expanded.dispose();
+    const edgeBaseColors = geometry.getAttribute("edgeBaseColor");
+    const edgeUseInstanceColor = geometry.getAttribute("edgeUseInstanceColor");
+    const color = new Color();
+    source.colorCodes.forEach((code, segment) => {
+      const inherited = code === "16";
+      const base = color.set(inherited ? "#ffffff" : resolveColor(code)?.hex ?? "#ff00ff");
+      for (let vertex = 0; vertex < 6; vertex++) {
+        const index = segment * 6 + vertex;
+        edgeBaseColors.setXYZ(index, base.r, base.g, base.b);
+        edgeUseInstanceColor.setX(index, inherited ? 1 : 0);
+      }
+    });
+  }
   const rows = [new Float32Array(instances.length * 4), new Float32Array(instances.length * 4), new Float32Array(instances.length * 4)];
   const bounds = new Box3(), transformed = new Box3();
   geometry.computeBoundingBox();
@@ -133,21 +181,24 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
     bounds.union(transformed.copy(local).applyMatrix4(matrix));
   });
   rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
-  const edgeColors = new Uint8Array(instances.length * 3);
-  instances.forEach((instance, index) => {
-    const encoded = new Color(resolveColor(instance.colorCode)?.hex ?? "#ff00ff").getHex(SRGBColorSpace);
-    edgeColors.set([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff], index * 3);
-  });
-  geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3, true));
+  if (mode === "wide") {
+    const edgeColors = new Uint8Array(instances.length * 3);
+    const color = new Color();
+    instances.forEach((instance, index) => {
+      const encoded = color.set(resolveColor(instance.colorCode)?.hex ?? "#ff00ff").getHex(SRGBColorSpace);
+      edgeColors.set([(encoded >> 16) & 0xff, (encoded >> 8) & 0xff, encoded & 0xff], index * 3);
+    });
+    geometry.setAttribute("instanceEdgeColor", new InstancedBufferAttribute(edgeColors, 3, true));
+  }
   geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(instances.length), 1));
   geometry.instanceCount = instances.length;
   geometry.boundingBox = bounds;
   geometry.computeBoundingSphere();
-  const lines = new Mesh(geometry, wideLineMaterial());
+  const lines = mode === "wide" ? new Mesh(geometry, wideLineMaterial()) : new LineSegments(geometry, compactLineMaterial());
   // The shader's per-instance transform is not represented by Object3D.matrix.
   lines.frustumCulled = false;
   lines.name = "ldraw:instanced-edges";
-  lines.userData.isWideEdgeMesh = true;
+  lines.userData.isWideEdgeMesh = mode === "wide";
   lines.userData.brickIds = instances.map(instance => instance.id);
   lines.userData.batchKey = `${instances[0].reference.toLowerCase()}|edges`;
   lines.userData.localBounds = local;
@@ -155,7 +206,7 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
   root.add(lines);
 }
 
-function* sceneSteps(model: ImportedModel, root: Group, signal?: AbortSignal): Generator<number> {
+function instanceGroups(model: ImportedModel): Map<string, ImportedInstance[]> {
   const parts = new Map<string, ImportedInstance[]>();
   for (const instance of model.instances) {
     if (instance.part.status !== "resolved") continue;
@@ -163,54 +214,101 @@ function* sceneSteps(model: ImportedModel, root: Group, signal?: AbortSignal): G
     const batch = parts.get(key) ?? [];
     batch.push(instance); parts.set(key, batch);
   }
-  root.userData.partCount = parts.size;
-  let completed = 0;
-  for (const [reference, instances] of parts) {
-    signal?.throwIfAborted();
-    const surfaces = compilePart(model, reference, "16");
-    const inherited = surfaces.filter(surface => surface.colorCode === "16" && surface.positions.length);
-    const variants = new Map<number, ImportedInstance[]>();
-    for (const instance of instances) {
-      const alpha = resolveColor(instance.colorCode)?.alpha ?? 255;
-      const batch = variants.get(alpha) ?? [];
-      batch.push(instance); variants.set(alpha, batch);
-    }
-    for (const [alpha, batch] of variants) addFaces(root, inherited, batch, alpha, true);
-    const fixed = new Map<number, Surface[]>();
-    for (const surface of surfaces) {
-      if (surface.colorCode === "16" || !surface.positions.length) continue;
-      const alpha = resolveColor(surface.colorCode)?.alpha ?? 255;
-      const batch = fixed.get(alpha) ?? [];
-      batch.push(surface); fixed.set(alpha, batch);
-    }
-    for (const [alpha, batch] of fixed) addFaces(root, batch, instances, alpha, false);
-    addEdges(root, surfaces, instances);
-    yield ++completed;
-  }
+  return parts;
 }
 
-export function createImportedGroup(model: ImportedModel): Group {
+function addPartFaces(root: Group, surfaces: Surface[], instances: ImportedInstance[], compact: boolean): void {
+  const inherited = surfaces.filter(surface => surface.colorCode === "16" && surface.positions.length);
+  const variants = new Map<number, ImportedInstance[]>();
+  for (const instance of instances) {
+    const alpha = resolveColor(instance.colorCode)?.alpha ?? 255;
+    const batch = variants.get(alpha) ?? [];
+    batch.push(instance); variants.set(alpha, batch);
+  }
+  for (const [alpha, batch] of variants) addFaces(root, inherited, batch, alpha, true, compact);
+  const fixed = new Map<number, Surface[]>();
+  for (const surface of surfaces) {
+    if (surface.colorCode === "16" || !surface.positions.length) continue;
+    const alpha = resolveColor(surface.colorCode)?.alpha ?? 255;
+    const batch = fixed.get(alpha) ?? [];
+    batch.push(surface); fixed.set(alpha, batch);
+  }
+  for (const [alpha, batch] of fixed) addFaces(root, batch, instances, alpha, false, compact);
+}
+
+export function createImportedGroup(model: ImportedModel, detail = FULL_DETAIL): Group {
   const root = new Group();
-  try { for (const _ of sceneSteps(model, root)) { /* Synchronous adapter for small fixtures. */ } }
+  root.userData.importedSceneDetail = detail;
+  try {
+    for (const [reference, instances] of instanceGroups(model)) {
+      const surfaces = compilePart(model, reference, "16");
+      addPartFaces(root, surfaces, instances, detail.compactFaces);
+      addEdges(root, surfaces, instances, detail.edges);
+    }
+  }
   catch (error) { disposeImportedScene(root); throw error; }
   return root;
 }
 
 export async function createImportedGroupAsync(model: ImportedModel, options: SceneBuildOptions = {}): Promise<Group> {
   const root = new Group();
+  const budget = options.maxGeometryBytes ?? DEFAULT_GEOMETRY_BUDGET;
+  const { signal, onProgress, viewport } = options;
+  const parts = instanceGroups(model);
   let slice = performance.now();
+  const yieldFrame = async () => {
+    if (performance.now() - slice >= 6) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      slice = performance.now();
+    }
+    signal?.throwIfAborted();
+  };
   try {
-    for (const completed of sceneSteps(model, root, options.signal)) {
-      options.signal?.throwIfAborted();
-      if (measureImportedScene(root).bufferBytes > (options.maxGeometryBytes ?? DEFAULT_GEOMETRY_BUDGET)) throw new SceneBudgetExceeded();
-      options.onProgress?.(completed, root.userData.partCount);
-      if (performance.now() - slice >= 6) {
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-        options.signal?.throwIfAborted();
-        slice = performance.now();
+    let rawFaceBytes = 0, wideEdgeBytes = 0, thinEdgeBytes = 0, edgeOccurrences = 0;
+    if (viewport) {
+      for (const [reference, instances] of parts) {
+        signal?.throwIfAborted();
+        const surfaces = compilePart(model, reference, "16");
+        for (const surface of surfaces) {
+          rawFaceBytes += surface.positions.byteLength * (surface.colorCode === "16" ? 2 : 3);
+        }
+        if (viewport !== "recovery") {
+          const segments = visibleEdgeCount(surfaces);
+          if (segments > 0) {
+            wideEdgeBytes += segments * WIDE_EDGE_BYTES_PER_SEGMENT + instances.length * 55;
+            thinEdgeBytes += segments * 24 + instances.length * 52;
+            edgeOccurrences += segments * instances.length;
+          }
+        }
+        await yieldFrame();
       }
     }
-    options.signal?.throwIfAborted();
+    const compactFaces = viewport === "recovery" || !!(viewport && rawFaceBytes > budget * 0.75);
+    let done = 0;
+    const total = parts.size * 2;
+    for (const [reference, instances] of parts) {
+      signal?.throwIfAborted();
+      addPartFaces(root, compilePart(model, reference, "16"), instances, compactFaces);
+      if (measureImportedScene(root).bufferBytes > budget) throw new SceneBudgetExceeded();
+      onProgress?.(++done, total);
+      await yieldFrame();
+    }
+    const edgeBudget = budget - measureImportedScene(root).bufferBytes;
+    const edges = viewport === "recovery" ? "none"
+      : !viewport || (wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES) ? "wide"
+      : thinEdgeBytes <= edgeBudget ? "thin"
+      : "none";
+    root.userData.importedSceneDetail = { compactFaces, edges } satisfies ImportedSceneDetail;
+    if (edges !== "none") {
+      for (const [reference, instances] of parts) {
+        signal?.throwIfAborted();
+        addEdges(root, compilePart(model, reference, "16"), instances, edges);
+        if (measureImportedScene(root).bufferBytes > budget) throw new SceneBudgetExceeded();
+        onProgress?.(++done, total);
+        await yieldFrame();
+      }
+    }
+    signal?.throwIfAborted();
     return root;
   } catch (error) { disposeImportedScene(root); throw error; }
 }

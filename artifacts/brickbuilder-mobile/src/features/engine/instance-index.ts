@@ -5,7 +5,7 @@ import {
 import type { Affine, ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
 import { compilePart, installCompiledPart, reuseGeometryCache, sameSceneSources, worldMatrix } from "./ldraw-geometry";
-import { createImportedGroup, disposeImportedScene, measureImportedScene, DEFAULT_GEOMETRY_BUDGET, SceneBudgetExceeded } from "./imported-scene";
+import { createImportedGroup, disposeImportedScene, importedSceneDetail, measureImportedScene, DEFAULT_GEOMETRY_BUDGET, SceneBudgetExceeded } from "./imported-scene";
 import { FOCUS_ATTRIBUTE } from "./instruction-focus";
 
 type Draw = InstancedMesh | Mesh<InstancedBufferGeometry> | LineSegments<InstancedBufferGeometry>;
@@ -205,7 +205,7 @@ export class InstanceIndex {
         }
         const templateModel = { ...next, instances: [instance] };
         reuseGeometryCache(next, templateModel);
-        const template = createImportedGroup(templateModel);
+        const template = createImportedGroup(templateModel, importedSceneDetail(this.root));
         installCompiledPart(next, instance.reference, compilePart(templateModel, instance.reference, "16"));
         const draws: Draw[] = [];
         for (const child of [...template.children] as Draw[]) {

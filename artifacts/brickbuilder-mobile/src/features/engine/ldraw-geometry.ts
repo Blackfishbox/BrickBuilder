@@ -22,16 +22,12 @@ const MAX_VERTICES = 1_500_000;
 const MAX_DERIVED_EDGE_TRIANGLES = 20_000;
 const MAX_RENDER_EDGE_SEGMENTS = 100_000;
 const DERIVED_EDGE_CREASE_ANGLE_DEGREES = 30;
+const edgeSources = new WeakMap<readonly Surface[], { surface: Surface; positions: Float32Array }[]>();
 
-/** Uses authored LDraw edge lines, or derives visible creases when a part has none. */
-export function visibleEdgeLines(surfaces: readonly Surface[]): Float32Array {
-  return visibleEdgeData(surfaces).positions;
-}
-
-/** Retain the source surface appearance and lighting normal for each edge. */
-export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
-  const chunks: { positions: Float32Array; normals: Float32Array; alternateNormals: Float32Array; colorCode: string }[] = [];
-  let totalSegments = 0;
+function getEdgeSources(surfaces: readonly Surface[]) {
+  const cached = edgeSources.get(surfaces);
+  if (cached) return cached;
+  const sources: { surface: Surface; positions: Float32Array }[] = [];
   for (const surface of surfaces) {
     let edges = surface.edges;
     if (!edges.length && surface.positions.length &&
@@ -45,43 +41,57 @@ export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
       edges = creaseGeometry.getAttribute("position").array as Float32Array;
       creaseGeometry.dispose();
     }
-    if (!edges.length) continue;
-    const lineNormals = deriveLineNormalPairs(edges, surface.positions, surface.normals);
-    chunks.push({
-      positions: edges, normals: lineNormals.primary, alternateNormals: lineNormals.alternate,
-      colorCode: surface.colorCode,
-    });
-    totalSegments += Math.floor(edges.length / 6);
+    if (edges.length) sources.push({ surface, positions: edges });
   }
-  if (!totalSegments) return {
-    positions: new Float32Array(), normals: new Float32Array(),
-    alternateNormals: new Float32Array(), colorCodes: [],
-  };
+  edgeSources.set(surfaces, sources);
+  return sources;
+}
 
+function edgeLayout(surfaces: readonly Surface[]) {
+  const sources = getEdgeSources(surfaces);
+  const totalSegments = sources.reduce((sum, source) => sum + Math.floor(source.positions.length / 6), 0);
   const stride = Math.max(1, Math.ceil(totalSegments / MAX_RENDER_EDGE_SEGMENTS));
-  const selectedSegments = Math.ceil(totalSegments / stride);
+  return { sources, stride, selectedSegments: Math.ceil(totalSegments / stride) };
+}
+
+export function visibleEdgeCount(surfaces: readonly Surface[]): number {
+  return edgeLayout(surfaces).selectedSegments;
+}
+
+/** Uses authored LDraw edges or derived creases without preparing wide-line lighting. */
+export function visibleEdgeLines(surfaces: readonly Surface[]): Float32Array {
+  const { sources, stride, selectedSegments } = edgeLayout(surfaces);
+  if (sources.length === 1 && stride === 1) return sources[0].positions;
+  const positions = new Float32Array(selectedSegments * 6);
+  let sourceSegment = 0, outputSegment = 0;
+  for (const source of sources) {
+    for (let offset = 0; offset + 5 < source.positions.length; offset += 6, sourceSegment++) {
+      if (sourceSegment % stride === 0) positions.set(source.positions.subarray(offset, offset + 6), outputSegment++ * 6);
+    }
+  }
+  return positions;
+}
+
+/** Retain the source surface appearance and lighting normal for wide edges. */
+export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
+  const { sources, stride, selectedSegments } = edgeLayout(surfaces);
   const positions = new Float32Array(selectedSegments * 6);
   const normals = new Float32Array(selectedSegments * 6);
   const alternateNormals = new Float32Array(selectedSegments * 6);
   const colorCodes: string[] = [];
   let sourceSegment = 0, outputSegment = 0;
-  for (const chunk of chunks) {
-    for (let offset = 0; offset + 5 < chunk.positions.length; offset += 6, sourceSegment++) {
+  for (const { surface, positions: edges } of sources) {
+    const lineNormals = deriveLineNormalPairs(edges, surface.positions, surface.normals);
+    for (let offset = 0; offset + 5 < edges.length; offset += 6, sourceSegment++) {
       if (sourceSegment % stride !== 0) continue;
-      positions.set(chunk.positions.subarray(offset, offset + 6), outputSegment * 6);
-      normals.set(chunk.normals.subarray(offset, offset + 6), outputSegment * 6);
-      alternateNormals.set(chunk.alternateNormals.subarray(offset, offset + 6), outputSegment * 6);
-      colorCodes.push(chunk.colorCode);
+      positions.set(edges.subarray(offset, offset + 6), outputSegment * 6);
+      normals.set(lineNormals.primary.subarray(offset, offset + 6), outputSegment * 6);
+      alternateNormals.set(lineNormals.alternate.subarray(offset, offset + 6), outputSegment * 6);
+      colorCodes.push(surface.colorCode);
       outputSegment++;
     }
   }
-  return outputSegment === selectedSegments
-    ? { positions, normals, alternateNormals, colorCodes }
-    : {
-      positions: positions.slice(0, outputSegment * 6),
-      normals: normals.slice(0, outputSegment * 6),
-      alternateNormals: alternateNormals.slice(0, outputSegment * 6), colorCodes,
-    };
+  return { positions, normals, alternateNormals, colorCodes };
 }
 /** Undo may remove newly acquired but now unused files without invalidating live parts. */
 export function sameSceneSources(previous: ImportedModel, next: ImportedModel): boolean {
