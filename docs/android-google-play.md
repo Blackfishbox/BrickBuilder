@@ -1,5 +1,40 @@
 # Standalone Android and Google Play preparation
 
+## Background instruction PDF exports
+
+Both instruction PDF exports use the app-local `PdfExport` Capacitor plugin and
+a user-started, non-exported `dataSync` foreground service. The service shows
+progress and a cancel action, holds a bounded partial CPU wake lock (not a screen
+wake lock), and keeps the WebView's JavaScript timers and renderer eligible to
+run while the activity is paused. It stops after success, cancellation, errors,
+activity destruction, task removal, or a one-hour timeout. It is not restarted
+after process death and never starts at boot.
+
+Android 13+ may request notification permission on the first export. Declining
+does not prevent the service from running, but Android may show it only in the
+active-apps/task-manager UI. File creation and writing finish before the service
+releases its wake lock. Sharing waits until the activity resumes; a retry reuses
+the prepared local PDF rather than rebuilding it.
+
+**Play Console:** declare the `FOREGROUND_SERVICE_DATA_SYNC` use case as
+user-initiated file export/local file processing in the foreground-service
+permissions declaration, including any demonstration evidence requested by
+Google. These are local operations: no model is uploaded for background export.
+The manifest also declares `FOREGROUND_SERVICE`, `WAKE_LOCK` and
+`POST_NOTIFICATIONS`. No battery-optimization exemption is requested.
+
+This is best-effort background execution, not a persistent native rendering job.
+Force-stop, process/renderer death, OEM battery restrictions, or Android's
+foreground-service quota can interrupt an export. Graphics-context loss fails
+explicitly instead of sharing blank or stale PDF images. Browser/PWA exports do
+not use this Android service and cannot promise screen-off execution.
+
+Device verification for **both** PDF variants: export a multi-page model, switch
+to another app, turn the screen off, return, and inspect the finished PDF.
+Check notification cancellation, denied notification permission, and repeated
+exports; the foreground notification and wake lock must not remain after the
+job ends. Automated web tests do not establish this native-device behavior.
+
 The GitHub **`main` branch is the only Android release source**. Every push to
 `main` starts the Google Play workflow; after the required checks, it builds a
 signed AAB and submits it only to the **closed `alpha` test** using the Google

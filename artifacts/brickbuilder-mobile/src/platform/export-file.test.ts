@@ -58,6 +58,19 @@ describe("local Android exports", () => {
     await expect(sharePreparedExport(prepared)).rejects.toThrow("No app can open this file");
   });
 
+  it("removes a partial PDF cache file when an Android export is cancelled during writing", async () => {
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    const controller = new AbortController();
+    vi.mocked(Filesystem.writeFile).mockImplementationOnce(async () => {
+      controller.abort();
+      return { uri: "file:///cache/partial.pdf" };
+    });
+    await expect(prepareExportFile(new Uint8Array(400_000), "Instructions.pdf", "application/pdf", controller.signal))
+      .rejects.toThrow();
+    expect(Filesystem.deleteFile).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("Instructions.pdf") }));
+    expect(Share.share).not.toHaveBeenCalled();
+  });
+
   it("reopens exact multi-megabyte SVG bytes after a paused native append", async () => {
     vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
     const fixture = largeSvgModel(80_001);

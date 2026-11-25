@@ -170,6 +170,12 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     return {
       image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight) {
         signal?.throwIfAborted();
+        const checkContext = () => {
+          if (renderer.getContext?.()?.isContextLost?.()) {
+            throw Object.assign(new Error("PDF_WEBGL_CONTEXT_LOST"), { code: "PDF_WEBGL_CONTEXT_LOST" });
+          }
+        };
+        checkContext();
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
         const renderSize = fitAspect ? studioRenderSize(fitAspect) : INSTRUCTION_RENDER_SIZE;
@@ -237,6 +243,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           fitStudioCamera(camera, fitBounds, renderSize.width / renderSize.height, minimumFrameHeight);
         }
         renderer.render(scene, camera);
+        checkContext();
         const context = output.getContext("2d");
         if (!context) throw new Error("PDF-Bild konnte nicht zusammengesetzt werden.");
         context.drawImage(renderer.domElement, 0, 0);
@@ -248,7 +255,9 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           drawInstructionOutlines(context, camera, instructionGroupFrames(groups, highlightOccurrences, assembly.matrixWorld),
             renderSize.width, renderSize.height);
         }
-        return output.toDataURL("image/png");
+        const image = output.toDataURL("image/png");
+        checkContext();
+        return image;
       },
       dispose,
     };

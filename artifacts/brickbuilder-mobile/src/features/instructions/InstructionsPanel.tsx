@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model";
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
@@ -365,6 +366,11 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           <span>{retryingShare ? t("instruction.retryingShare") : t("instruction.exporting", { done: exporting!.done, total: exporting!.total })}</span>
           {!retryingShare && <div className="ins-bar"><i style={{ transform: `scaleX(${exporting!.total ? exporting!.done / exporting!.total : 0})` }} /></div>}
           {!retryingShare && <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">{t("inventory.cancel")}</button>}
+        </div>
+      )}
+      {exporting && Capacitor.getPlatform() === "android" && (
+        <div className="ins-banner" role="note">
+          <Info size={15} /><span>{t("instruction.background.note")}</span>
         </div>
       )}
       {exportError && (

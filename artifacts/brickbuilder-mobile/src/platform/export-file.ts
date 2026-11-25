@@ -20,7 +20,8 @@ export async function sharePreparedExport(prepared: PreparedExport): Promise<voi
 }
 
 /** Write an export once and retain a reusable local share target for retries. */
-export async function prepareExportFile(bytes: ByteSource, filename: string, mime: string): Promise<PreparedExport> {
+export async function prepareExportFile(bytes: ByteSource, filename: string, mime: string, signal?: AbortSignal): Promise<PreparedExport> {
+  signal?.throwIfAborted();
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await import("@capacitor/filesystem");
     const { Share } = await import("@capacitor/share");
@@ -31,6 +32,7 @@ export async function prepareExportFile(bytes: ByteSource, filename: string, mim
     const append = async (chunk: Uint8Array) => {
       let offset = 0;
       while (offset < chunk.length) {
+        signal?.throwIfAborted();
         const count = Math.min(chunkSize - used, chunk.length - offset);
         pending.set(chunk.subarray(offset, offset + count), used);
         used += count; offset += count;
@@ -48,6 +50,7 @@ export async function prepareExportFile(bytes: ByteSource, filename: string, mim
     };
     try {
       for await (const chunk of byteChunks(bytes)) await append(chunk);
+      signal?.throwIfAborted();
       if (!created || used) {
         let binary = "";
         for (let i = 0; i < used; i += 8192) binary += String.fromCharCode(...pending.subarray(i, Math.min(used, i + 8192)));
@@ -59,6 +62,7 @@ export async function prepareExportFile(bytes: ByteSource, filename: string, mim
         else await Filesystem.appendFile({ path, data, directory: Directory.Cache });
         created = true;
       }
+      signal?.throwIfAborted();
     } catch (error) {
       if (created) {
         try { await Filesystem.deleteFile({ path, directory: Directory.Cache }); } catch { /* Keep the original export error. */ }

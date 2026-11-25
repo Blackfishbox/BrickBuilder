@@ -807,28 +807,16 @@ function App() {
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
           onExportPDF={async (plan, onProgress, signal, highlight) => {
-            const [{ exportInstructionPDF }, { prepareExportFile }] = await Promise.all([
-              import('@/features/instructions/pdf'), import('@/platform/export-file'),
-            ]);
+            const { exportInstructionPdfFile } = await import('@/platform/instruction-pdf-export');
             instructionExportRef.current = null;
-            const bytes = await exportInstructionPDF(editor.document, plan, { onProgress, signal, highlight, locale });
-            signal.throwIfAborted();
-            const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
-            const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");
-            instructionExportRef.current = await prepareExportFile(bytes, `${name}-${t("instruction.pdf.filename")}.pdf`, "application/pdf");
-            await sharePreparedExport(instructionExportRef.current);
+            await exportInstructionPdfFile({ document: editor.document, plan, onProgress, signal, highlight, locale,
+              onPrepared: file => { instructionExportRef.current = file; } });
           }}
           onExportStudioPDF={async (plan, onProgress, signal, highlight) => {
-            const [{ exportStudioLayoutPDF }, { prepareExportFile }] = await Promise.all([
-              import('@/features/instructions/studio-pdf'), import('@/platform/export-file'),
-            ]);
+            const { exportInstructionPdfFile } = await import('@/platform/instruction-pdf-export');
             instructionExportRef.current = null;
-            const bytes = await exportStudioLayoutPDF(editor.document, plan, { onProgress, signal, highlight, locale });
-            signal.throwIfAborted();
-            const projectName = isGeneratedProjectName(editor.document.name) ? t("project.new") : editor.document.name;
-            const name = projectName.replace(/[^a-zA-Z0-9_-]/g, "_") || t("project.new");
-            instructionExportRef.current = await prepareExportFile(bytes, `${name}-Studio-Layout.pdf`, "application/pdf");
-            await sharePreparedExport(instructionExportRef.current);
+            await exportInstructionPdfFile({ document: editor.document, plan, onProgress, signal, highlight, locale, studio: true,
+              onPrepared: file => { instructionExportRef.current = file; } });
           }}
           onRetryExport={async () => {
             const prepared = instructionExportRef.current;
