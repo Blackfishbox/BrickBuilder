@@ -453,8 +453,49 @@ it("exports the Studio custom paper size using its configured units and orientat
   const mediaBox = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(new TextDecoder().decode(bytes));
 
   expect(mediaBox).not.toBeNull();
-  expect(Number(mediaBox![1])).toBeCloseTo(1263, 1);
-  expect(Number(mediaBox![2])).toBeCloseTo(892.5, 1);
+  expect(Number(mediaBox![1])).toBeCloseTo(1684, 1);
+  expect(Number(mediaBox![2])).toBeCloseTo(1190, 1);
   expect(renderer.dispose).toHaveBeenCalledOnce();
+});
+
+it("exports nested Studio slots, source camera framing, and separately numbered callouts", async () => {
+  const source = `${sourceText}\n1 0 80 0 0 1 0 0 0 1 0 0 0 1 3004.dat\n0 STEP`;
+  const xml = `<Instruction><GlobalSetting><PageSetup><PaperType>Custom</PaperType>
+    <LengthUnit>Pixels</LengthUnit><CustomSize>595.2756 841.88983</CustomSize><IsPortrait>False</IsPortrait>
+    <Margins>10 10 10 10</Margins></PageSetup><GlobalStyle>
+    <Page><Colors IsUseLineSeparatorColumns="True" LineSeperatorColor="0:0:0:1" LineSeperatorThickness="4"/></Page>
+    <StepNumber><StepNumber FontSize="60"/></StepNumber><PartsList IsVisible="True"/>
+    <StepItemLayout><StepCompLayout><LeftTop>
+    <StepCompLayoutElem ComponentT="PartsList" Padding="8 8"/>
+    <StepCompLayoutElem ComponentT="StepNumber" Padding="8 8"/></LeftTop></StepCompLayout></StepItemLayout>
+    </GlobalStyle></GlobalSetting><Pages><Page template="OneByOne" resizeBars="True -1 -1 0.5">
+    <Slot refResizeBarRight="0"><Step SerializedIndex="0">
+    <StepPreview cameraAngle="-0.6154797 0.7853982" modelAngle="0 0 0" cameraScale="170"/></Step></Slot>
+    <Slot refResizeBarLeft="0"><Step SerializedIndex="2">
+    <StepPreview cameraAngle="-3.7570724 2.3561945" modelAngle="0 0 0" cameraScale="170"/>
+    <CallOut><CallOutItemData Rect="0.25 0.2 0.2 0.4" IsUseGlobalStyle="True">
+    <CallOutStepItemData><Step SerializedIndex="1"/></CallOutStepItemData>
+    </CallOutItemData></CallOut></Step></Slot></Page></Pages></Instruction>`;
+  const document = createEmptyDocument("Nested layout regression");
+  document.imported = { version: 1, format: "io", sourceName: "regression.io", sourceText: source,
+    ...parseLDraw(source), resources: {}, legalDocuments: [] };
+  document.instructions = readStudioInstructions(xml, sourceInstructionPlan(document.imported));
+  const png = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+  const renderer = { image: vi.fn<InstructionImageRenderer["image"]>(() => png), dispose: vi.fn() };
+  const parts: string[] = [];
+  const bytes = await exportStudioLayoutPDF(document, document.instructions, {}, async () => renderer,
+    async (_doc, part) => { parts.push(part.number); return png; });
+  const commands = pdfCommands(bytes);
+  expect(parts).toEqual(["LDraw 3004", "LDraw 3003", "LDraw 3004"]);
+  expect(commands).toContain("(2) Tj");
+  expect(commands).not.toContain("(3) Tj");
+  expect(commands).not.toContain("Teile in diesem Schritt");
+  expect(renderer.image.mock.calls.filter(call => call[5] !== undefined)).toHaveLength(2);
+  expect(renderer.image.mock.calls[0][1].rotation).not.toEqual([0, 0, 0]);
+  // jsPDF transformation matrices use PDF points, not the document's mm units.
+  const flips = [...commands.matchAll(/-1\.?0* 0\.?0* 0\.?0* 1\.?0* ([\d.]+) 0\.?0* cm/g)];
+  expect(flips).toHaveLength(2);
+  expect(Number(flips[1][1])).toBeGreaterThan(842);
+  expect(document.instructions.studioLayout!.sourceXml).toBe(xml);
 });
 

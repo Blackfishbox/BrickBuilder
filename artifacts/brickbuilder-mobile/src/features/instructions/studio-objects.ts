@@ -125,10 +125,13 @@ export function studioBufferExchangeArrows(step: StudioNode, nodes: StudioNode[]
     preview?.attributes.DefaultCameraControlInfo_cameraAngle, 2) ?? [-Math.PI / 6, Math.PI / 4];
   const target = studioVector(preview?.attributes.TargetPos ??
     preview?.attributes.DefaultCameraControlInfo_TargetPos, 3) ?? [0, 0, 0];
-  const phi = Math.max(0.001, Math.min(Math.PI - 0.001, Math.PI / 2 + cameraAngle[0]));
+  // Studio orbits can cross either pole; clamping flips underside views and arrows.
+  const phi = Math.PI / 2 + cameraAngle[0];
   const camera = new OrthographicCamera();
-  camera.position.set(Math.sin(phi) * Math.sin(cameraAngle[1]), Math.cos(phi),
-    Math.sin(phi) * Math.cos(cameraAngle[1]));
+  camera.position.set(Math.sin(phi) * Math.sin(Math.PI - cameraAngle[1]), Math.cos(phi),
+    Math.sin(phi) * Math.cos(Math.PI - cameraAngle[1]));
+  camera.up.set(-Math.cos(phi) * Math.sin(Math.PI - cameraAngle[1]), Math.sin(phi),
+    -Math.cos(phi) * Math.cos(Math.PI - cameraAngle[1]));
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld(true);
   const inverseModelRotation = new Quaternion().setFromEuler(new Euler(...modelAngle as [number, number, number])).invert();

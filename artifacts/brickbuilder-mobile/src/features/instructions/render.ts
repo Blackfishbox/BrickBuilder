@@ -76,7 +76,7 @@ function configureInstructionEdges(root: Group, width: number, height: number): 
 
 export interface InstructionImageRenderer {
   image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>, fitAspect?: number,
-    modelArrows?: readonly StudioModelArrow[]): string;
+    modelArrows?: readonly StudioModelArrow[], minimumFrameHeight?: number): string;
   dispose(): void;
 }
 
@@ -168,7 +168,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds, fitAspect, modelArrows = []) {
+      image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight) {
         signal?.throwIfAborted();
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
@@ -234,7 +234,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           for (const arrowPoint of studioModelArrowPoints(modelArrows, center, rotation)) {
             fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           }
-          fitStudioCamera(camera, fitBounds, renderSize.width / renderSize.height);
+          fitStudioCamera(camera, fitBounds, renderSize.width / renderSize.height, minimumFrameHeight);
         }
         renderer.render(scene, camera);
         const context = output.getContext("2d");

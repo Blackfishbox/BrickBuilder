@@ -122,7 +122,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     const rotationNormal = new Matrix3();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds, fitAspect, modelArrows = []) {
+      image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight) {
         signal?.throwIfAborted();
         const renderSize = fitAspect ? studioRenderSize(fitAspect) : size;
         width = renderSize.width; height = renderSize.height;
@@ -147,7 +147,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           for (const arrowPoint of studioModelArrowPoints(
             modelArrows, center, step.rotation ?? [0, 0, 0],
           )) fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
-          fitStudioCamera(camera, fitBounds, width / height);
+          fitStudioCamera(camera, fitBounds, width / height, minimumFrameHeight);
         }
         const projected: { points: number[]; depth: number; color: string; alpha: number }[] = [];
         const highlighted = new Set<string>();

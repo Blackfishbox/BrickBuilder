@@ -38,10 +38,10 @@ export function applyPdfStepCamera(camera: OrthographicCamera, radius: number, s
 }
 
 /** Bounds are in camera space, so tilted models fill even narrow Studio slots. */
-export function fitStudioCamera(camera: OrthographicCamera, bounds: Box3, aspect: number): void {
+export function fitStudioCamera(camera: OrthographicCamera, bounds: Box3, aspect: number, minimumHeight = 0): void {
   if (bounds.isEmpty()) return;
   const center = bounds.getCenter(new Vector3()), size = bounds.getSize(new Vector3());
-  const height = Math.max(size.y, size.x / aspect, 0.01) * 1.06;
+  const height = Math.max(Math.max(size.y, size.x / aspect, 0.01) * 1.06, minimumHeight);
   camera.zoom = 1;
   camera.left = center.x - height * aspect / 2;
   camera.right = center.x + height * aspect / 2;
