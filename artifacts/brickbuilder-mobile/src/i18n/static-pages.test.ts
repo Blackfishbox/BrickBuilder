@@ -47,7 +47,7 @@ it.each(pages)("defaults to English and switches $file to German", ({ file, engl
   }
 });
 
-it("keeps the Android privacy contact email visible after switching languages", () => {
+it("keeps the privacy contact email visible after switching languages", () => {
   const dom = new JSDOM(readFileSync(new URL("../../public/privacy.html", import.meta.url), "utf8"), {
     runScripts: "dangerously",
     url: "https://brickbuilder.test/",
@@ -64,6 +64,29 @@ it("keeps the Android privacy contact email visible after switching languages", 
     expect(document.documentElement.lang).toBe("de");
     expect(email.isConnected).toBe(true);
     expect(email.textContent).toBe("support@blackfishbox.de");
+  } finally {
+    dom.window.close();
+  }
+});
+
+it("distinguishes automatic PWA geometry requests from optional Android downloads", () => {
+  const dom = new JSDOM(readFileSync(new URL("../../public/privacy.html", import.meta.url), "utf8"), {
+    url: "https://brickbuilder.test/",
+  });
+  try {
+    const { document } = dom.window;
+    const english = document.querySelector("main[data-locale='en']")!.textContent!;
+    const german = document.querySelector("main[data-locale='de']")!.textContent!;
+
+    expect(english).toContain("the PWA automatically requests them");
+    expect(english).toContain("There is no setting in the PWA to turn off these requests");
+    expect(english).toContain("Online geometry loading is disabled by default");
+    expect(english).not.toContain("This Android version");
+
+    expect(german).toContain("fordert die PWA sie automatisch");
+    expect(german).toContain("In der PWA gibt es keine Einstellung, um diese Anfragen zu deaktivieren");
+    expect(german).toContain("Das Online-Nachladen von Geometrien ist standardmäßig deaktiviert");
+    expect(german).not.toContain("Die hier beschriebene Android-Fassung");
   } finally {
     dom.window.close();
   }
