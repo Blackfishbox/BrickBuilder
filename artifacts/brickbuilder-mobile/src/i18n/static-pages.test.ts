@@ -92,6 +92,24 @@ it("distinguishes automatic PWA geometry requests from optional Android download
   }
 });
 
+it("keeps the contact details close to section two", () => {
+  const dom = new JSDOM(readFileSync(new URL("../../public/privacy.html", import.meta.url), "utf8"), {
+    url: "https://brickbuilder.test/",
+  });
+  try {
+    const { document, getComputedStyle } = dom.window;
+    const contact = document.querySelector("body > main")!;
+    const englishPolicy = document.querySelector("main[data-locale='en']")!;
+    const germanPolicy = document.querySelector("main[data-locale='de']")!;
+
+    expect(getComputedStyle(contact).paddingBottom).toBe("0px");
+    expect(getComputedStyle(englishPolicy).paddingTop).toBe("0px");
+    expect(getComputedStyle(germanPolicy).paddingTop).toBe("0px");
+  } finally {
+    dom.window.close();
+  }
+});
+
 it("uses the requested privacy labels and emphasizes the API URL", () => {
   const html = readFileSync(new URL("../../public/privacy.html", import.meta.url), "utf8");
   const dom = new JSDOM(html, { url: "https://brickbuilder.test/" });
