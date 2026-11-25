@@ -19,6 +19,7 @@ import { effectiveInstructions } from "./model";
 import { translate, type Locale } from "../../i18n/messages";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { studioCalloutStep, studioFrameHeight, studioPdfStep, studioResizeSlots, type NativeSlotRect } from "./studio-native-layout";
+import { drawStudioBom, planStudioBom, type StudioBomPage } from "./studio-bom";
 
 type XmlRecord = Record<string, unknown>;
 type ComponentPlacement = "LeftTop" | "LeftBottom" | "RightTop" | "RightBottom" | "None";
@@ -766,7 +767,7 @@ export async function exportStudioLayoutPDF(
   const plan = effectiveInstructions({ ...document, instructions: input });
   if (plan.studioLayout) plan.studioLayout = { sourceXml: applyStudioLayout(plan.studioLayout), edits: [] };
   const locale = options.locale ?? "de";
-  const { pages, size, margins, scale, imageData, styles } =
+  const { pages: sourcePages, size, margins, scale, imageData, styles } =
     studioPages(document, plan, locale, options.previewPageIndex);
   const nodes = studioNodes(plan.studioLayout!.sourceXml);
   const pageNodes = nodes.filter(node => node.name === "Page" && nodes[node.parent ?? -1]?.name === "Pages");
@@ -787,7 +788,6 @@ export async function exportStudioLayoutPDF(
     }
   };
   options.signal?.throwIfAborted();
-  options.onProgress?.(0, pages.length);
   const renderer = await createRenderer(document, options.signal);
   try {
     const [top, right, bottom, left] = margins;
@@ -805,6 +805,42 @@ export async function exportStudioLayoutPDF(
     const pageHeight = pdf.internal.pageSize.getHeight();
     const contentX = left, contentWidth = Math.max(20, pageWidth - left - right);
     const contentHeight = Math.max(30, pageHeight - top - bottom);
+    type ExportPage = StudioPdfPage & { boms: { node: StudioNode; page: StudioBomPage }[] };
+    const pages: ExportPage[] = [];
+    const seenBomIds = new Set<string>();
+    for (const sourcePage of sourcePages) {
+      options.signal?.throwIfAborted();
+      const firstPage: ExportPage = { ...sourcePage, boms: [] };
+      pages.push(firstPage);
+      const nativePage = pageNodes[sourcePage.sourceIndex];
+      const slots = studioChildren(nativePage, nodes, "Slot");
+      const boms = [...studioChildren(nativePage, nodes, "BOM"),
+        ...slots.flatMap(slot => studioChildren(slot, nodes, "BOM"))];
+      for (const bom of boms) {
+        if (bom.attributes.IsVisible?.toLowerCase() === "false") continue;
+        const id = bom.attributes.id;
+        // Studio may persist additional page markers for the same auto-flow list.
+        if (id && seenBomIds.has(id)) continue;
+        if (id) seenBomIds.add(id);
+        const slotIndex = slots.findIndex(slot => slot.id === bom.parent);
+        const explicit = sourcePage.slotRects?.[slotIndex];
+        const normalized = sourcePage.normalizedSlots?.[slotIndex];
+        const inventoryWidth = pageWidth - left - right, inventoryHeight = pageHeight - top - bottom;
+        const rect: StudioRect = explicit ? explicit.map(value => value * scale) as StudioRect
+          : normalized ? [left + normalized[0] * inventoryWidth, top + normalized[1] * inventoryHeight,
+            normalized[2] * inventoryWidth, normalized[3] * inventoryHeight]
+            : [left, top, inventoryWidth, inventoryHeight];
+        const inventoryPages = planStudioBom(pdf, document, bom, nodes, rect, scale, locale, options.signal);
+        firstPage.boms.push({ node: bom, page: inventoryPages[0] });
+        for (const page of inventoryPages.slice(1)) {
+          pages.push({ ...sourcePage, steps: [], images: [], boms: [{ node: bom, page }] });
+        }
+      }
+      if (boms.length && !firstPage.boms.length && !sourcePage.steps.length && !sourcePage.images.length) {
+        pages.splice(pages.indexOf(firstPage), 1);
+      }
+    }
+    options.onProgress?.(0, pages.length);
     for (const [pageIndex, sourcePage] of pages.entries()) {
       options.signal?.throwIfAborted();
       if (pageIndex) pdf.addPage(size, size[0] > size[1] ? "landscape" : "portrait");
@@ -991,6 +1027,9 @@ export async function exportStudioLayoutPDF(
       }
       for (const arrow of studioChildren(nativePage, nodes, "Arrow")) {
         queuePageObject(arrow, () => drawPageArrows(pdf, nativePage, 0, 0, arrow));
+      }
+      for (const bom of sourcePage.boms) {
+        queuePageObject(bom.node, () => drawStudioBom(pdf, document, bom.page, locale, options.signal, renderPart));
       }
       for (const { value: draw } of orderStudioPageObjects(pageObjects)) {
         options.signal?.throwIfAborted();
