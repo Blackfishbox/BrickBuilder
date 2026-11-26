@@ -1,6 +1,8 @@
 import { yieldPdfExecution } from "../../platform/pdf-background";
 import { XMLParser } from "fast-xml-parser";
 import { GState, jsPDF } from "jspdf";
+import { collectByteSource } from "../../types/byte-source";
+import { instructionPdfChunks } from "./pdf-output";
 import type { BuilderDocument } from "../editor/model";
 import { readZip } from "../formats/zip";
 import {
@@ -765,13 +767,17 @@ async function renderStudioPartList(
 }
 
 /** Builds one PDF page for each imported Studio page and uses its original step ordering and page setup. */
-export async function exportStudioLayoutPDF(
+export async function exportStudioLayoutPDF(...args: Parameters<typeof exportStudioLayoutPdfChunks>): Promise<Uint8Array> {
+  return collectByteSource(await exportStudioLayoutPdfChunks(...args));
+}
+
+export async function exportStudioLayoutPdfChunks(
   document: BuilderDocument,
   input: InstructionPlan,
   options: InstructionPdfOptions & { previewPageIndex?: number } = {},
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createExportInstructionRenderer,
   renderPart = studioPartImage,
-): Promise<Uint8Array> {
+): Promise<AsyncIterable<Uint8Array>> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   if (plan.studioLayout) plan.studioLayout = { sourceXml: applyStudioLayout(plan.studioLayout), edits: [] };
   const locale = options.locale ?? "de";
@@ -1057,7 +1063,7 @@ export async function exportStudioLayoutPDF(
       options.onProgress?.(pageIndex + 1, pages.length);
       await yieldPdfExecution();
     }
-    return new Uint8Array(pdf.output("arraybuffer"));
+    return instructionPdfChunks(pdf, options.signal);
   } finally {
     renderer.dispose();
   }

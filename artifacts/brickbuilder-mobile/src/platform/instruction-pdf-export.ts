@@ -4,6 +4,7 @@ import { translate, type Locale } from "../i18n/messages";
 import { isGeneratedProjectName } from "../i18n/project-name";
 import { prepareExportFile, sharePreparedExport, type PreparedExport } from "./export-file";
 import { withPdfBackgroundExport } from "./pdf-background";
+import type { ByteSource } from "../types/byte-source";
 
 export async function exportInstructionPdfFile(options: {
   document: BuilderDocument; plan: InstructionPlan; locale: Locale; signal: AbortSignal;
@@ -14,9 +15,9 @@ export async function exportInstructionPdfFile(options: {
   const { document, plan, locale, signal, highlight, onProgress, studio, onPrepared } = options;
   const prepared = await withPdfBackgroundExport(locale, signal, onProgress, async (jobSignal, progress) => {
     const exportPdf = studio
-      ? (await import("../features/instructions/studio-pdf")).exportStudioLayoutPDF
-      : (await import("../features/instructions/pdf")).exportInstructionPDF;
-    let bytes: Uint8Array;
+      ? (await import("../features/instructions/studio-pdf")).exportStudioLayoutPdfChunks
+      : (await import("../features/instructions/pdf")).exportInstructionPdfChunks;
+    let bytes: ByteSource;
     try { bytes = await exportPdf(document, plan, { signal: jobSignal, onProgress: progress, highlight, locale }); }
     catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "PDF_WEBGL_CONTEXT_LOST") {

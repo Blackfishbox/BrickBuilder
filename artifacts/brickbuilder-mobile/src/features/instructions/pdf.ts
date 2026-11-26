@@ -1,4 +1,6 @@
 import { jsPDF } from "jspdf";
+import { collectByteSource } from "../../types/byte-source";
+import { instructionPdfChunks } from "./pdf-output";
 import { yieldPdfExecution } from "../../platform/pdf-background";
 import type { BuilderDocument } from "../editor/model";
 import { effectiveInstructions } from "./model";
@@ -22,14 +24,18 @@ export function instructionParts(document: BuilderDocument, ids: string[]): stri
   return instructionPartGroups(document, ids).map(entry => `${entry.count} × ${entry.number} · ${instructionColorLabel(entry.colorName)}`);
 }
 
-export async function exportInstructionPDF(
+export async function exportInstructionPDF(...args: Parameters<typeof exportInstructionPdfChunks>): Promise<Uint8Array> {
+  return collectByteSource(await exportInstructionPdfChunks(...args));
+}
+
+export async function exportInstructionPdfChunks(
   document: BuilderDocument,
   input: InstructionPlan,
   options: InstructionPdfOptions = {},
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createExportInstructionRenderer,
   renderPart = instructionPartImage,
   renderCallout?: typeof import("./callouts").instructionCalloutImage,
-): Promise<Uint8Array> {
+): Promise<AsyncIterable<Uint8Array>> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   const locale = options.locale ?? "de";
   options.signal?.throwIfAborted();
@@ -112,6 +118,6 @@ export async function exportInstructionPDF(
       pdf.text(`BrickBuilder · ${document.name}`, 16, 290, { maxWidth: 150 });
       pdf.text(`${page} / ${count}`, 194, 290, { align: "right" });
     }
-    return new Uint8Array(pdf.output("arraybuffer"));
+    return instructionPdfChunks(pdf, options.signal);
   } finally { renderer.dispose(); }
 }

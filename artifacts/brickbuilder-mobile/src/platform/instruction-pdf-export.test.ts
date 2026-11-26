@@ -7,8 +7,8 @@ const mocks = vi.hoisted(() => ({
   share: vi.fn(async () => {}),
   protect: vi.fn(),
 }));
-vi.mock("../features/instructions/pdf", () => ({ exportInstructionPDF: mocks.normal }));
-vi.mock("../features/instructions/studio-pdf", () => ({ exportStudioLayoutPDF: mocks.studio }));
+vi.mock("../features/instructions/pdf", () => ({ exportInstructionPdfChunks: mocks.normal }));
+vi.mock("../features/instructions/studio-pdf", () => ({ exportStudioLayoutPdfChunks: mocks.studio }));
 vi.mock("./export-file", () => ({ prepareExportFile: mocks.prepare, sharePreparedExport: mocks.share }));
 vi.mock("./pdf-background", () => ({ withPdfBackgroundExport: mocks.protect }));
 import { exportInstructionPdfFile } from "./instruction-pdf-export";
@@ -43,6 +43,17 @@ it("does not save or share stale images after a lost graphics context", async ()
     document: createEmptyDocument("Model"), plan: { version: 1, steps: [] }, locale: "de",
     signal: new AbortController().signal, onProgress: vi.fn(), highlight: false, onPrepared: vi.fn(),
   })).rejects.toThrow("Es wurde keine unvollständige PDF geteilt");
+  expect(mocks.prepare).not.toHaveBeenCalled();
+  expect(mocks.share).not.toHaveBeenCalled();
+});
+
+it("does not prepare or share a zero-byte file after serialization fails", async () => {
+  mocks.protect.mockImplementationOnce(async (_locale, signal, progress, operation) => operation(signal, progress));
+  mocks.studio.mockRejectedValueOnce(new RangeError("Invalid string length"));
+  await expect(exportInstructionPdfFile({
+    document: createEmptyDocument("Model"), plan: { version: 1, steps: [] }, locale: "en",
+    signal: new AbortController().signal, onProgress: vi.fn(), highlight: false, studio: true, onPrepared: vi.fn(),
+  })).rejects.toThrow("Invalid string length");
   expect(mocks.prepare).not.toHaveBeenCalled();
   expect(mocks.share).not.toHaveBeenCalled();
 });
