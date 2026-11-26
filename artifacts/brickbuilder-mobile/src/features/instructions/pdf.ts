@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { yieldPdfExecution } from "../../platform/pdf-background";
 import type { BuilderDocument } from "../editor/model";
 import { effectiveInstructions } from "./model";
 import type { InstructionPlan } from "./types";
@@ -101,7 +102,7 @@ export async function exportInstructionPDF(
       }
       options.onProgress?.(index + 1, plan.steps.length);
       // Give Android a chance to repaint progress and deliver cancellation.
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await yieldPdfExecution();
     }
     const count = pdf.getNumberOfPages();
     for (let page = 1; page <= count; page++) {

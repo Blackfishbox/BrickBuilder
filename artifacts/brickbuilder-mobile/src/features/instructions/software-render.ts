@@ -1,3 +1,4 @@
+import { yieldPdfExecution } from "../../platform/pdf-background";
 import { Box3, Color, Euler, Matrix3, Matrix4, OrthographicCamera, Vector3 } from "three";
 import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
@@ -76,7 +77,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         });
         sourceEdgeSegments += edgeData.positions.length / 6;
       }
-      if (index % 12 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      if (index % 12 === 0) await yieldPdfExecution();
     }
     // Retain only read-only triangle arrays during preparation, not GPU resources.
     const localTriangles = new Map<BrickType, ArrayLike<number>>();

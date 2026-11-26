@@ -2,6 +2,7 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor
 import { translate, type Locale } from "../i18n/messages";
 
 interface PdfExportPlugin {
+  yieldExecution(): Promise<void>;
   start(options: { jobId: string; title: string; text: string; channel: string; cancel: string }): Promise<void>;
   update(options: { jobId: string; done: number; total: number; text: string }): Promise<void>;
   stop(options: { jobId: string; success: boolean; title: string; text: string }): Promise<void>;
@@ -11,6 +12,13 @@ interface PdfExportPlugin {
 }
 const native = registerPlugin<PdfExportPlugin>("PdfExport");
 let active = false;
+let rendering = false;
+
+/** Hidden WebView timers can be throttled even while a foreground service runs. */
+export async function yieldPdfExecution(): Promise<void> {
+  if (rendering) await native.yieldExecution();
+  else await new Promise<void>(resolve => setTimeout(resolve, 0));
+}
 
 /** Protect rendering AND the cache-file write; sharing must wait until the activity resumes. */
 export async function withPdfBackgroundExport<T>(
@@ -39,6 +47,7 @@ export async function withPdfBackgroundExport<T>(
         cancel: translate(locale, "instruction.background.cancel"),
       });
       started = true;
+      rendering = true;
     } catch {
       throw new Error(translate(locale, "instruction.background.unavailable"));
     }
@@ -54,6 +63,7 @@ export async function withPdfBackgroundExport<T>(
     });
     controller.signal.throwIfAborted();
     success = true;
+    rendering = false;
     await native.stop({
       jobId, success, title: translate(locale, "instruction.background.readyTitle"),
       text: translate(locale, "instruction.background.ready"),
@@ -69,6 +79,7 @@ export async function withPdfBackgroundExport<T>(
     } finally { controller.signal.removeEventListener("abort", cancelWait); }
     return result;
   } finally {
+    rendering = false;
     if (started && !stopped) {
       try { await native.stop({ jobId, success: false, title: "", text: "" }); }
       catch (error) { console.error("PDF background service cleanup failed", error); }

@@ -1,3 +1,4 @@
+import { yieldPdfExecution } from "../../platform/pdf-background";
 import { XMLParser } from "fast-xml-parser";
 import { GState, jsPDF } from "jspdf";
 import type { BuilderDocument } from "../editor/model";
@@ -1036,7 +1037,7 @@ export async function exportStudioLayoutPDF(
         await draw();
       }
       options.onProgress?.(pageIndex + 1, pages.length);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await yieldPdfExecution();
     }
     return new Uint8Array(pdf.output("arraybuffer"));
   } finally {

@@ -83,6 +83,7 @@ public final class PdfExportPlugin extends Plugin implements PdfExportService.Li
 
     @Override public void onStopped(String jobId, String reason) {
         WebView view = getBridge().getWebView();
+        if (view instanceof ExportWebView) ((ExportWebView) view).setExporting(false);
         if (Build.VERSION.SDK_INT >= 26 && rendererAdjusted) {
             view.setRendererPriorityPolicy(previousPriority, previousWaiveVisibility);
             rendererAdjusted = false;
@@ -98,6 +99,7 @@ public final class PdfExportPlugin extends Plugin implements PdfExportService.Li
 
     private void keepWebViewRunning() {
         WebView view = getBridge().getWebView();
+        if (view instanceof ExportWebView) ((ExportWebView) view).setExporting(true);
         view.onResume();
         view.resumeTimers();
         if (Build.VERSION.SDK_INT >= 26) {
@@ -108,6 +110,14 @@ public final class PdfExportPlugin extends Plugin implements PdfExportService.Li
             }
             view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         }
+    }
+
+    /** Queue the continuation on Android's looper, not a hidden-page JS timer. */
+    @PluginMethod public void yieldExecution(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (PdfExportService.isRunning()) call.resolve();
+            else call.reject("PDF_EXPORT_NOT_RUNNING");
+        });
     }
 
     @PluginMethod public void update(PluginCall call) {

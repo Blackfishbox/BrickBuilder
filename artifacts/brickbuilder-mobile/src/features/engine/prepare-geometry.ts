@@ -1,3 +1,4 @@
+import { yieldPdfExecution } from "../../platform/pdf-background";
 import type { ImportedModel } from "../formats/types";
 import { compilePart, hasCompiledPart, installCompiledPart, type Surface } from "./ldraw-geometry";
 import type { SceneBuildOptions } from "./imported-scene";
@@ -39,6 +40,6 @@ export async function prepareGeometry(model: ImportedModel, options: SceneBuildO
     options.signal?.throwIfAborted();
     compilePart(model, references[index], "16");
     options.onProgress?.(index + 1, references.length);
-    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    await yieldPdfExecution();
   }
 }

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { XMLParser } from "fast-xml-parser";
 const mock = vi.hoisted(() => ({
   platform: "android",
+  yieldExecution: vi.fn(async () => {}),
   stopped: undefined as undefined | ((event: { jobId: string; reason: string }) => void),
   start: vi.fn(async (_options: { jobId: string }) => {}),
   update: vi.fn(async () => {}),
@@ -20,7 +21,7 @@ vi.mock("@capacitor/core", () => ({
     },
   }),
 }));
-import { withPdfBackgroundExport } from "./pdf-background";
+import { withPdfBackgroundExport, yieldPdfExecution } from "./pdf-background";
 beforeEach(() => { vi.clearAllMocks(); mock.platform = "android"; });
 afterEach(() => { mock.stopped = undefined; vi.restoreAllMocks(); });
 
@@ -46,6 +47,26 @@ it("leaves browser exports unchanged and starts no native service", async () => 
   const operation = vi.fn(async (current: AbortSignal) => { expect(current).toBe(signal); return "pdf"; });
   expect(await withPdfBackgroundExport("en", signal, progress, operation)).toBe("pdf");
   expect(mock.start).not.toHaveBeenCalled();
+});
+
+it("yields through Android only while rendering, then restores browser scheduling", async () => {
+  await yieldPdfExecution();
+  expect(mock.yieldExecution).not.toHaveBeenCalled();
+  await withPdfBackgroundExport("en", new AbortController().signal, vi.fn(), async () => {
+    await yieldPdfExecution();
+    expect(mock.yieldExecution).toHaveBeenCalledOnce();
+  });
+  await yieldPdfExecution();
+  expect(mock.yieldExecution).toHaveBeenCalledOnce();
+});
+
+it("restores browser scheduling after an export error", async () => {
+  await expect(withPdfBackgroundExport("en", new AbortController().signal, vi.fn(), async () => {
+    await yieldPdfExecution();
+    throw new Error("render failed");
+  })).rejects.toThrow("render failed");
+  await yieldPdfExecution();
+  expect(mock.yieldExecution).toHaveBeenCalledOnce();
 });
 
 it("protects the cache write, releases the service, then waits to share until foreground", async () => {

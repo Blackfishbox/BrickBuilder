@@ -1,3 +1,4 @@
+import { yieldPdfExecution } from "../../platform/pdf-background";
 import {
   Box3, BufferAttribute, BufferGeometry, Color, DoubleSide, Group,
   InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh,
@@ -292,7 +293,7 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
   let slice = performance.now();
   const yieldFrame = async () => {
     if (performance.now() - slice >= 6) {
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      await yieldPdfExecution();
       slice = performance.now();
     }
     signal?.throwIfAborted();
