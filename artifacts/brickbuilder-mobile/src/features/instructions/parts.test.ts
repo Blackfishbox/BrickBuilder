@@ -15,6 +15,12 @@ const { pdfTexts } = vi.hoisted(() => ({ pdfTexts: [] as unknown[] }));
 vi.mock("jspdf", () => ({
   jsPDF: class {
     private pages = 1;
+    private destination?: { push(fragment: string): void };
+    __private__ = {
+      setCustomOutputDestination: (destination: { push(fragment: string): void }) => { this.destination = destination; },
+      resetCustomOutputDestination: () => { this.destination = undefined; },
+      buildDocument: () => { this.destination?.push("%PDF-1.4"); return ""; },
+    };
     setProperties() {} setDrawColor() {} setFillColor() {} setFont() {} setFontSize() {}
     setTextColor() {} roundedRect() {} addImage() {} setPage() {}
     addPage() { this.pages++; }
