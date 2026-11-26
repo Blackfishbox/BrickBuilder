@@ -3,11 +3,12 @@ import { yieldPdfExecution } from "../../platform/pdf-background";
 import type { BuilderDocument } from "../editor/model";
 import { effectiveInstructions } from "./model";
 import type { InstructionPlan } from "./types";
-import { createInstructionRenderer, type InstructionImageRenderer } from "./render";
+import { renderInstructionImage, type InstructionImageRenderer } from "./render";
+import { createExportInstructionRenderer } from "./export-renderer";
 import { instructionColorLabel, instructionPartGroups, instructionStepNumber } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { drawInstructionPartBox } from "./pdf-parts";
-import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
+import { exportInstructionCalloutImage, instructionHighlightIds } from "./callouts";
 import { translate, translatePlural, type Locale } from "../../i18n/messages";
 
 export interface InstructionPdfOptions {
@@ -25,15 +26,16 @@ export async function exportInstructionPDF(
   document: BuilderDocument,
   input: InstructionPlan,
   options: InstructionPdfOptions = {},
-  createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
+  createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createExportInstructionRenderer,
   renderPart = instructionPartImage,
-  renderCallout = instructionCalloutImage,
+  renderCallout?: typeof import("./callouts").instructionCalloutImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   const locale = options.locale ?? "de";
   options.signal?.throwIfAborted();
   options.onProgress?.(0, plan.steps.length);
   const renderer = await createRenderer(document, options.signal);
+  const calloutImage = renderCallout ?? ((doc, callout, signal) => exportInstructionCalloutImage(doc, callout, renderer, signal));
   try {
     const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
     pdf.setProperties({
@@ -52,11 +54,11 @@ export async function exportInstructionPDF(
       const firstPageParts = callouts.length ? 6 : 12;
       imageY += await drawInstructionPartBox(
         pdf, document, groups.slice(0, firstPageParts), imageY, options.signal, renderPart,
-        callouts.slice(0, 3), renderCallout, locale,
+        callouts.slice(0, 3), calloutImage, locale,
       ) + 4;
       step.partIds.forEach(id => visible.add(id));
       const highlightIds = options.highlight && index > 0 ? instructionHighlightIds(document, step) : undefined;
-      const image = renderer.image(visible, step, highlightIds);
+      const image = await renderInstructionImage(renderer, visible, step, highlightIds);
       pdf.addImage(image, image.startsWith("data:image/png") ? "PNG" : "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
       const continuationPage = (section: string) => {
@@ -93,12 +95,12 @@ export async function exportInstructionPDF(
       for (let offset = 3; offset < callouts.length; offset += 12) {
         const y = continuationPage(translate(locale, "instruction.pdf.subassemblies"));
         await drawInstructionPartBox(pdf, document, [], y, options.signal, renderPart,
-          callouts.slice(offset, offset + 12), renderCallout, locale);
+          callouts.slice(offset, offset + 12), calloutImage, locale);
       }
       for (let offset = firstPageParts; offset < groups.length; offset += 36) {
         y = continuationPage(translate(locale, "instruction.pdf.parts"));
         y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal,
-          renderPart, [], renderCallout, locale) + 4;
+          renderPart, [], calloutImage, locale) + 4;
       }
       options.onProgress?.(index + 1, plan.steps.length);
       // Give Android a chance to repaint progress and deliver cancellation.

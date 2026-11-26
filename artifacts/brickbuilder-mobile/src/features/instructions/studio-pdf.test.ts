@@ -54,6 +54,29 @@ function nativeFixture(calloutAttributes = "", arrowAttributes = "", extra = "",
   return { document, renderer, xml };
 }
 
+it("awaits the recoverable renderer for Studio models, native callouts and subassembly previews", async () => {
+  const { document, renderer } = nativeFixture();
+  document.instructions!.studioLayout!.sourceXml = document.instructions!.studioLayout!.sourceXml
+    .replace('<SubModelPreview IsVisible="False"/>', '<SubModelPreview IsVisible="True"/>');
+  document.imported!.instances.forEach((part, index) => { part.sourceOccurrence = [index, 0]; });
+  document.instructions!.edited = true;
+  document.instructions!.steps[1].callouts = [{ id: "preview", title: "Assembly", occurrence: [0] }];
+  const image = renderer.image(new Set(), { id: "fixture", title: "", notes: "", partIds: [] });
+  renderer.image.mockClear();
+  const imageAsync = vi.fn<NonNullable<InstructionImageRenderer["imageAsync"]>>(async () => {
+    await Promise.resolve();
+    return image;
+  });
+  const bytes = await exportStudioLayoutPDF(document, document.instructions!, {},
+    async () => ({ ...renderer, imageAsync }));
+  expect(bytes.length).toBeGreaterThan(1000);
+  expect(renderer.image).not.toHaveBeenCalled();
+  expect(imageAsync.mock.calls.length).toBeGreaterThanOrEqual(5);
+  expect(imageAsync.mock.calls.some(call => call[1].id === "preview" &&
+    call[0].has(document.imported!.instances[0].id))).toBe(true);
+  expect(renderer.dispose).toHaveBeenCalledOnce();
+});
+
 it("renders only the active Studio subassembly, then mounts every reused occurrence in its parent", async () => {
   const { document, renderer } = nativeFixture();
   const source = [

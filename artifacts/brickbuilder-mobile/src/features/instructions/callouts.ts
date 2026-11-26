@@ -2,6 +2,7 @@ import type { BuilderDocument } from "../editor/model";
 import { reuseGeometryCache } from "../engine/ldraw-geometry";
 import { ThumbnailQueue } from "../parts/thumbnails/queue";
 import { createSoftwareInstructionRenderer } from "./software-render";
+import { renderInstructionImage, type InstructionImageRenderer } from "./render";
 import type { InstructionCallout, InstructionStep } from "./types";
 
 type CalloutImageInput = { document: BuilderDocument; callout: InstructionCallout };
@@ -24,6 +25,18 @@ export function instructionHighlightIds(document: BuilderDocument, step: Instruc
     instructionCalloutPartIds(document, callout).forEach(id => ids.add(id));
   }
   return ids;
+}
+
+/** Export previews reuse the full-detail renderer instead of the software-only UI thumbnail path. */
+export async function exportInstructionCalloutImage(
+  document: BuilderDocument, callout: InstructionCallout, renderer: InstructionImageRenderer, signal?: AbortSignal,
+): Promise<string> {
+  signal?.throwIfAborted();
+  const ids = instructionCalloutPartIds(document, callout);
+  if (!ids.length) throw new Error("Die Baugruppe enthält keine Teile mehr.");
+  return renderInstructionImage(renderer, new Set(ids), {
+    id: callout.id, title: callout.title, notes: "", partIds: ids,
+  }, undefined, 4 / 3);
 }
 
 function calloutDocument(document: BuilderDocument, ids: string[]): BuilderDocument {

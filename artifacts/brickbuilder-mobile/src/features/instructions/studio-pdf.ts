@@ -8,8 +8,9 @@ import {
 } from "./parts";
 import { instructionPartImage } from "./part-images";
 import { studioPartImage } from "./studio-parts-image";
-import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
-import { createInstructionRenderer, type InstructionImageRenderer } from "./render";
+import { exportInstructionCalloutImage, instructionHighlightIds } from "./callouts";
+import { renderInstructionImage, type InstructionImageRenderer } from "./render";
+import { createExportInstructionRenderer } from "./export-renderer";
 import { applyStudioLayout, inspectStudioLayout, studioNodes, type StudioNode } from "./studio-layout";
 import {
   studioCalloutRect, studioChildren, studioModelRect, studioVector, supportedStudioArrow, supportedStudioCallout,
@@ -542,7 +543,7 @@ function paddingOf(style: StudioBoxStyle, scale: number): [number, number, numbe
     [number, number, number, number] ?? [0, 0, 0, 0];
 }
 
-function renderNativeCallouts(
+async function renderNativeCallouts(
   pdf: jsPDF, wrapper: StudioNode, nodes: StudioNode[], slot: StudioRect,
   document: BuilderDocument, plan: InstructionPlan, renderer: InstructionImageRenderer, globalStyle: XmlRecord | undefined,
   scale: number, locale: Locale, signal?: AbortSignal, onlyItem?: StudioNode,
@@ -599,7 +600,7 @@ function renderNativeCallouts(
       const renderStep = studioPdfStep(calloutStep, orientation?.attributes ?? preview?.attributes);
       const highlightIds = highlight && [...visible].some(id => !step.partIds.includes(id))
         ? new Set(step.partIds) : undefined;
-      fitImage(renderer.image(new Set(visible), studioCalloutStep(document, renderStep, [...visible]), highlightIds,
+      fitImage(await renderInstructionImage(renderer, new Set(visible), studioCalloutStep(document, renderStep, [...visible]), highlightIds,
         imageRect[2] / imageRect[3], [],
         studioFrameHeight(orientation?.attributes ?? preview?.attributes, imageRect[3], pdf.internal.pageSize.getHeight()),
         { transparentBackground: true, studioEdges: true, silhouetteHighlight: true }),
@@ -768,7 +769,7 @@ export async function exportStudioLayoutPDF(
   document: BuilderDocument,
   input: InstructionPlan,
   options: InstructionPdfOptions & { previewPageIndex?: number } = {},
-  createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
+  createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createExportInstructionRenderer,
   renderPart = studioPartImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
@@ -969,12 +970,12 @@ export async function exportStudioLayoutPDF(
           }
         }
         const [modelX, modelY, modelWidth, modelHeight] = studioModelRect(slot, occupied);
-        queuePageObject(modelPreview ?? nativeStep, () => {
+        queuePageObject(modelPreview ?? nativeStep, async () => {
           const modelArrows = nativeStep ? studioBufferExchangeArrows(nativeStep, nodes) : [];
           const cameraStep = studioPdfStep(step, modelPreview?.attributes);
           const renderStep = scope?.length && !step.camera
             ? studioCalloutStep(document, cameraStep, [...visible], scope) : cameraStep;
-          fitImage(renderer.image(visible, renderStep, highlightIds, modelWidth / modelHeight,
+          fitImage(await renderInstructionImage(renderer, visible, renderStep, highlightIds, modelWidth / modelHeight,
             modelArrows, step.camera ? undefined : studioFrameHeight(modelPreview?.attributes, modelHeight, pageHeight),
             { silhouetteHighlight: true, studioEdges: true }),
             modelX, modelY, modelWidth, modelHeight, pdf, renderStep !== step);
@@ -1002,7 +1003,7 @@ export async function exportStudioLayoutPDF(
             for (let calloutIndex = 0; calloutIndex < count; calloutIndex++) {
               const col = calloutIndex % 2, row = Math.floor(calloutIndex / 2);
               const thumbWidth = calloutWidth / 2, thumbHeight = calloutHeight / 2;
-              const thumb = await instructionCalloutImage(document, callouts[calloutIndex], options.signal ?? new AbortController().signal);
+              const thumb = await exportInstructionCalloutImage(document, callouts[calloutIndex], renderer, options.signal);
               options.signal?.throwIfAborted();
               const thumbX = calloutX + col * thumbWidth, thumbY = calloutY + row * thumbHeight;
               drawStyledBox(pdf, thumbX, thumbY, thumbWidth, thumbHeight, styles.callout, scale);

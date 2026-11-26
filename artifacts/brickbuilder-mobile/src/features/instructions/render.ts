@@ -87,15 +87,27 @@ export interface InstructionImageStyle {
 export interface InstructionImageRenderer {
   image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>, fitAspect?: number,
     modelArrows?: readonly StudioModelArrow[], minimumFrameHeight?: number, style?: InstructionImageStyle): string;
+  imageAsync?(...args: Parameters<InstructionImageRenderer["image"]>): Promise<string>;
   dispose(): void;
 }
 
+/** Await recovery when supported, while retaining injectable synchronous renderers. */
+export async function renderInstructionImage(
+  renderer: InstructionImageRenderer, ...args: Parameters<InstructionImageRenderer["image"]>
+): Promise<string> {
+  return renderer.imageAsync ? renderer.imageAsync(...args) : renderer.image(...args);
+}
+
 /** One reusable, bounded WebGL context for the entire PDF, not one scene per page. */
-export async function createInstructionRenderer(document: BuilderDocument, signal?: AbortSignal): Promise<InstructionImageRenderer> {
+export async function createInstructionRenderer(document: BuilderDocument, signal?: AbortSignal,
+  options: { requireWebGL?: boolean } = {}): Promise<InstructionImageRenderer> {
   let renderer: WebGLRenderer;
   try {
     renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
-  } catch {
+  } catch (error) {
+    if (options.requireWebGL) {
+      throw Object.assign(new Error("PDF_WEBGL_CONTEXT_LOST", { cause: error }), { code: "PDF_WEBGL_CONTEXT_LOST" });
+    }
     return createSoftwareInstructionRenderer(document, signal);
   }
   renderer.setPixelRatio(1);
@@ -179,7 +191,6 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     const images: InstructionImageRenderer = {
       image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight, style) {
-        renderer.setClearColor(0xffffff, style?.transparentBackground ? 0 : 1);
         signal?.throwIfAborted();
         const checkContext = () => {
           if (renderer.getContext?.()?.isContextLost?.()) {
@@ -187,6 +198,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
           }
         };
         checkContext();
+        renderer.setClearColor(0xffffff, style?.transparentBackground ? 0 : 1);
         const rotation = step.rotation ?? [0, 0, 0];
         pivot.rotation.set(...rotation.map(angle => angle * Math.PI / 180) as [number, number, number]);
         const renderSize = fitAspect ? studioRenderSize(fitAspect) : INSTRUCTION_RENDER_SIZE;
