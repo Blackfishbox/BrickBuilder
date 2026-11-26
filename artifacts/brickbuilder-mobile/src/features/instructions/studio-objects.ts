@@ -130,7 +130,7 @@ export function supportedStudioArrow(node: StudioNode, nodes: StudioNode[]): boo
  * plane. Convert them back to model coordinates so the renderer can project
  * them using the same (possibly auto-fitted) camera as the parts.
  */
-export function studioBufferExchangeArrows(step: StudioNode, nodes: StudioNode[]): StudioModelArrow[] {
+export function studioBufferExchangeArrows(step: StudioNode, nodes: StudioNode[], assembled = false): StudioModelArrow[] {
   const preview = studioChildren(step, nodes, "StepPreview")[0];
   const modelAngle = studioVector(preview?.attributes.modelAngle ??
     preview?.attributes.DefaultCameraControlInfo_modelAngle, 3) ?? [0, 0, 0];
@@ -182,6 +182,10 @@ export function studioBufferExchangeArrows(step: StudioNode, nodes: StudioNode[]
   for (const buffer of studioChildren(step, nodes, "BufferExchange")) {
     for (const item of studioChildren(buffer, nodes, "BufferExchangeItemData")) {
       if (item.attributes.showArrow?.toLowerCase() === "false") continue;
+      // A saved exploded-state arrow is not an independent annotation. The
+      // assembled export has not applied its part displacement, so drawing its
+      // cached screen points produces stray lines unrelated to the diagram.
+      if (assembled && item.attributes.targetPartName) continue;
       const displacement = displacementOf(item);
       for (const arrow of studioChildren(item, nodes, "Arrow")) {
         if (!supportedStudioArrow(arrow, nodes) || arrow.attributes.IsVisible?.toLowerCase() === "false") continue;

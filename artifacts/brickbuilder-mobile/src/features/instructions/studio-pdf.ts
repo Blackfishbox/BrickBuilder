@@ -26,7 +26,9 @@ import { drawStudioArrow } from "./studio-pdf-arrow";
 import { studioCalloutStep, studioFrameHeight, studioPdfStep, studioResizeSlots, type NativeSlotRect } from "./studio-native-layout";
 import { studioPageArrowPoints, studioTextRect } from "./studio-objects";
 import { drawStudioBom, planStudioBom, type StudioBomPage } from "./studio-bom";
-import { studioCalloutArrowPoints, studioCalloutCell } from "./studio-callout-layout";
+import { studioCalloutArrowPoints, studioCalloutArrowRoute, studioCalloutCell, studioCalloutTarget } from "./studio-callout-layout";
+import type { ProjectedPartBounds } from "./part-projection";
+import { drawStudioSizeGuide } from "./studio-size-guide";
 
 type XmlRecord = Record<string, unknown>;
 type ComponentPlacement = "LeftTop" | "LeftBottom" | "RightTop" | "RightBottom" | "None";
@@ -633,15 +635,20 @@ async function renderNativeCallouts(
 function renderNativeCalloutArrow(
   pdf: jsPDF, wrapper: StudioNode, item: StudioNode, arrow: StudioNode,
   nodes: StudioNode[], slot: StudioRect, globalStyle: XmlRecord | undefined, scale: number,
+  target?: [number, number],
 ) {
   if (!supportedStudioCallout(wrapper, nodes) || wrapper.attributes.IsVisible?.toLowerCase() === "false" ||
       item.attributes.IsVisible?.toLowerCase() === "false" || arrow.attributes.IsVisible?.toLowerCase() === "false") return;
   const rect = studioCalloutRect(studioVector(item.attributes.Rect, 4)!, slot);
   const styleNode = objectStyle(item, nodes, globalStyle);
   const arrowStyle = child(styleNode, "ArrowStyle");
-  drawStudioArrow(pdf, studioCalloutArrowPoints(rect, slot, studioVector(arrow.attributes.ArrowPosition, 4)!),
-  "NoHeads", attribute(arrowStyle ?? {}, "Style") || "TriangleEmpty",
-  Number(attribute(arrowStyle ?? {}, "Thickness")) || 2, attribute(arrowStyle ?? {}, "Color"), scale);
+  const position = studioVector(arrow.attributes.ArrowPosition, 4)!;
+  const points = studioCalloutArrowPoints(rect, slot, position);
+  if (target) points.splice(2, 2, ...target);
+  const segments = studioCalloutArrowRoute(points, position);
+  segments.forEach((segment, index) => drawStudioArrow(pdf, segment,
+    "NoHeads", index === segments.length - 1 ? attribute(arrowStyle ?? {}, "Style") || "TriangleEmpty" : "NoHeads",
+    Number(attribute(arrowStyle ?? {}, "Thickness")) || 2, attribute(arrowStyle ?? {}, "Color"), scale));
 }
 
 function renderStepNumber(
@@ -1016,15 +1023,24 @@ export async function exportStudioLayoutPdfChunks(
           }
         }
         const [modelX, modelY, modelWidth, modelHeight] = studioModelRect(slot, occupied);
+        let projectedParts: ProjectedPartBounds = new Map();
+        let modelMirrored = false;
+        let modelImageRect: StudioRect = [modelX, modelY, modelWidth, modelHeight];
         queuePageObject(modelPreview ?? nativeStep, async () => {
-          const modelArrows = nativeStep ? studioBufferExchangeArrows(nativeStep, nodes) : [];
+          const modelArrows = nativeStep ? studioBufferExchangeArrows(nativeStep, nodes, true) : [];
           const cameraStep = studioPdfStep(step, modelPreview?.attributes);
           const renderStep = scope?.length && !step.camera
             ? studioCalloutStep(document, cameraStep, [...visible], scope) : cameraStep;
-          fitImage(await renderInstructionImage(renderer, visible, renderStep, highlightIds, modelWidth / modelHeight,
+          const data = await renderInstructionImage(renderer, visible, renderStep, highlightIds, modelWidth / modelHeight,
             modelArrows, step.camera ? undefined : studioFrameHeight(modelPreview?.attributes, modelHeight, pageHeight),
-            { silhouetteHighlight: true, studioEdges: true }),
-            modelX, modelY, modelWidth, modelHeight, pdf, renderStep !== step);
+            { silhouetteHighlight: true, studioEdges: true,
+              ...(nativeCallouts.length ? { onPartBounds: (bounds: ProjectedPartBounds) => { projectedParts = bounds; } } : {}) });
+          const info = pdf.getImageProperties(data);
+          const ratio = Math.min(modelWidth / info.width, modelHeight / info.height);
+          modelImageRect = [modelX + (modelWidth - info.width * ratio) / 2,
+            modelY + (modelHeight - info.height * ratio) / 2, info.width * ratio, info.height * ratio];
+          modelMirrored = renderStep !== step;
+          fitImage(data, modelX, modelY, modelWidth, modelHeight, pdf, modelMirrored);
         });
         const resolvedStepNumber = Number.isFinite(stepNumber) ? stepNumber : entry.planIndex + 1;
         if (showParts) {
@@ -1077,8 +1093,16 @@ export async function exportStudioLayoutPdfChunks(
               queuePageObject(item, () => renderNativeCallouts(pdf, wrapper, nodes,
                 [x, imageY, cellWidth, previewHeight], document, plan, renderer, calloutStyle, scale, locale, options.signal, item, options.highlight));
               for (const arrow of studioChildren(item, nodes, "CallOutArrowItemData")) {
-                queuePageObject(arrow, () => renderNativeCalloutArrow(pdf, wrapper, item, arrow,
-                  nodes, [x, imageY, cellWidth, previewHeight], calloutStyle, scale));
+                queuePageObject(arrow, () => {
+                  const ids = studioChildren(item, nodes, "CallOutStepItemData").flatMap(entry => {
+                    const source = studioChildren(entry, nodes, "Step")[0];
+                    return plan.steps.find((part, index) => (part.sourceIndex ?? index) ===
+                      Number(source?.attributes.SerializedIndex))?.partIds ?? [];
+                  });
+                  renderNativeCalloutArrow(pdf, wrapper, item, arrow,
+                    nodes, [x, imageY, cellWidth, previewHeight], calloutStyle, scale,
+                    studioCalloutTarget(ids, projectedParts, modelImageRect, modelMirrored));
+                });
               }
             }
           }
@@ -1091,6 +1115,9 @@ export async function exportStudioLayoutPdfChunks(
           for (const node of studioChildren(slotNode, nodes, "Text")) {
             queuePageObject(node, () => drawPageText(pdf, node, slot));
           }
+          for (const node of studioChildren(slotNode, nodes, "SizeGuide")) {
+            queuePageObject(node, () => drawStudioSizeGuide(pdf, document, node, [contentX, top, contentWidth, contentHeight]));
+          }
         }
       }
       for (const arrow of studioChildren(nativePage, nodes, "Arrow")) {
@@ -1098,6 +1125,9 @@ export async function exportStudioLayoutPdfChunks(
       }
       for (const node of studioChildren(nativePage, nodes, "Text")) {
         queuePageObject(node, () => drawPageText(pdf, node, [0, 0, pageWidth, pageHeight]));
+      }
+      for (const node of studioChildren(nativePage, nodes, "SizeGuide")) {
+        queuePageObject(node, () => drawStudioSizeGuide(pdf, document, node, [contentX, top, contentWidth, contentHeight]));
       }
       for (const bom of sourcePage.boms) {
         queuePageObject(bom.node, () => drawStudioBom(pdf, document, bom.page, locale, options.signal, renderPart));

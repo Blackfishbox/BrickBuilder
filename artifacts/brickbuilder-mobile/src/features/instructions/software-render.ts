@@ -1,3 +1,4 @@
+import { projectInstructionPartBounds } from "./part-projection";
 import { yieldPdfExecution } from "../../platform/pdf-background";
 import { Box3, Color, Euler, Matrix3, Matrix4, OrthographicCamera, Vector3 } from "three";
 import type { BrickType, BuilderDocument } from "../editor/model";
@@ -145,17 +146,22 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         ));
         if (fitAspect) {
           const fitBounds = new Box3();
+          const partBounds = new Map<string, Box3>();
           for (const face of faces) {
             if (!visible.has(face.id)) continue;
+            const box = style?.onPartBounds ? partBounds.get(face.id) ?? new Box3() : undefined;
+            if (box) partBounds.set(face.id, box);
             for (let offset = 0; offset < 9; offset += 3) {
               fitBounds.expandByPoint(vertex.fromArray(face.points, offset).sub(center)
                 .applyMatrix4(rotation).applyMatrix4(camera.matrixWorldInverse));
+              box?.expandByPoint(vertex);
             }
           }
           for (const arrowPoint of fitBounds.isEmpty() ? studioModelArrowPoints(
             modelArrows, center, step.rotation ?? [0, 0, 0],
           ) : []) fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           fitStudioCamera(camera, fitBounds, width / height, minimumFrameHeight);
+          style?.onPartBounds?.(projectInstructionPartBounds(partBounds, camera));
         }
         const projected: { points: number[]; depth: number; color: string; alpha: number; highlighted: boolean }[] = [];
         const highlighted = new Set<string>();

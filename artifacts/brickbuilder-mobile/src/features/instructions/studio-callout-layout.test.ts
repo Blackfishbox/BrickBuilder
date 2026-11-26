@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { studioCalloutArrowPoints, studioCalloutCell } from "./studio-callout-layout";
+import { studioCalloutArrowPoints, studioCalloutArrowRoute, studioCalloutTarget, studioCalloutCell } from "./studio-callout-layout";
 import { studioCalloutRect, type StudioRect } from "./studio-objects";
 
 it.each([
@@ -18,6 +18,24 @@ it.each([
 it("preserves vertical displacement and non-left-edge anchors", () => {
   expect(studioCalloutArrowPoints([20, 30, 40, 60], [100, 200, 300, 400],
     [1, 0.25, -0.1, 0.2])).toEqual([60, 75, 30, -5]);
+});
+
+it("uses orthogonal leaders with the head on the final nonempty segment", () => {
+  expect(studioCalloutArrowRoute([10, 20, 40, 60], [1, 0.5, 0.1, 0.1]))
+    .toEqual([[10, 20, 40, 20], [40, 20, 40, 60]]);
+  expect(studioCalloutArrowRoute([10, 20, 40, 60], [0.5, 0, 0.1, 0.1]))
+    .toEqual([[10, 20, 10, 60], [10, 60, 40, 60]]);
+  expect(studioCalloutArrowRoute([10, 20, 40, 20], [1, 0.5, 0.1, 0]))
+    .toEqual([[10, 20, 40, 20]]);
+});
+
+it("targets the actual assembly after fitting, offsetting and horizontal mirroring", () => {
+  const bounds = new Map<string, [number, number, number, number]>([
+    ["one", [0.1, 0.2, 0.2, 0.1]], ["two", [0.2, 0.3, 0.2, 0.3]],
+  ]);
+  expect(studioCalloutTarget(["one", "two"], bounds, [100, 200, 400, 100], false)).toEqual([200, 240]);
+  expect(studioCalloutTarget(["one", "two"], bounds, [100, 200, 400, 100], true)).toEqual([400, 240]);
+  expect(studioCalloutTarget(["missing"], bounds, [100, 200, 400, 100], true)).toBeUndefined();
 });
 
 it("uses millimetre padding and font-sized headings for vertical callouts", () => {

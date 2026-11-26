@@ -19,6 +19,7 @@ import { drawHighlightSilhouette } from "./silhouette";
 import { configureStudioEdges } from "./studio-edges";
 import { INSTRUCTION_LIGHTING } from "../engine/lighting";
 import { releaseBetweenInstructionImages } from "./image-resources";
+import { projectInstructionPartBounds, type ProjectedPartBounds } from "./part-projection";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
 export const INSTRUCTION_PDF_EDGE_WIDTH_PX = 4;
@@ -79,6 +80,7 @@ function configureInstructionEdges(root: Group, width: number, height: number): 
 }
 
 export interface InstructionImageStyle {
+  onPartBounds?: (bounds: ProjectedPartBounds) => void;
   preserveColors?: boolean;
   silhouetteHighlight?: boolean;
   studioEdges?: boolean;
@@ -243,6 +245,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         if (fitAspect) {
           scene.updateMatrixWorld(true);
           const fitBounds = new Box3(), point = new Vector3(), world = new Matrix4();
+          const partBounds = new Map<string, Box3>();
           assembly.traverseVisible(object => {
             if (!(object instanceof Mesh) || object.userData.isWideEdgeMesh) return;
             const positions = object.geometry.getAttribute("position");
@@ -251,6 +254,13 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
             const count = object instanceof InstancedMesh ? object.count : 1;
             for (let instance = 0; instance < count; instance++) {
               if (ids && !visible.has(ids[instance])) continue;
+              let partId = ids?.[instance] ?? object.userData.partId as string | undefined;
+              for (let parent = object.parent; !partId && parent; parent = parent.parent) {
+                partId = parent.userData.partId as string | undefined;
+              }
+              const box = style?.onPartBounds && partId
+                ? partBounds.get(partId) ?? new Box3() : undefined;
+              if (box && partId) partBounds.set(partId, box);
               world.copy(object.matrixWorld);
               if (object instanceof InstancedMesh) {
                 object.getMatrixAt(instance, matrix);
@@ -259,6 +269,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
               world.premultiply(camera.matrixWorldInverse);
               for (let index = 0; index < positions.count; index++) {
                 fitBounds.expandByPoint(point.fromBufferAttribute(positions, index).applyMatrix4(world));
+                box?.expandByPoint(point);
               }
             }
           });
@@ -268,6 +279,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
             fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           }
           fitStudioCamera(camera, fitBounds, renderSize.width / renderSize.height, minimumFrameHeight);
+          style?.onPartBounds?.(projectInstructionPartBounds(partBounds, camera));
         }
         renderer.render(scene, camera);
         checkContext();

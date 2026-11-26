@@ -15,6 +15,7 @@ import { studioBufferExchangeArrows, studioCalloutRect, studioModelRect, studioP
 import { includeIOAssemblies } from "../formats/io/assemblies";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { createSoftwareInstructionRenderer } from "./software-render";
+import { studioSizeGuideLabels } from "./studio-size-guide";
 
 const sourceText = [
   "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat",
@@ -385,6 +386,36 @@ it("passes visible BufferExchange arrows through the source camera transform", a
   expect(inspectStudioLayout(layout).unsupportedDetails).not.toContain("Arrow × 3");
   await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
   expect(renderer.image.mock.calls.some(call => call[4]?.length === 2)).toBe(true);
+});
+
+it("does not draw exploded-state arrows beside already assembled parts", async () => {
+  const { document, renderer } = nativeFixture();
+  const layout = document.instructions!.studioLayout!;
+  layout.sourceXml = layout.sourceXml.replace('<Step SerializedIndex="0"><CallOut>',
+    `<Step SerializedIndex="0"><BufferExchange><BufferExchangeItemData targetPartName="3004.dat"
+      showArrow="True" PrevScreenSpacePartStart="-400 -200" PrevScreenSpacePartEnd="-300 -100">
+      <Displacement displacement="0 0 80"/><Arrow PointList="-400 -200 -300 -100" Color="1 0 0"/>
+      </BufferExchangeItemData></BufferExchange><CallOut>`);
+  const nodes = studioNodes(layout.sourceXml), step = nodes.find(node => node.name === "Step")!;
+  expect(studioBufferExchangeArrows(step, nodes)).toHaveLength(1);
+  expect(studioBufferExchangeArrows(step, nodes, true)).toHaveLength(0);
+  await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+  expect(renderer.image.mock.calls.every(call => !call[4]?.length)).toBe(true);
+});
+
+it("includes native axle size-guide labels without claiming a fitted thumbnail is 1:1", async () => {
+  const { document, renderer } = nativeFixture();
+  const part = document.imported!.instances[0];
+  part.reference = "parts/87083.dat";
+  part.part.name = "Technic Axle 4 with Stop";
+  const guide = '<SizeGuide rect="0.6 0 70 15" Parts="87083.dat 72 91 19&#10;"/>';
+  document.instructions!.studioLayout!.sourceXml = document.instructions!.studioLayout!.sourceXml
+    .replace('</Slot>', `${guide}</Slot>`);
+  expect(studioSizeGuideLabels(document, "87083.dat 72 91 19")).toEqual(["4L · Technic Axle 4 with Stop · 87083"]);
+  const commands = pdfCommands(await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer));
+  expect(commands).toContain("Technic Axle 4 with Stop");
+  expect(commands).toContain("87083");
+  expect(commands).not.toContain("1:1");
 });
 
 it("fails explicitly for an unresolved callout step and disposes the renderer", async () => {

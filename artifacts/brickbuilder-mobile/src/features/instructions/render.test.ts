@@ -524,7 +524,8 @@ it("fits only the visible Studio geometry into a narrow slot and keeps ordinary 
     const visible = new Set(["first"]);
     webgl.image(visible, step);
     const normalCamera = (frames.mock.lastCall![1] as import("three").OrthographicCamera).clone();
-    webgl.image(visible, step, undefined, 0.5);
+    const webglBounds = vi.fn(), softwareBounds = vi.fn();
+    webgl.image(visible, step, undefined, 0.5, [], undefined, { onPartBounds: webglBounds });
     const [scene, camera] = frames.mock.lastCall! as [Scene, import("three").OrthographicCamera];
     expect(camera.zoom).toBe(1);
     expect(rendererSetSize).toHaveBeenLastCalledWith(1000, 2000);
@@ -537,6 +538,11 @@ it("fits only the visible Studio geometry into a narrow slot and keeps ordinary 
       }
     });
     const ndcX = points.map(point => point.x), ndcY = points.map(point => point.y);
+    const expectedBounds = [(Math.min(...ndcX) + 1) / 2, (1 - Math.max(...ndcY)) / 2,
+      (Math.max(...ndcX) - Math.min(...ndcX)) / 2, (Math.max(...ndcY) - Math.min(...ndcY)) / 2];
+    expect([...webglBounds.mock.lastCall![0].keys()]).toEqual(["first"]);
+    webglBounds.mock.lastCall![0].get("first").forEach((value: number, index: number) =>
+      expect(value).toBeCloseTo(expectedBounds[index], 5));
     expect(Math.min(...ndcX)).toBeGreaterThan(-1);
     expect(Math.max(...ndcX)).toBeLessThan(1);
     expect(Math.min(...ndcY)).toBeGreaterThan(-1);
@@ -550,7 +556,10 @@ it("fits only the visible Studio geometry into a narrow slot and keeps ordinary 
     webgl.image(visible, step, undefined, 0.5, [staleArrow]);
     expect(camera.projectionMatrix.equals(fittedProjection)).toBe(true);
     softwarePoints.length = 0;
-    software.image(visible, step, undefined, 0.5);
+    software.image(visible, step, undefined, 0.5, [], undefined, { onPartBounds: softwareBounds });
+    expect([...softwareBounds.mock.lastCall![0].keys()]).toEqual(["first"]);
+    softwareBounds.mock.lastCall![0].get("first").forEach((value: number, index: number) =>
+      expect(value).toBeCloseTo(expectedBounds[index], 4));
     expect(canvases.at(-1)).toMatchObject({ width: 1000, height: 2000 });
     const xs = softwarePoints.filter((_, index) => index % 2 === 0).map(x => x / 500 - 1);
     const ys = softwarePoints.filter((_, index) => index % 2 === 1).map(y => 1 - y / 1000);

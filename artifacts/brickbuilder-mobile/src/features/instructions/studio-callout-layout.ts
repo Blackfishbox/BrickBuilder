@@ -1,4 +1,30 @@
 import type { StudioRect } from "./studio-objects";
+import type { ProjectedPartBounds } from "./part-projection";
+
+/** Re-anchor a callout to its actual assembly after fitting/mirroring the image. */
+export function studioCalloutTarget(
+  ids: readonly string[], bounds: ProjectedPartBounds, image: StudioRect, mirrored: boolean,
+): [number, number] | undefined {
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (const id of ids) {
+    const box = bounds.get(id);
+    if (!box) continue;
+    left = Math.min(left, box[0]); top = Math.min(top, box[1]);
+    right = Math.max(right, box[0] + box[2]); bottom = Math.max(bottom, box[1] + box[3]);
+  }
+  if (!Number.isFinite(left)) return undefined;
+  const x = (left + right) / 2, y = (top + bottom) / 2;
+  return [image[0] + (mirrored ? 1 - x : x) * image[2], image[1] + y * image[3]];
+}
+
+/** Studio callout leaders have a right-angle bend, chosen by their box edge. */
+export function studioCalloutArrowRoute(points: number[], position: number[]): number[][] {
+  const [x1, y1, x2, y2] = points;
+  const horizontal = position[0] === 0 || position[0] === 1;
+  const elbow = horizontal ? [x2, y1] : [x1, y2];
+  return [[x1, y1, ...elbow], [...elbow, x2, y2]]
+    .filter(([ax, ay, bx, by]) => Math.hypot(bx - ax, by - ay) > 0.001);
+}
 
 /** The first pair anchors the arrow to the callout; the second is a slot-sized
  * displacement from that anchor, not another position relative to slot center. */

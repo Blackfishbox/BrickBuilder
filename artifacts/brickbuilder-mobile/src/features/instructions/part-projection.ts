@@ -5,6 +5,20 @@ import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import type { InstructionPart } from "./parts";
 import { PART_PREVIEW_DIRECTION } from "../parts/thumbnails/camera";
 
+/** Normalized image bounds before the Studio PDF's optional horizontal mirror. */
+export type ProjectedPartBounds = ReadonlyMap<string, readonly [number, number, number, number]>;
+
+export function projectInstructionPartBounds(bounds: Map<string, Box3>, camera: OrthographicCamera): ProjectedPartBounds {
+  const result = new Map<string, [number, number, number, number]>();
+  for (const [id, box] of bounds) {
+    if (box.isEmpty()) continue;
+    const min = new Vector3(box.min.x, box.min.y, 0).applyMatrix4(camera.projectionMatrix);
+    const max = new Vector3(box.max.x, box.max.y, 0).applyMatrix4(camera.projectionMatrix);
+    result.set(id, [(min.x + 1) / 2, (1 - max.y) / 2, (max.x - min.x) / 2, (max.y - min.y) / 2]);
+  }
+  return result;
+}
+
 /** Project actual surfaces, not an overestimated axis-aligned box, in real mm. */
 export function partProjectedSize(document: BuilderDocument, part: InstructionPart): [number, number] | undefined {
   const camera = new OrthographicCamera();
