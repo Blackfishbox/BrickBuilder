@@ -22,6 +22,7 @@ export const instructionStepSchema = z.object({
     referenceTarget: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
   }).optional(),
   sourceIndex: z.number().int().nonnegative().optional(),
+  sourceAssembly: z.array(z.number().int().nonnegative()).max(48).optional(),
 });
 
 export const instructionPlanSchema = z.object({

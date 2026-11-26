@@ -27,7 +27,10 @@ export function configureThumbnailEdges(root: Group, width: number, height: numb
 }
 
 /** A single detached canvas, never a WebGL context for each library row. */
-export function renderThumbnail(model: ImportedModel, colorCode: string): string {
+export function renderThumbnail(
+  model: ImportedModel, colorCode: string,
+  configureEdges: (root: Group, width: number, height: number) => void = configureThumbnailEdges,
+): string {
   if (idle) clearTimeout(idle);
   if (Date.now() < unavailableUntil) throw new Error("3D-Vorschau derzeit nicht verfügbar.");
   try {
@@ -41,7 +44,7 @@ export function renderThumbnail(model: ImportedModel, colorCode: string): string
     reuseGeometryCache(model, colored);
     const group = createImportedGroup(colored);
     try {
-      configureThumbnailEdges(group, 160, 120);
+      configureEdges(group, 160, 120);
       const bounds = new Box3().setFromObject(group);
       if (bounds.isEmpty()) throw new Error("Keine Vorschaugeometrie.");
       const center = bounds.getCenter(new Vector3());

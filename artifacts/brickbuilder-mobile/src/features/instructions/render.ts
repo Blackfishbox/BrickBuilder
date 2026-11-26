@@ -1,7 +1,7 @@
 import {
   AmbientLight, Box3, BufferGeometry, Color, DirectionalLight,
   Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Matrix4,
-  Mesh, MeshLambertMaterial, OrthographicCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer,
+  Mesh, MeshBasicMaterial, MeshLambertMaterial, DoubleSide, OrthographicCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from "three";
 import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
@@ -15,6 +15,8 @@ import { instructionDisplayColor } from "./highlight-color";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
 import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderSize } from "./camera";
 import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
+import { drawHighlightSilhouette } from "./silhouette";
+import { configureStudioEdges } from "./studio-edges";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
 export const INSTRUCTION_PDF_EDGE_WIDTH_PX = 4;
@@ -74,9 +76,14 @@ function configureInstructionEdges(root: Group, width: number, height: number): 
   });
 }
 
+export interface InstructionImageStyle {
+  preserveColors?: boolean;
+  silhouetteHighlight?: boolean;
+  studioEdges?: boolean;
+}
 export interface InstructionImageRenderer {
   image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>, fitAspect?: number,
-    modelArrows?: readonly StudioModelArrow[], minimumFrameHeight?: number): string;
+    modelArrows?: readonly StudioModelArrow[], minimumFrameHeight?: number, style?: InstructionImageStyle): string;
   dispose(): void;
 }
 
@@ -84,7 +91,7 @@ export interface InstructionImageRenderer {
 export async function createInstructionRenderer(document: BuilderDocument, signal?: AbortSignal): Promise<InstructionImageRenderer> {
   let renderer: WebGLRenderer;
   try {
-    renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: false });
+    renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
   } catch {
     return createSoftwareInstructionRenderer(document, signal);
   }
@@ -168,7 +175,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight) {
+      image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight, style) {
         signal?.throwIfAborted();
         const checkContext = () => {
           if (renderer.getContext?.()?.isContextLost?.()) {
@@ -182,17 +189,18 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         if (output.width !== renderSize.width || output.height !== renderSize.height) {
           renderer.setSize(renderSize.width, renderSize.height);
           output.width = renderSize.width; output.height = renderSize.height;
-          configureInstructionEdges(assembly, renderSize.width, renderSize.height);
         }
+        configureInstructionEdges(assembly, renderSize.width, renderSize.height);
+        configureStudioEdges(assembly, renderSize.width, renderSize.height, style?.studioEdges ?? false);
         camera.left = -radius * 1.12 * aspect; camera.right = -camera.left;
         camera.top = radius * 1.12; camera.bottom = -camera.top;
         applyPdfStepCamera(camera, radius, step.camera);
         for (const [id, material] of brickMaterials) {
           material.color.copy(brickColors.get(id)!);
-          if (highlightIds !== undefined) instructionDisplayColor(material.color, highlightIds.has(id));
+          if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(material.color, highlightIds.has(id));
         }
-        applyPdfInstructionFocus(imported, highlightIds);
-        assembly.traverse(object => {
+        applyPdfInstructionFocus(imported, style?.preserveColors ? undefined : highlightIds);
+        const applyVisibility = (visible: ReadonlySet<string>) => assembly.traverse(object => {
           if (object.userData.partId) object.visible = visible.has(object.userData.partId as string);
           const ids = object.userData.brickIds as string[] | undefined;
           if (!ids) return;
@@ -215,6 +223,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
             }
           }
         });
+        applyVisibility(visible);
         if (fitAspect) {
           scene.updateMatrixWorld(true);
           const fitBounds = new Box3(), point = new Vector3(), world = new Matrix4();
@@ -250,7 +259,30 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         if (modelArrows.length) {
           drawStudioModelArrows(context, camera, modelArrows, center, rotation, renderSize.width, renderSize.height);
         }
-        if (highlightIds?.size) {
+        if (highlightIds?.size && style?.silhouetteHighlight) {
+          const maskMaterial = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide });
+          const edges: Mesh[] = [];
+          const selected = new Set([...highlightIds].filter(id => visible.has(id)));
+          try {
+            applyVisibility(selected);
+            assembly.traverse(object => {
+              if (object instanceof Mesh && object.userData.isWideEdgeMesh && object.visible) {
+                edges.push(object); object.visible = false;
+              }
+            });
+            scene.overrideMaterial = maskMaterial;
+            renderer.setClearColor(0xffffff, 0);
+            renderer.render(scene, camera);
+            checkContext();
+            drawHighlightSilhouette(context, renderer.domElement, renderSize.width, renderSize.height);
+          } finally {
+            scene.overrideMaterial = null;
+            renderer.setClearColor(0xffffff, 1);
+            edges.forEach(edge => { edge.visible = true; });
+            applyVisibility(visible);
+            maskMaterial.dispose();
+          }
+        } else if (highlightIds?.size) {
           const groups = groupInstructionHighlights(highlightOccurrences, new Set([...highlightIds].filter(id => visible.has(id))));
           drawInstructionOutlines(context, camera, instructionGroupFrames(groups, highlightOccurrences, assembly.matrixWorld),
             renderSize.width, renderSize.height);

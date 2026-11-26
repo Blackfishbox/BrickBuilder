@@ -7,6 +7,7 @@ import {
   instructionPartGroups, instructionStepNumber, type InstructionPart,
 } from "./parts";
 import { instructionPartImage } from "./part-images";
+import { studioPartImage } from "./studio-parts-image";
 import { instructionCalloutImage, instructionHighlightIds } from "./callouts";
 import { createInstructionRenderer, type InstructionImageRenderer } from "./render";
 import { applyStudioLayout, inspectStudioLayout, studioNodes, type StudioNode } from "./studio-layout";
@@ -687,7 +688,7 @@ async function renderStudioPartList(
   unitScale: number,
   locale: Locale,
   signal?: AbortSignal,
-  renderPart = instructionPartImage,
+  renderPart = studioPartImage,
 ): Promise<void> {
   const groups = instructionPartGroups(document, step.partIds);
   if (height < 4) return;
@@ -763,7 +764,7 @@ export async function exportStudioLayoutPDF(
   input: InstructionPlan,
   options: InstructionPdfOptions & { previewPageIndex?: number } = {},
   createRenderer: (document: BuilderDocument, signal?: AbortSignal) => Promise<InstructionImageRenderer> = createInstructionRenderer,
-  renderPart = instructionPartImage,
+  renderPart = studioPartImage,
 ): Promise<Uint8Array> {
   const plan = effectiveInstructions({ ...document, instructions: input });
   if (plan.studioLayout) plan.studioLayout = { sourceXml: applyStudioLayout(plan.studioLayout), edits: [] };
@@ -880,7 +881,12 @@ export async function exportStudioLayoutPDF(
       for (const [cellIndex, entry] of entries.entries()) {
         options.signal?.throwIfAborted();
         const step = entry.planStep;
-        const visible = new Set(plan.steps.slice(0, entry.planIndex + 1).flatMap(previous => previous.partIds));
+        const built = new Set(plan.steps.slice(0, entry.planIndex + 1).flatMap(previous => previous.partIds));
+        const scope = step.sourceAssembly;
+        const visible = scope?.length && document.imported
+          ? new Set(document.imported.instances.filter(part => built.has(part.id) &&
+            scope.every((value, index) => part.sourceOccurrence?.[index] === value)).map(part => part.id))
+          : built;
         const col = cellIndex % columns, row = Math.floor(cellIndex / columns);
         const normalized = sourcePage.normalizedSlots?.[cellIndex];
         const slotRect = sourcePage.slotRects?.[cellIndex] ?? (normalized ? [
@@ -929,7 +935,9 @@ export async function exportStudioLayoutPDF(
           }
         }
         const partsStep = { ...step, partIds: [...new Set([...step.partIds, ...calloutPartIds])] };
-        const highlightIds = options.highlight && entry.planIndex > 0 ? instructionHighlightIds(document, partsStep) : undefined;
+        const newParts = instructionHighlightIds(document, partsStep);
+        const hasEarlierParts = [...visible].some(id => !newParts.has(id));
+        const highlightIds = options.highlight && hasEarlierParts ? newParts : undefined;
         const showNativeCallouts = attribute(calloutStyle, "IsVisible").toLowerCase() !== "false" &&
           attribute(stepNode, "IsVisibleCallOut").toLowerCase() !== "false";
         const slot: StudioRect = [x, imageY, cellWidth, previewHeight];
@@ -957,9 +965,12 @@ export async function exportStudioLayoutPDF(
         const modelPreview = nativeStep && studioChildren(nativeStep, nodes, "StepPreview")[0];
         queuePageObject(modelPreview ?? nativeStep, () => {
           const modelArrows = nativeStep ? studioBufferExchangeArrows(nativeStep, nodes) : [];
-          const renderStep = studioPdfStep(step, modelPreview?.attributes);
+          const cameraStep = studioPdfStep(step, modelPreview?.attributes);
+          const renderStep = scope?.length && !step.camera
+            ? studioCalloutStep(document, cameraStep, [...visible], scope) : cameraStep;
           fitImage(renderer.image(visible, renderStep, highlightIds, modelWidth / modelHeight,
-            modelArrows, step.camera ? undefined : studioFrameHeight(modelPreview?.attributes, modelHeight, pageHeight)),
+            modelArrows, step.camera ? undefined : studioFrameHeight(modelPreview?.attributes, modelHeight, pageHeight),
+            { preserveColors: true, silhouetteHighlight: true, studioEdges: true }),
             modelX, modelY, modelWidth, modelHeight, pdf, renderStep !== step);
         });
         const resolvedStepNumber = Number.isFinite(stepNumber) ? stepNumber : entry.planIndex + 1;

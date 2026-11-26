@@ -73,14 +73,16 @@ export function studioFrameHeight(preview: Attributes | undefined, slotHeight: n
 }
 
 /** Callouts show a submodel in its own frame, not tilted in its parent assembly. */
-export function studioCalloutStep(document: BuilderDocument, step: InstructionStep, ids: string[]): InstructionStep {
+export function studioCalloutStep(document: BuilderDocument, step: InstructionStep, ids: string[], occurrence?: readonly number[]): InstructionStep {
   const model = document.imported;
   if (!model) return step;
   const selected = new Set(ids);
   const paths = model.instances.filter(part => selected.has(part.id)).map(part => part.sourceOccurrence);
   if (!paths.length || paths.some(path => !path?.length)) return step;
-  const prefix = paths[0]!.slice(0, -1);
-  while (prefix.length && !paths.every(path => prefix.every((value, index) => path![index] === value))) prefix.pop();
+  const prefix = occurrence ? [...occurrence] : paths[0]!.slice(0, -1);
+  if (!occurrence) {
+    while (prefix.length && !paths.every(path => prefix.every((value, index) => path![index] === value))) prefix.pop();
+  }
   if (!prefix.length) return step;
   let section = model.root, affine = [...IDENTITY] as typeof IDENTITY;
   for (const index of prefix) {

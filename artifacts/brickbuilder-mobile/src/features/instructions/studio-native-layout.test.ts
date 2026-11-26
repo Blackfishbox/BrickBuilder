@@ -82,4 +82,8 @@ it("removes the parent occurrence's tilt from a callout without changing its sou
   result.elements.forEach((value, index) => expect(value).toBeCloseTo(new Matrix4().elements[index], 8));
   expect(document.imported.instances).toEqual(before);
   expect(studioCalloutStep(document, step, [])).toBe(step);
+  // A root step may currently contain only one child: that does not make it
+  // an isolated child assembly. Explicit root scope must keep the parent tilt.
+  expect(studioCalloutStep(document, step, ids, [])).toBe(step);
+  expect(studioCalloutStep(document, step, ids, [0]).rotation).toEqual(isolated.rotation);
 });

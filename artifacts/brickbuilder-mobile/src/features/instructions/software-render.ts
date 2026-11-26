@@ -11,8 +11,14 @@ import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlig
 import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderSize } from "./camera";
 import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
+import { drawHighlightSilhouette } from "./silhouette";
 
 const MAX_TRIANGLES = 120_000;
+function documentCanvas(width: number, height: number): HTMLCanvasElement {
+  const canvas = globalThis.document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  return canvas;
+}
 const MAX_EDGE_SEGMENTS = 60_000;
 export const INSTRUCTION_RENDER_SIZE = { width: 2000, height: 1520 } as const;
 interface Face { id: string; points: Float32Array; color: string; alpha: number }
@@ -123,7 +129,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
     const rotationNormal = new Matrix3();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     return {
-      image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight) {
+      image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight, style) {
         signal?.throwIfAborted();
         const renderSize = fitAspect ? studioRenderSize(fitAspect) : size;
         width = renderSize.width; height = renderSize.height;
@@ -150,7 +156,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           )) fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           fitStudioCamera(camera, fitBounds, width / height, minimumFrameHeight);
         }
-        const projected: { points: number[]; depth: number; color: string; alpha: number }[] = [];
+        const projected: { points: number[]; depth: number; color: string; alpha: number; highlighted: boolean }[] = [];
         const highlighted = new Set<string>();
         for (const face of faces) {
           if (!visible.has(face.id)) continue;
@@ -163,9 +169,10 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           normal.copy(b).sub(a).cross(vertex.copy(c).sub(a)).normalize();
           const shade = 0.58 + 0.42 * Math.abs(normal.dot(light));
           color.set(face.color);
-          if (highlightIds !== undefined) instructionDisplayColor(color, highlightIds.has(face.id));
+          if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(color, highlightIds.has(face.id));
           a.project(camera); b.project(camera); c.project(camera);
           projected.push({
+            highlighted: highlightIds?.has(face.id) ?? false,
             points: [(a.x + 1) * width / 2, (1 - a.y) * height / 2, (b.x + 1) * width / 2, (1 - b.y) * height / 2, (c.x + 1) * width / 2, (1 - c.y) * height / 2],
             depth: (a.z + b.z + c.z) / 3,
             color: color.multiplyScalar(shade).getStyle(), alpha: face.alpha,
@@ -201,10 +208,14 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
             if (first.z < -1 || first.z > 1 || second.z < -1 || second.z > 1) continue;
             const sourceColor = source.colorCodes?.[segment];
             color.set(resolveColor(sourceColor && sourceColor !== "16" ? sourceColor : source.inheritedColor)?.hex ?? "#ff00ff");
-            if (highlightIds !== undefined) instructionDisplayColor(color, highlightIds.has(source.id));
-            const stroke = color.clone().multiplyScalar(
+            if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(color, highlightIds.has(source.id));
+            let stroke = color.clone().multiplyScalar(
               (0.58 + 0.42 * Math.abs(firstNormal.dot(light))) * NORMAL_EDGE_CONTRAST,
             ).getStyle();
+            if (style?.studioEdges) {
+              const luminance = color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
+              stroke = luminance < 0.025 ? "#959595" : "#070707";
+            }
             const points = lineStrokes.get(stroke) ?? [];
             points.push(
               (first.x + 1) * width / 2, (1 - first.y) * height / 2,
@@ -213,7 +224,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
             lineStrokes.set(stroke, points);
           }
         }
-        context.lineWidth = Math.max(1, width / 1000);
+        context.lineWidth = Math.max(1, width / (style?.studioEdges ? 500 : 1000));
         for (const [stroke, points] of lineStrokes) {
           context.beginPath();
           for (let index = 0; index + 3 < points.length; index += 4) {
@@ -226,7 +237,23 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
         if (modelArrows.length) {
           drawStudioModelArrows(context, camera, modelArrows, center, step.rotation ?? [0, 0, 0], width, height);
         }
-        if (highlighted.size) {
+        if (highlighted.size && style?.silhouetteHighlight) {
+          const mask = documentCanvas(width, height);
+          try {
+            const maskContext = mask.getContext("2d");
+            if (!maskContext) throw new Error("PDF silhouette mask unavailable");
+            maskContext.fillStyle = "#fff";
+            for (const face of projected) {
+              if (!face.highlighted) continue;
+              maskContext.beginPath();
+              maskContext.moveTo(face.points[0], face.points[1]);
+              maskContext.lineTo(face.points[2], face.points[3]);
+              maskContext.lineTo(face.points[4], face.points[5]);
+              maskContext.closePath(); maskContext.fill();
+            }
+            drawHighlightSilhouette(context, mask, width, height);
+          } finally { mask.width = 1; mask.height = 1; }
+        } else if (highlighted.size) {
           const groups = groupInstructionHighlights(highlightOccurrences, highlighted);
           const diagram = rotation.clone().multiply(new Matrix4().makeTranslation(-center.x, -center.y, -center.z));
           drawInstructionOutlines(context, camera, instructionGroupFrames(groups, highlightOccurrences, diagram), width, height);

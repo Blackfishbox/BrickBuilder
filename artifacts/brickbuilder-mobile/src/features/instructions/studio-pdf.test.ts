@@ -54,6 +54,36 @@ function nativeFixture(calloutAttributes = "", arrowAttributes = "", extra = "",
   return { document, renderer, xml };
 }
 
+it("renders only the active Studio subassembly, then mounts every reused occurrence in its parent", async () => {
+  const { document, renderer } = nativeFixture();
+  const source = [
+    "0 FILE main.ldr",
+    "1 16 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat", "0 STEP",
+    "1 16 80 0 0 1 0 0 0 0 -1 0 1 0 child.ldr", "0 STEP",
+    "1 16 160 0 0 1 0 0 0 1 0 0 0 1 child.ldr", "0 STEP",
+    "0 FILE child.ldr",
+    "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3020.dat", "0 STEP",
+    "1 1 0 -8 0 1 0 0 0 1 0 0 0 1 3710.dat", "0 STEP",
+  ].join("\n");
+  document.imported = { ...document.imported!, sourceText: source, ...parseLDraw(source) };
+  const xml = `<Instruction><GlobalSetting><GlobalStyle>
+    <PartsList IsVisible="False"/><SubModelPreview IsVisible="False"/>
+    </GlobalStyle></GlobalSetting><Pages><Page>${[0, 1, 2, 3, 4].map(index =>
+    `<Slot><Step SerializedIndex="${index}"><StepPreview cameraAngle="-0.6154797 0.7853982" modelAngle="0 0 0"/></Step></Slot>`
+  ).join("")}</Page></Pages></Instruction>`;
+  document.instructions = readStudioInstructions(xml, sourceInstructionPlan(document.imported));
+  await exportStudioLayoutPDF(document, document.instructions, { highlight: true }, async () => renderer);
+  const calls = renderer.image.mock.calls;
+  const [main, a1, a2, b1, b2] = document.imported.instances.map(part => part.id);
+  expect(calls.map(call => [...call[0]])).toEqual([
+    [main], [a1], [a1, a2], [main, a1, a2], [main, a1, a2, b1, b2],
+  ]);
+  expect(calls.every(call => call[6]?.silhouetteHighlight && call[6]?.preserveColors)).toBe(true);
+  expect(calls[1][2]).toBeUndefined();
+  expect(calls[2][2]).toEqual(new Set([a2]));
+  expect(document.imported.instances[1].matrix).toEqual(parseLDraw(source).instances[1].matrix);
+});
+
 function pdfCommands(bytes: Uint8Array): string {
   const raw = Buffer.from(bytes).toString("latin1");
   return [...raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map(match => {

@@ -12,8 +12,9 @@ export function readStudioInstructions(xml: string, plan: InstructionPlan): Inst
   const nodes = studioNodes(xml);
   const indices = nodes.filter(node => node.name === "Step" && nodes[node.parent ?? -1]?.name === "Slot")
     .map(node => /^\d+$/.test(node.attributes.SerializedIndex ?? "") ? Number(node.attributes.SerializedIndex) : NaN);
-  const matches = indices.length === plan.steps.length && new Set(indices).size === indices.length &&
-    indices.every(index => Number.isInteger(index) && index >= 0 && index < plan.steps.length);
+  const sourceIndices = new Set(plan.steps.map((step, index) => step.sourceIndex ?? index));
+  const matches = indices.length === sourceIndices.size && new Set(indices).size === indices.length &&
+    indices.every(index => Number.isInteger(index) && index >= 0 && sourceIndices.has(index));
   if (!matches) {
     warnings.push("Studio-Seiten und aufgelöste Bauschritte sind nicht deckungsgleich. Das originale Seitenlayout bleibt im IO-Archiv erhalten; angezeigt wird die LDraw-Schrittfolge.");
   }
@@ -25,22 +26,24 @@ export function readStudioInstructions(xml: string, plan: InstructionPlan): Inst
       for (const slot of Array.isArray(slots) ? slots : slots ? [slots] : []) {
         const pageSteps = slot.Step;
         for (const stored of Array.isArray(pageSteps) ? pageSteps : pageSteps ? [pageSteps] : []) {
-          const index = Number(stored["@_SerializedIndex"]), step = steps[index];
-          if (!Number.isInteger(index) || !step) continue;
-          const preview = stored.StepPreview;
-          const angle = preview?.["@_modelAngle"] ?? preview?.["@_DefaultCameraControlInfo_modelAngle"];
-          if (typeof angle === "string") {
-            const radians = angle.trim().split(/\s+/).map(Number);
-            if (radians.length === 3 && radians.every(Number.isFinite)) {
-              step.rotation = radians.map(value => value * 180 / Math.PI) as [number, number, number];
+          const index = Number(stored["@_SerializedIndex"]);
+          if (!Number.isInteger(index)) continue;
+          for (const step of steps.filter((step, position) => (step.sourceIndex ?? position) === index)) {
+            const preview = stored.StepPreview;
+            const angle = preview?.["@_modelAngle"] ?? preview?.["@_DefaultCameraControlInfo_modelAngle"];
+            if (typeof angle === "string") {
+              const radians = angle.trim().split(/\s+/).map(Number);
+              if (radians.length === 3 && radians.every(Number.isFinite)) {
+                step.rotation = radians.map(value => value * 180 / Math.PI) as [number, number, number];
+              }
             }
-          }
-          if (typeof page.BrickBuilderTitle === "string") step.title = page.BrickBuilderTitle.slice(0, 160);
-          if (typeof page.BrickBuilderNotes === "string") step.notes = page.BrickBuilderNotes.slice(0, 2000);
-          if (typeof page.BrickBuilderCamera === "string") {
-            try {
-              step.camera = instructionStepSchema.shape.camera.parse(JSON.parse(page.BrickBuilderCamera));
-            } catch { warnings.push("Eine gespeicherte BrickBuilder-Schrittansicht ist ungültig und wurde nicht übernommen."); }
+            if (typeof page.BrickBuilderTitle === "string") step.title = page.BrickBuilderTitle.slice(0, 160);
+            if (typeof page.BrickBuilderNotes === "string") step.notes = page.BrickBuilderNotes.slice(0, 2000);
+            if (typeof page.BrickBuilderCamera === "string") {
+              try {
+                step.camera = instructionStepSchema.shape.camera.parse(JSON.parse(page.BrickBuilderCamera));
+              } catch { warnings.push("Eine gespeicherte BrickBuilder-Schrittansicht ist ungültig und wurde nicht übernommen."); }
+            }
           }
         }
       }

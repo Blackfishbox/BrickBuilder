@@ -43,17 +43,25 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
     }
   }
   let serializedIndex = 0;
+  const studioIndices = new Map<string, number>();
   function visit(name: string, occurrence: number[], ancestors: string[]) {
     if (ancestors.includes(name) || ancestors.length > 48) throw new Error("Zyklische Anleitungshierarchie.");
     let parts: string[] = [];
     let pendingCallouts: InstructionCallout[] = [];
     let title: string | undefined, notes = "";
     let rotation: [number, number, number] | undefined;
+    let localStep = 0;
     const finish = (allowEmpty = false) => {
       if (!parts.length && !pendingCallouts.length && !allowEmpty) return;
+      // Studio serializes each submodel definition once, even when that
+      // definition is built at several occurrences in the flattened plan.
+      const key = `${name}:${localStep++}`;
+      const sourceIndex = model.format === "io"
+        ? studioIndices.get(key) ?? serializedIndex++ : serializedIndex++;
+      if (model.format === "io") studioIndices.set(key, sourceIndex);
       steps.push({
-        id: `imported-step-${serializedIndex}`, title: title ?? `Schritt ${steps.length + 1}`,
-        notes, partIds: parts, sourceIndex: serializedIndex++,
+        id: `imported-step-${steps.length}`, title: title ?? `Schritt ${steps.length + 1}`,
+        notes, partIds: parts, sourceIndex, sourceAssembly: [...occurrence],
         ...(pendingCallouts.length ? { callouts: [...pendingCallouts] } : {}),
         ...(rotation ? { rotation } : {}),
       });
@@ -128,10 +136,16 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
 
 /** Keep old projects usable, discard deleted parts, and include newly added parts. */
 export function effectiveInstructions(document: BuilderDocument): InstructionPlan {
-  const base = document.instructions ?? (document.imported ? sourceInstructionPlan(document.imported) : {
+  let base = document.instructions ?? (document.imported ? sourceInstructionPlan(document.imported) : {
     version: 1 as const, edited: false, source: "manual" as const,
     steps: [{ id: "first-step", title: "Schritt 1", notes: "", partIds: [] }], warnings: [],
   });
+  // Rebuild untouched imported plans after importer corrections, including saved
+  // projects. Never reinterpret user-edited step membership.
+  if (document.imported && base.source === "studio" && !base.edited && base.studioLayout) {
+    const layout = base.studioLayout;
+    base = { ...readStudioInstructions(layout.sourceXml, sourceInstructionPlan(document.imported)), studioLayout: layout };
+  }
   const ids = instructionPartIds(document), live = new Set(ids), assigned = new Set<string>();
   const steps = base.steps.map(step => ({
     ...step, partIds: step.partIds.filter(id => {
