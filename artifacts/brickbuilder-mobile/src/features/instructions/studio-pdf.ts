@@ -1116,7 +1116,7 @@ export async function exportStudioLayoutPdfChunks(
             queuePageObject(node, () => drawPageText(pdf, node, slot));
           }
           for (const node of studioChildren(slotNode, nodes, "SizeGuide")) {
-            queuePageObject(node, () => drawStudioSizeGuide(pdf, document, node, [contentX, top, contentWidth, contentHeight]));
+            queuePageObject(node, () => drawStudioSizeGuide(pdf, document, node, [contentX, top, contentWidth, contentHeight], locale));
           }
         }
       }
@@ -1127,7 +1127,7 @@ export async function exportStudioLayoutPdfChunks(
         queuePageObject(node, () => drawPageText(pdf, node, [0, 0, pageWidth, pageHeight]));
       }
       for (const node of studioChildren(nativePage, nodes, "SizeGuide")) {
-        queuePageObject(node, () => drawStudioSizeGuide(pdf, document, node, [contentX, top, contentWidth, contentHeight]));
+        queuePageObject(node, () => drawStudioSizeGuide(pdf, document, node, [contentX, top, contentWidth, contentHeight], locale));
       }
       for (const bom of sourcePage.boms) {
         queuePageObject(bom.node, () => drawStudioBom(pdf, document, bom.page, locale, options.signal, renderPart));
