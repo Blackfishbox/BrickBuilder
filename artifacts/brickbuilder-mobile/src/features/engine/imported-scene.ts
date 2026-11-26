@@ -24,6 +24,8 @@ export interface SceneBuildOptions {
   onProgress?: (completed: number, total: number) => void;
   maxGeometryBytes?: number;
   viewport?: SceneViewport;
+  /** Full instruction surfaces with lossless packing and bounded edge buffers. */
+  instruction?: boolean;
 }
 export interface ImportedSceneDetail {
   compactFaces: boolean;
@@ -288,7 +290,7 @@ function legacyEdgeStride(batches: { segments: number; instances: number }[], bu
 export async function createImportedGroupAsync(model: ImportedModel, options: SceneBuildOptions = {}): Promise<Group> {
   const root = new Group();
   const budget = options.maxGeometryBytes ?? DEFAULT_GEOMETRY_BUDGET;
-  const { signal, onProgress, viewport } = options;
+  const { signal, onProgress, viewport, instruction } = options;
   const parts = instanceGroups(model);
   let slice = performance.now();
   const yieldFrame = async () => {
@@ -301,7 +303,7 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
   try {
     let rawFaceBytes = 0, wideEdgeBytes = 0, thinEdgeBytes = 0, edgeOccurrences = 0;
     const legacyBatches: { segments: number; instances: number }[] = [];
-    if (viewport) {
+    if (viewport || instruction) {
       for (const [reference, instances] of parts) {
         signal?.throwIfAborted();
         const surfaces = compilePart(model, reference, "16");
@@ -322,7 +324,7 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
         await yieldFrame();
       }
     }
-    const compactFaces = viewport === "legacy-faces" ||
+    const compactFaces = instruction === true || viewport === "legacy-faces" ||
       !!(viewport && rawFaceBytes > budget * (viewport === "legacy" ? 0.6 : 0.75));
     let done = 0;
     const total = parts.size * 2;
@@ -339,9 +341,11 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
       const stride = legacyEdgeStride(legacyBatches, edgeBudget);
       if (stride !== undefined) detail = { compactFaces, edges: "legacy", legacyEdgeStride: stride };
     } else if (viewport !== "legacy-faces") {
-      if (!viewport || (wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES)) detail.edges = "wide";
+      if ((!viewport && !instruction) || (wideEdgeBytes <= edgeBudget && edgeOccurrences <= MAX_WIDE_EDGE_OCCURRENCES)) detail.edges = "wide";
       else if (thinEdgeBytes <= edgeBudget) detail.edges = "thin";
     }
+    // A PDF must not silently discard all seams to satisfy a viewport budget.
+    if (instruction && thinEdgeBytes > 0 && detail.edges === "none") throw new SceneBudgetExceeded();
     root.userData.importedSceneDetail = detail;
     if (detail.edges !== "none") {
       for (const [reference, instances] of parts) {

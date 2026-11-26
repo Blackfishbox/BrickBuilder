@@ -18,6 +18,7 @@ import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } 
 import { drawHighlightSilhouette } from "./silhouette";
 import { configureStudioEdges } from "./studio-edges";
 import { INSTRUCTION_LIGHTING } from "../engine/lighting";
+import { releaseBetweenInstructionImages } from "./image-resources";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
 export const INSTRUCTION_PDF_EDGE_WIDTH_PX = 4;
@@ -131,7 +132,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   };
   try {
     if (document.imported) {
-      imported = await createImportedGroupAsync(document.imported, { signal });
+      imported = await createImportedGroupAsync(document.imported, { signal, instruction: true });
       assembly.add(imported);
     }
     const bounds = imported ? new Box3().setFromObject(imported) : new Box3();
@@ -175,7 +176,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     });
     const zero = new Matrix4().makeScale(0, 0, 0), matrix = new Matrix4();
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
-    return {
+    const images: InstructionImageRenderer = {
       image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight, style) {
         signal?.throwIfAborted();
         const checkContext = () => {
@@ -294,6 +295,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
       },
       dispose,
     };
+    return releaseBetweenInstructionImages(images, imported, renderer, output);
   } catch (error) {
     dispose();
     throw error;

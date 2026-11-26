@@ -124,6 +124,30 @@ describe("bounded large-model rendering", () => {
       expect(root.getObjectByName("ldraw:instanced-edges")).toBeInstanceOf(LineSegments);
     } finally { disposeImportedScene(root); }
   });
+  it("exports complete instruction geometry when the former full-width scene exceeds its memory budget", async () => {
+    const model = fixture(100);
+    model.resources["parts/test.dat"].content += "\n" +
+      "3 16 0 0 0 20 0 0 0 20 0\n".repeat(200) + "2 24 0 0 0 0 20 0\n".repeat(80);
+    const budget = 30 * 1024;
+    await expect(createImportedGroupAsync(model, { maxGeometryBytes: budget })).rejects.toBeInstanceOf(SceneBudgetExceeded);
+    const root = await createImportedGroupAsync(model, { instruction: true, maxGeometryBytes: budget });
+    try {
+      expect(importedSceneDetail(root)).toEqual({ compactFaces: true, edges: "thin" });
+      expect(measureImportedScene(root).bufferBytes).toBeLessThanOrEqual(budget);
+      expect(drawnFaces(root)).toBe(40_100);
+      const edges = root.getObjectByName("ldraw:instanced-edges") as LineSegments<InstancedBufferGeometry>;
+      expect(edges.geometry.getAttribute("position").count / 2).toBe(visibleEdgeCount(compilePart(model, "test.dat", "16")));
+      expect(edges.geometry.instanceCount).toBe(100);
+    } finally { disposeImportedScene(root); }
+  });
+  it("does not silently omit instruction edges if even their compact buffers cannot fit", async () => {
+    const model = fixture(100);
+    const faces = createImportedGroup(model, { compactFaces: true, edges: "none" });
+    const budget = measureImportedScene(faces).bufferBytes;
+    disposeImportedScene(faces);
+    await expect(createImportedGroupAsync(model, { instruction: true, maxGeometryBytes: budget }))
+      .rejects.toBeInstanceOf(SceneBudgetExceeded);
+  });
   it("keeps the historical uniform-color line shader and simplifies only its edges under budget pressure", async () => {
     const model = fixture(7_000);
     model.resources["parts/test.dat"].content += "\n" + "2 24 0 0 0 0 20 0\n".repeat(80);
@@ -214,8 +238,9 @@ it.skipIf(!largeModelPath)("keeps every resolved triangle of a local Studio mode
       }
     }
     const budget = 32 * 1024 * 1024;
-    for (const viewport of ["standard", "legacy", "legacy-faces"] as const) {
-      const group = await createImportedGroupAsync(model, { maxGeometryBytes: budget, viewport });
+    for (const viewport of ["standard", "legacy", "legacy-faces", "instruction"] as const) {
+      const group = await createImportedGroupAsync(model, { maxGeometryBytes: budget,
+        ...(viewport === "instruction" ? { instruction: true } : { viewport }) });
       try {
         const stats = measureImportedScene(group);
         const resolved = model.instances.filter(instance => instance.part.status === "resolved").length;
