@@ -121,6 +121,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('/node_modules/three/')) return 'three-engine';
+          const connectionData = id.match(/\/features\/connections\/data\/(hierarchy-\d+|shadow-\d+|examples-\d+)\.ts(?:\?.*)?$/);
+          if (connectionData) return `connection-${connectionData[1]}`;
         },
       },
     },
