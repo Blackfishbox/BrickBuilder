@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Resvg } from "@resvg/resvg-js";
+import { BUILDER_LIGHTING } from "./lighting";
 import {
   BufferGeometry, Color, DoubleSide, Float32BufferAttribute, FrontSide, Matrix4, Mesh,
   MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera, PlaneGeometry, Vector3,
@@ -159,7 +160,8 @@ describe("rendered vector surface regressions", () => {
     expect(colored).toBeGreaterThan(2500); expect(transparent).toBeGreaterThan(25000);
     expect(raster(svg)).toEqual(rgba);
     const expectedRoof = new Color("#b02025").multiplyScalar(
-      0.65 + 0.35 * new Vector3(-8, 18, 11).normalize().y).getHex();
+      BUILDER_LIGHTING.hemisphere +
+      BUILDER_LIGHTING.sun * new Vector3(...BUILDER_LIGHTING.direction).normalize().y).getHex();
     const expected = [expectedRoof >> 16, (expectedRoof >> 8) & 255, expectedRoof & 255, 255];
     // Whole roof interior, including its triangulation diagonal, must be solid.
     for (let x = 0; x <= 16; x++) for (let z = 0; z <= 16; z++) {

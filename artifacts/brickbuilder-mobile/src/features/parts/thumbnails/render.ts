@@ -5,6 +5,7 @@ import { createImportedGroup, disposeImportedScene } from "../../engine/imported
 import { setWideLineResolution } from "../../engine/wide-lines";
 import type { ImportedModel } from "../../formats/types";
 import { reuseGeometryCache } from "../../engine/ldraw-geometry";
+import { THUMBNAIL_LIGHTING } from "../../engine/lighting";
 
 let renderer: WebGLRenderer | undefined;
 let idle: ReturnType<typeof setTimeout> | undefined;
@@ -55,14 +56,14 @@ export function renderThumbnail(
       camera.position.copy(center).add(new Vector3(1.4, 1.05, 1.6).normalize().multiplyScalar(radius * 4));
       camera.lookAt(center);
       const scene = new Scene();
-      scene.add(group, new AmbientLight(0xffffff, 0.5));
-      const light = new DirectionalLight(0xffffff, 1.2);
+      scene.add(group, new AmbientLight(0xffffff, THUMBNAIL_LIGHTING.ambient));
+      const light = new DirectionalLight(0xffffff, THUMBNAIL_LIGHTING.sun);
       light.position.copy(center).add(new Vector3(radius * 2, radius * 4, radius * 3));
       light.target.position.copy(center);
       scene.add(light, light.target);
       // LDraw's reflected Y axis and mixed BFC winding need illumination on
       // both sides of double-sided surfaces, otherwise studs look unshaded.
-      const backLight = new DirectionalLight(0xffffff, 1.2);
+      const backLight = new DirectionalLight(0xffffff, THUMBNAIL_LIGHTING.sun);
       backLight.position.copy(center).add(new Vector3(-radius * 2, -radius * 4, -radius * 3));
       backLight.target.position.copy(center);
       scene.add(backLight, backLight.target);

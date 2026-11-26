@@ -55,7 +55,7 @@ import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlig
 import { floatingParts, legacyBrickBounds } from "./floating";
 import { stackingBounds } from "./stacking";
 import type { ConnectionTransform } from "../connections/types";
-import { createBuilderLighting } from "./lighting";
+import { createBuilderLighting, SOFTWARE_LIGHTING, softwareLightIntensity } from "./lighting";
 import type { Affine, ImportedModel } from "../formats/types";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
@@ -300,7 +300,7 @@ export class FallbackRenderer {
           normal.copy(b).sub(a).cross(c.clone().sub(a)).normalize();
           importedFaces.push({
             points, depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
-            color: base.clone().multiplyScalar(0.58 + 0.42 * Math.abs(normal.dot(light))).getStyle(),
+            color: base.clone().multiplyScalar(softwareLightIntensity(normal.dot(light))).getStyle(),
             alpha, opacity: 1, selected: false,
           });
         }
@@ -379,7 +379,7 @@ export class FallbackRenderer {
             record.localEdgeNormals,
             segment => resolveColor(record.localEdgeColorCodes[segment] === "16"
               ? record.instance.colorCode : record.localEdgeColorCodes[segment])?.hex ?? "#ff00ff",
-            light, 0.6, 0.4,
+            light, SOFTWARE_LIGHTING.ambient, SOFTWARE_LIGHTING.direct,
             instructionFocusIds === undefined ? undefined : instructionFocusIds.has(record.instance.id),
           );
         }
@@ -395,7 +395,7 @@ export class FallbackRenderer {
           surface.edges, transform, 0,
           deriveLineNormals(surface.edges, surface.positions, surface.normals),
           () => resolveColor(colorCode)?.hex ?? "#ff00ff",
-          light, 0.58, 0.42,
+          light, SOFTWARE_LIGHTING.ambient, SOFTWARE_LIGHTING.direct,
         );
       }
     }
@@ -429,7 +429,7 @@ export class FallbackRenderer {
         faces.push({
           points,
           depth: points.reduce((sum, point) => sum + point.depth, 0) / 3,
-          shade: 0.58 + 0.42 * Math.abs(normal.dot(light)),
+          shade: softwareLightIntensity(normal.dot(light)),
           opacity: 1,
         });
       }
@@ -446,7 +446,7 @@ export class FallbackRenderer {
         const edges = localBrickEdges(brick.type);
         drawSegments(
           edges, transform, 0, localBrickEdgeNormals(brick.type),
-          () => color.getStyle(), new Vector3(0.4, 0.8, 0.5).normalize(), 0.58, 0.42,
+          () => color.getStyle(), new Vector3(0.4, 0.8, 0.5).normalize(), SOFTWARE_LIGHTING.ambient, SOFTWARE_LIGHTING.direct,
         );
       }
 

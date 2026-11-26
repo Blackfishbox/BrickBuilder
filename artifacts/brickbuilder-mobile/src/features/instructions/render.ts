@@ -17,6 +17,7 @@ import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderS
 import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
 import { drawHighlightSilhouette } from "./silhouette";
 import { configureStudioEdges } from "./studio-edges";
+import { INSTRUCTION_LIGHTING } from "../engine/lighting";
 
 const FOCUS_ATTRIBUTE = "instructionFocus";
 export const INSTRUCTION_PDF_EDGE_WIDTH_PX = 4;
@@ -100,8 +101,8 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
   renderer.setClearColor("#ffffff");
   const scene = new Scene(), pivot = new Group(), assembly = new Group();
   scene.add(pivot); pivot.add(assembly);
-  scene.add(new AmbientLight(0xffffff, 2.1));
-  const light = new DirectionalLight(0xffffff, 2.7);
+  scene.add(new AmbientLight(0xffffff, INSTRUCTION_LIGHTING.ambient));
+  const light = new DirectionalLight(0xffffff, INSTRUCTION_LIGHTING.sun);
   light.position.set(10, 18, 12); scene.add(light);
   const camera = new OrthographicCamera(-10, 10, 7.6, -7.6, 0.01, 100000);
   let imported: Group | undefined;

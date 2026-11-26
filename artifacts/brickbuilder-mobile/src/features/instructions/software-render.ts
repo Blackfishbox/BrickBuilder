@@ -12,6 +12,7 @@ import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderS
 import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
 import { drawHighlightSilhouette } from "./silhouette";
+import { softwareLightIntensity } from "../engine/lighting";
 
 const MAX_TRIANGLES = 120_000;
 function documentCanvas(width: number, height: number): HTMLCanvasElement {
@@ -167,7 +168,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
             highlighted.add(face.id);
           }
           normal.copy(b).sub(a).cross(vertex.copy(c).sub(a)).normalize();
-          const shade = 0.58 + 0.42 * Math.abs(normal.dot(light));
+          const shade = softwareLightIntensity(normal.dot(light));
           color.set(face.color);
           if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(color, highlightIds.has(face.id));
           a.project(camera); b.project(camera); c.project(camera);
@@ -210,7 +211,7 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
             color.set(resolveColor(sourceColor && sourceColor !== "16" ? sourceColor : source.inheritedColor)?.hex ?? "#ff00ff");
             if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(color, highlightIds.has(source.id));
             let stroke = color.clone().multiplyScalar(
-              (0.58 + 0.42 * Math.abs(firstNormal.dot(light))) * NORMAL_EDGE_CONTRAST,
+              softwareLightIntensity(firstNormal.dot(light)) * NORMAL_EDGE_CONTRAST,
             ).getStyle();
             if (style?.studioEdges) {
               const luminance = color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;

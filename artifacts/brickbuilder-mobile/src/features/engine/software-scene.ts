@@ -4,6 +4,7 @@ import { resolveColor } from "../formats/colors";
 import { compilePart, reuseGeometryCache, sameSceneSources, visibleEdgeData, worldMatrix } from "./ldraw-geometry";
 import type { SceneBuildOptions } from "./imported-scene";
 import { instructionDisplayColor } from "./instruction-focus";
+import { softwareLightIntensity } from "./lighting";
 
 export const SOFTWARE_TRIANGLE_BUDGET = 32_000;
 export const INTERACTIVE_TRIANGLE_BUDGET = 3_000;
@@ -128,7 +129,7 @@ export async function createSoftwareScene(model: ImportedModel, options: SceneBu
       a.toArray(positions, triangles * 9); b.toArray(positions, triangles * 9 + 3); c.toArray(positions, triangles * 9 + 6);
       const normal = vertex.copy(b).sub(a).cross(c.clone().sub(a)).normalize();
       const mapping = resolveColor(surface.colorCode === "16" ? instance.colorCode : surface.colorCode);
-      colors.push(new Color(mapping?.hex ?? "#ff00ff").multiplyScalar(0.6 + 0.4 * Math.abs(normal.dot(light))).getStyle());
+      colors.push(new Color(mapping?.hex ?? "#ff00ff").multiplyScalar(softwareLightIntensity(normal.dot(light))).getStyle());
       triangleIds.push(instance.id);
       alpha[triangles++] = (mapping?.alpha ?? 255) / 255;
     }
@@ -157,7 +158,7 @@ export function previewSoftware(scene: SoftwareScene, id: string, matrix: Affine
     a.toArray(scene.positions, slot * 9); b.toArray(scene.positions, slot * 9 + 3); c.toArray(scene.positions, slot * 9 + 6);
     normal.copy(b).sub(a).cross(edge.copy(c).sub(a)).normalize();
     const mapping = resolveColor(record.codes[sample] === "16" ? (code ?? record.instance.colorCode) : record.codes[sample]);
-    scene.colors[slot] = new Color(mapping?.hex ?? "#ff00ff").multiplyScalar(0.6 + 0.4 * Math.abs(normal.dot(light))).getStyle();
+    scene.colors[slot] = new Color(mapping?.hex ?? "#ff00ff").multiplyScalar(softwareLightIntensity(normal.dot(light))).getStyle();
     scene.alpha[slot] = (mapping?.alpha ?? 255) / 255;
     scene.triangleIds[slot] = id;
   });
