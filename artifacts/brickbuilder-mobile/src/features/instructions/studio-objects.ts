@@ -74,6 +74,19 @@ export const studioVector = (raw: string | undefined, length: number): number[] 
 export const studioChildren = (node: StudioNode, nodes: StudioNode[], name: string) =>
   nodes.filter(candidate => candidate.parent === node.id && candidate.name === name);
 
+/** Page/slot arrows use centered source units with Y upwards, not top-left coordinates. */
+export function studioPageArrowPoints(points: number[], slot: StudioRect, scale: number): number[] {
+  return points.map((value, index) => index % 2
+    ? slot[1] + slot[3] / 2 - value * scale
+    : slot[0] + slot[2] / 2 + value * scale);
+}
+
+/** Text anchors are normalized; their stored box dimensions remain millimeters. */
+export function studioTextRect(rect: number[], slot: StudioRect): StudioRect {
+  return [slot[0] + (0.5 + rect[0]) * slot[2], slot[1] + (0.5 - rect[1]) * slot[3] - rect[3],
+    rect[2], rect[3]];
+}
+
 export function supportedStudioCallout(node: StudioNode, nodes: StudioNode[]): boolean {
   const parent = nodes[node.parent ?? -1];
   if (parent?.name !== "Step" || nodes[parent.parent ?? -1]?.name !== "Slot") return false;
@@ -138,7 +151,10 @@ export function studioBufferExchangeArrows(step: StudioNode, nodes: StudioNode[]
   const cameraToModel = camera.quaternion.clone().premultiply(inverseModelRotation);
   const toModel = (x: number, y: number, displacement: number[]): [number, number, number] =>
     new Vector3(x, -y, 0).applyQuaternion(cameraToModel).add(new Vector3(...target))
-      .add(new Vector3(...displacement)).toArray() as [number, number, number];
+      // Studio's scene has reversed Z relative to LDraw; our renderer also
+      // reverses LDraw Y and uses studs instead of LDU (20 LDU per stud).
+      .add(new Vector3(...displacement)).multiply(new Vector3(1 / 20, -1 / 20, -1 / 20))
+      .toArray() as [number, number, number];
   const displacementOf = (item: StudioNode): number[] => {
     const value = Object.entries(item.attributes).find(([name]) =>
       /^(?:displacement|offset|translation|positionoffset)$/i.test(name))?.[1];

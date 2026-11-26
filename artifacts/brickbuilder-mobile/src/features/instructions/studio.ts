@@ -10,10 +10,11 @@ export function readStudioInstructions(xml: string, plan: InstructionPlan): Inst
   if (!parsed.Instruction) throw new Error("Unbekanntes Studio-Anleitungsformat.");
   const warnings = [...plan.warnings];
   const nodes = studioNodes(xml);
-  const indices = nodes.filter(node => node.name === "Step" && nodes[node.parent ?? -1]?.name === "Slot")
+  const indices = nodes.filter(node => node.name === "Step" &&
+    ["Slot", "CallOutStepItemData"].includes(nodes[node.parent ?? -1]?.name ?? ""))
     .map(node => /^\d+$/.test(node.attributes.SerializedIndex ?? "") ? Number(node.attributes.SerializedIndex) : NaN);
   const sourceIndices = new Set(plan.steps.map((step, index) => step.sourceIndex ?? index));
-  const matches = indices.length === sourceIndices.size && new Set(indices).size === indices.length &&
+  const matches = new Set(indices).size === sourceIndices.size &&
     indices.every(index => Number.isInteger(index) && index >= 0 && sourceIndices.has(index));
   if (!matches) {
     warnings.push("Studio-Seiten und aufgelöste Bauschritte sind nicht deckungsgleich. Das originale Seitenlayout bleibt im IO-Archiv erhalten; angezeigt wird die LDraw-Schrittfolge.");

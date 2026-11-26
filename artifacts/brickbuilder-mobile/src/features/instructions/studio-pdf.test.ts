@@ -11,7 +11,8 @@ import { sourceInstructionPlan } from "./model";
 import { exportStudioLayoutPDF, orderStudioPageObjects, partListRect, studioPartCellLayout } from "./studio-pdf";
 import type { InstructionImageRenderer } from "./render";
 import { editStudioLayout, inspectStudioLayout, studioNodes } from "./studio-layout";
-import { studioBufferExchangeArrows, studioCalloutRect, studioModelRect } from "./studio-objects";
+import { studioBufferExchangeArrows, studioCalloutRect, studioModelRect, studioPageArrowPoints, studioTextRect } from "./studio-objects";
+import { includeIOAssemblies } from "../formats/io/assemblies";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { createSoftwareInstructionRenderer } from "./software-render";
 
@@ -125,6 +126,36 @@ function pdfCommands(bytes: Uint8Array): string {
   }).filter(stream => /\/I\d+ Do/.test(stream)).join("\n");
 }
 
+it("exports the right cumulative models after mixed source steps and expanded custom parts", async () => {
+  const { document, renderer } = nativeFixture();
+  const original = [
+    "0 FILE main.ldr",
+    "1 15 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat",
+    "1 16 80 0 0 1 0 0 0 1 0 0 0 1 child.ldr", "0 STEP",
+    "1 16 160 0 0 1 0 0 0 1 0 0 0 1 group.dat", "0 STEP",
+    "1 1 200 0 0 1 0 0 0 1 0 0 0 1 3710.dat", "0 STEP",
+    "0 FILE child.ldr",
+    "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3020.dat", "0 STEP",
+  ].join("\n");
+  const bytes = new TextEncoder().encode(original);
+  const source = new TextDecoder().decode(includeIOAssemblies(bytes, { "group.dat": [
+    "0 CustomBrick", "1 71 0 0 0 1 0 0 0 1 0 0 0 1 3020.dat",
+    "1 0 0 -8 0 1 0 0 0 1 0 0 0 1 3710.dat",
+  ] }));
+  document.imported = { ...document.imported!, sourceText: source, ...parseLDraw(source),
+    originalBytes: Array.from(writeZip({ "model.ldr": bytes })) };
+  const xml = `<Instruction><GlobalSetting><GlobalStyle><PartsList IsVisible="False"/>
+    <SubModelPreview IsVisible="False"/></GlobalStyle></GlobalSetting><Pages>${[0, 1, 2, 3].map(index =>
+    `<Page><Slot><Step SerializedIndex="${index}"/></Slot></Page>`).join("")}</Pages></Instruction>`;
+  document.instructions = readStudioInstructions(xml, sourceInstructionPlan(document.imported));
+  await exportStudioLayoutPDF(document, document.instructions, { highlight: true }, async () => renderer);
+  const ids = document.imported.instances.map(part => part.id);
+  expect(renderer.image.mock.calls.map(call => call[0])).toEqual([
+    new Set([ids[1]]), new Set(ids.slice(0, 2)), new Set(ids.slice(0, 4)), new Set(ids),
+  ]);
+  expect(renderer.image.mock.calls[3][2]).toEqual(new Set([ids[4]]));
+});
+
 it("maps native callouts from Studio coordinates and leaves the largest free model area", () => {
   const rect = studioCalloutRect([-0.4, 0.4, 0.3, 0.6], [0, 0, 200, 100]);
   expect(rect[0]).toBeCloseTo(20);
@@ -132,6 +163,19 @@ it("maps native callouts from Studio coordinates and leaves the largest free mod
   expect(rect.slice(2)).toEqual([60, 60]);
   expect(studioModelRect([0, 0, 200, 100], [[0, 0, 60, 100]])).toEqual([60, 0, 140, 100]);
   expect(studioModelRect([0, 0, 200, 100], [])).toEqual([0, 0, 200, 100]);
+  expect(studioPageArrowPoints([-10, -20, 30, 40], [10, 20, 200, 100], 2)).toEqual([90, 110, 170, -10]);
+  expect(studioTextRect([0.25, 0.25, 30, 10], [10, 20, 200, 100])).toEqual([160, 35, 30, 10]);
+});
+
+it("retains decoded source text in page and slot annotations", async () => {
+  const { document, renderer } = nativeFixture("", "", '<Text Rect="0 0 40 20" TextValue="On%20both%20sides%21"/>');
+  document.instructions!.studioLayout!.sourceXml = document.instructions!.studioLayout!.sourceXml
+    .replace('<Step SerializedIndex="1"/></Slot>', '<Step SerializedIndex="1"/><Text Rect="0 0 30 20" TextValue="2x"/></Slot>');
+  const bytes = await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+  const commands = pdfCommands(bytes);
+  expect(commands).toContain("(On both sides!)");
+  expect(commands).toContain("(2x)");
+  expect(commands).not.toContain("%20");
 });
 
 it("orders equal-depth page objects by their source order, then keeps insertion order", () => {
@@ -274,7 +318,7 @@ it("honors arrow visibility and layout edits in the exported appearance", async 
   } finally { spy.mockRestore(); }
 });
 
-it("draws page arrows in source units and identifies curved and model-space variants", async () => {
+it("draws page arrows from the centered source frame and identifies curved and model-space variants", async () => {
   const arrows = `<Arrow PointList="10 20 30 40" StartStyle="NoHeads" EndStyle="TriangleFilled" Thickness="0.5" Color="0 1 0"/>
     <Arrow PointList="10 20 30 40 50 60" EndStyle="Curved"/>
     <Arrow PointList="20 20 40 40" IsVisible="False" Color="1 0 1"/>`;
@@ -283,7 +327,7 @@ it("draws page arrows in source units and identifies curved and model-space vari
   const commands = pdfCommands(bytes);
   expect(commands).toContain("0. 1. 0. RG");
   expect(commands).not.toContain("1. 0. 1. RG");
-  expect(commands).toContain(`${(10 * 72 / 25.4).toFixed(16).slice(0, 8)}`);
+  expect(commands).toContain(`${((210 / 2 + 10) * 72 / 25.4).toFixed(16).slice(0, 8)}`);
   expect(inspectStudioLayout(document.instructions!.studioLayout!).unsupportedDetails).toContain("Arrow × 1");
 });
 
@@ -327,13 +371,16 @@ it("passes visible BufferExchange arrows through the source camera transform", a
   });
   expect(arrows[1]).toMatchObject({ startStyle: "NoHeads", endStyle: "TriangleEmpty", thickness: 1, color: "0 0 1" });
   expect(arrows[0].points[0]).not.toEqual([10, 20, 30]);
+  expect(arrows[0].points[0][0]).toBeCloseTo(0.6);
+  expect(arrows[0].points[0][1]).toBeCloseTo(-1.15);
+  expect(arrows[0].points[0][2]).toBeCloseTo(-1.7);
   expect(arrows[0].points[1]).not.toEqual(arrows[0].points[0]);
   const unshiftedLayout = { ...layout, sourceXml: layout.sourceXml.replace('Displacement="2 3 4"', "") };
   const unshiftedNodes = studioNodes(unshiftedLayout.sourceXml);
   const unshiftedStep = unshiftedNodes.find(node => node.name === "Step" && node.attributes.SerializedIndex === "0")!;
   const unshiftedArrow = studioBufferExchangeArrows(unshiftedStep, unshiftedNodes)[0];
   arrows[0].points.forEach((point, index) =>
-    point.forEach((coordinate, axis) => expect(coordinate - unshiftedArrow.points[index][axis]).toBeCloseTo([2, 3, 4][axis])));
+    point.forEach((coordinate, axis) => expect(coordinate - unshiftedArrow.points[index][axis]).toBeCloseTo([0.1, -0.15, -0.2][axis])));
   expect(inspectStudioLayout(layout).unsupportedDetails).not.toContain("Arrow × 1");
   expect(inspectStudioLayout(layout).unsupportedDetails).not.toContain("Arrow × 3");
   await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);

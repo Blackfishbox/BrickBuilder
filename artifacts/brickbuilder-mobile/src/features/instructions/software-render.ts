@@ -152,9 +152,9 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
                 .applyMatrix4(rotation).applyMatrix4(camera.matrixWorldInverse));
             }
           }
-          for (const arrowPoint of studioModelArrowPoints(
+          for (const arrowPoint of fitBounds.isEmpty() ? studioModelArrowPoints(
             modelArrows, center, step.rotation ?? [0, 0, 0],
-          )) fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
+          ) : []) fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           fitStudioCamera(camera, fitBounds, width / height, minimumFrameHeight);
         }
         const projected: { points: number[]; depth: number; color: string; alpha: number; highlighted: boolean }[] = [];

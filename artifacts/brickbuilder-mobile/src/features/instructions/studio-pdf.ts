@@ -24,6 +24,7 @@ import { effectiveInstructions } from "./model";
 import { translate, type Locale } from "../../i18n/messages";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { studioCalloutStep, studioFrameHeight, studioPdfStep, studioResizeSlots, type NativeSlotRect } from "./studio-native-layout";
+import { studioPageArrowPoints, studioTextRect } from "./studio-objects";
 import { drawStudioBom, planStudioBom, type StudioBomPage } from "./studio-bom";
 import { studioCalloutArrowPoints, studioCalloutCell } from "./studio-callout-layout";
 
@@ -791,15 +792,41 @@ export async function exportStudioLayoutPdfChunks(
     ...Object.fromEntries(nodes.filter(node => node.parent === globalCallout.id).map(node => [node.name, nodeRecord(node)])),
   } : {};
   const drawPageArrows = (
-    pdf: jsPDF, parent: StudioNode, originX: number, originY: number, onlyArrow?: StudioNode,
+    pdf: jsPDF, parent: StudioNode, slot: StudioRect, onlyArrow?: StudioNode,
   ) => {
     for (const arrow of onlyArrow ? [onlyArrow] : studioChildren(parent, nodes, "Arrow")) {
       if (!supportedStudioArrow(arrow, nodes) || arrow.attributes.IsVisible?.toLowerCase() === "false") continue;
       const points = studioVector(arrow.attributes.PointList, 4)!;
-      drawStudioArrow(pdf, points.map((value, index) => value * scale + (index % 2 ? originY : originX)),
+      drawStudioArrow(pdf, studioPageArrowPoints(points, slot, scale),
         arrow.attributes.StartStyle ?? "NoHeads", arrow.attributes.EndStyle ?? "TriangleFilled",
         Number(arrow.attributes.Thickness ?? 2), arrow.attributes.Color ?? "0 0 0", scale);
     }
+  };
+  const drawPageText = (pdf: jsPDF, node: StudioNode, slot: StudioRect) => {
+    if (node.attributes.IsVisible?.toLowerCase() === "false") return;
+    const rect = studioVector(node.attributes.Rect, 4);
+    if (!rect || rect[2] <= 0 || rect[3] <= 0 || !node.attributes.TextValue) return;
+    let value = node.attributes.TextValue;
+    try { value = decodeURIComponent(value); } catch { /* Studio can also store literal percent signs. */ }
+    const [x, y, width, height] = studioTextRect(rect, slot);
+    const font = studioFont(nodeRecord(node), 14, { rgb: [0, 0, 0], alpha: 1 });
+    applyFont(pdf, font, scale, 4, 96);
+    drawStyledBox(pdf, x, y, width, height, {
+      useBorder: node.attributes.ShowBorder?.toLowerCase() === "true",
+      border: parsedColor(node.attributes.BorderColor ?? ""),
+      borderThickness: Number(node.attributes.BorderThickness) || 1,
+      radius: Number(node.attributes.BorderRadius) || 0,
+    }, scale);
+    const lines: string[] = pdf.splitTextToSize(value, width);
+    const lineHeight = pdf.getFontSize() * 25.4 / 72 * pdf.getLineHeightFactor();
+    const align = node.attributes.HAlign?.toLowerCase() === "right" ? "right"
+      : node.attributes.HAlign?.toLowerCase() === "center" ? "center" : "left";
+    const vertical = node.attributes.VAlign?.toLowerCase();
+    const offset = vertical === "bottom" ? Math.max(0, height - lines.length * lineHeight)
+      : vertical === "center" ? Math.max(0, (height - lines.length * lineHeight) / 2) : 0;
+    withTextOpacity(pdf, font.color, () => pdf.text(lines,
+      x + (align === "right" ? width : align === "center" ? width / 2 : 0), y + offset,
+      { align, baseline: "top", angle: -(Number(node.attributes.Rotation) || 0) }));
   };
   options.signal?.throwIfAborted();
   const renderer = await createRenderer(document, options.signal);
@@ -1059,12 +1086,18 @@ export async function exportStudioLayoutPdfChunks(
         if (nativeStep?.parent !== undefined) {
           const slotNode = nodes[nativeStep.parent];
           for (const arrow of studioChildren(slotNode, nodes, "Arrow")) {
-            queuePageObject(arrow, () => drawPageArrows(pdf, slotNode, x, imageY, arrow));
+            queuePageObject(arrow, () => drawPageArrows(pdf, slotNode, slot, arrow));
+          }
+          for (const node of studioChildren(slotNode, nodes, "Text")) {
+            queuePageObject(node, () => drawPageText(pdf, node, slot));
           }
         }
       }
       for (const arrow of studioChildren(nativePage, nodes, "Arrow")) {
-        queuePageObject(arrow, () => drawPageArrows(pdf, nativePage, 0, 0, arrow));
+        queuePageObject(arrow, () => drawPageArrows(pdf, nativePage, [0, 0, pageWidth, pageHeight], arrow));
+      }
+      for (const node of studioChildren(nativePage, nodes, "Text")) {
+        queuePageObject(node, () => drawPageText(pdf, node, [0, 0, pageWidth, pageHeight]));
       }
       for (const bom of sourcePage.boms) {
         queuePageObject(bom.node, () => drawStudioBom(pdf, document, bom.page, locale, options.signal, renderPart));

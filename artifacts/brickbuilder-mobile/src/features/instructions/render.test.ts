@@ -504,7 +504,7 @@ it("fits only the visible Studio geometry into a narrow slot and keeps ordinary 
   const softwarePoints: number[] = [];
   const canvases: { width: number; height: number }[] = [];
   const context = {
-    fillRect() {}, drawImage() {}, beginPath() {}, closePath() {}, fill() {}, stroke() {},
+    fillRect() {}, drawImage() {}, beginPath() {}, closePath() {}, fill() {}, stroke() {}, save() {}, restore() {},
     moveTo(x: number, y: number) { softwarePoints.push(x, y); },
     lineTo(x: number, y: number) { softwarePoints.push(x, y); },
   };
@@ -542,6 +542,14 @@ it("fits only the visible Studio geometry into a narrow slot and keeps ordinary 
     expect(Math.min(...ndcY)).toBeGreaterThan(-1);
     expect(Math.max(...ndcY)).toBeLessThan(1);
     expect(Math.max(Math.max(...ndcX) - Math.min(...ndcX), Math.max(...ndcY) - Math.min(...ndcY))).toBeCloseTo(2 / 1.06, 5);
+    const fittedProjection = camera.projectionMatrix.clone();
+    const staleArrow: StudioModelArrow = {
+      points: [[-10000, 5000, 0], [-9000, 5000, 0]], startStyle: "NoHeads",
+      endStyle: "TriangleFilled", thickness: 2, color: "0 0 0",
+    };
+    webgl.image(visible, step, undefined, 0.5, [staleArrow]);
+    expect(camera.projectionMatrix.equals(fittedProjection)).toBe(true);
+    softwarePoints.length = 0;
     software.image(visible, step, undefined, 0.5);
     expect(canvases.at(-1)).toMatchObject({ width: 1000, height: 2000 });
     const xs = softwarePoints.filter((_, index) => index % 2 === 0).map(x => x / 500 - 1);
@@ -550,6 +558,10 @@ it("fits only the visible Studio geometry into a narrow slot and keeps ordinary 
     expect(Math.max(...xs)).toBeCloseTo(Math.max(...ndcX), 4);
     expect(Math.min(...ys)).toBeCloseTo(Math.min(...ndcY), 4);
     expect(Math.max(...ys)).toBeCloseTo(Math.max(...ndcY), 4);
+    const originalSoftwarePoints = softwarePoints.slice();
+    softwarePoints.length = 0;
+    software.image(visible, step, undefined, 0.5, [staleArrow]);
+    expect(softwarePoints.slice(0, originalSoftwarePoints.length)).toEqual(originalSoftwarePoints);
     webgl.image(visible, step);
     const restored = frames.mock.lastCall![1] as import("three").OrthographicCamera;
     expect(restored.zoom).toBe(normalCamera.zoom);

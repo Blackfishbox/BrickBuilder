@@ -3,6 +3,7 @@ import type { ImportedModel } from "../formats/types";
 import type { InstructionCallout, InstructionPlan, InstructionStep } from "./types";
 import { readStudioInstructions } from "./studio";
 import { INSTRUCTION_ROOT } from "../formats/mpd/instruction-partition";
+import { studioInstructionDefinitions } from "./studio-definitions";
 
 const boundary = /^\s*0\s+(?:STEP|ROTSTEP)(?:\s|$)/i;
 
@@ -31,6 +32,7 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
   // Generated slices retain assembly nesting, but only the explicit root
   // boundaries define construction steps, including deliberately empty ones.
   const explicitRoot = model.sections[model.root]?.includes(INSTRUCTION_ROOT);
+  const instructionDefinitions = studioInstructionDefinitions(model);
   const available = new Map(model.instances.map(part => [part.sourceOccurrence?.join("/"), part.id]));
   const idsByPrefix = new Map<string, string[]>();
   for (const part of model.instances) {
@@ -97,8 +99,11 @@ export function sourceInstructionPlan(model: ImportedModel): InstructionPlan {
       const target = reference.toLowerCase();
       if (Object.hasOwn(model.sections, target)) {
         // Build each subassembly before it is used by its parent occurrence.
-        if (!explicitRoot && parts.length) finish();
-        if (explicitRoot) {
+        // A submodel and direct parts can belong to the same source step.
+        // Visiting the child first must not invent an extra parent boundary:
+        // Studio's SerializedIndex counts only the original step boundaries.
+        if (!explicitRoot && model.format !== "io" && parts.length) finish();
+        if (explicitRoot || !instructionDefinitions.has(target)) {
           collect(target, path, [...ancestors, name], parts);
         } else {
           visit(target, path, [...ancestors, name]);

@@ -262,7 +262,9 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
               }
             }
           });
-          for (const arrowPoint of studioModelArrowPoints(modelArrows, center, rotation)) {
+          // Stale/off-frame source annotations must not shrink the model to a
+          // dot. Frame surfaces first; arrows are clipped to that same view.
+          for (const arrowPoint of fitBounds.isEmpty() ? studioModelArrowPoints(modelArrows, center, rotation) : []) {
             fitBounds.expandByPoint(arrowPoint.applyMatrix4(camera.matrixWorldInverse));
           }
           fitStudioCamera(camera, fitBounds, renderSize.width / renderSize.height, minimumFrameHeight);
