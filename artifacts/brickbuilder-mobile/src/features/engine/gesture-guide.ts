@@ -54,6 +54,7 @@ export interface HelpButtonItem {
   icon: LucideIcon;
   title: MessageId;
   description: MessageId;
+  additionalDescription?: MessageId;
 }
 
 export interface HelpButtonSection {
@@ -112,7 +113,12 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
       { icon: FilePlus2, title: "project.newAction", description: "help.menu.new.description" },
       { icon: FileUp, title: "project.import", description: "help.menu.import.description" },
       { icon: FileDown, title: "project.export", description: "help.menu.export.description" },
-      { icon: PackageOpen, title: "project.instructions", description: "help.menu.instructions.description" },
+      {
+        icon: PackageOpen,
+        title: "project.instructions",
+        description: "help.menu.instructions.description",
+        additionalDescription: "instruction.background.note",
+      },
       { icon: HardDrive, title: "project.storage", description: "help.menu.storage.description" },
       { icon: ShieldCheck, title: "project.privacy", description: "help.menu.privacy.description" },
       { icon: Languages, title: "language", description: "help.menu.language.description" },

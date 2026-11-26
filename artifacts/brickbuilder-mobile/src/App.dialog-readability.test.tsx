@@ -187,6 +187,7 @@ it("opens the English gesture guide from the header between theme and save", asy
   expect(dialog.textContent).toContain("Double-tap a rotation or tilt slider");
   expect(dialog.textContent).toContain("Move connected upper parts");
   expect(dialog.textContent).toContain("Import file");
+  expect(dialog.textContent).toContain("Android: the export can continue in the background or with the screen off for up to one hour.");
   expect(dialog.querySelectorAll(".gesture-guide-button-visual").length).toBeGreaterThan(20);
   expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
 });
@@ -205,6 +206,7 @@ it("shows every mode's gesture help in German", async () => {
   expect(dialog.textContent).toContain("Doppeltipp auf einen Dreh- oder Neigungsregler");
   expect(dialog.textContent).toContain("Verbundene obere Teile mitbewegen");
   expect(dialog.textContent).toContain("Datei importieren");
+  expect(dialog.textContent).toContain("Android: Der Export kann bis zu einer Stunde im Hintergrund oder bei ausgeschaltetem Bildschirm weiterlaufen.");
   expect(dialog.querySelectorAll(".gesture-guide-button-visual").length).toBeGreaterThan(20);
   expect(editorCss).toContain(".dark .gesture-guide-dialog");
 });

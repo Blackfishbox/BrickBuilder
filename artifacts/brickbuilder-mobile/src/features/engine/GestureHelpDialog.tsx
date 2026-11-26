@@ -34,10 +34,14 @@ export default function GestureHelpDialog({ onClose }: { onClose(): void }) {
             <section key={section.title} aria-labelledby={`help-section-${section.title}`}>
               <h3 id={`help-section-${section.title}`}>{t(section.title)}</h3>
               <ul className="gesture-guide-buttons">
-                {section.buttons.map(({ icon: Icon, title, description }, index) => (
+                {section.buttons.map(({ icon: Icon, title, description, additionalDescription }, index) => (
                   <li key={`${title}-${index}`}>
                     <span className="gesture-guide-button-visual" aria-hidden="true"><Icon size={17} /></span>
-                    <div><strong>{t(title)}</strong><p>{t(description)}</p></div>
+                    <div>
+                      <strong>{t(title)}</strong>
+                      <p>{t(description)}</p>
+                      {additionalDescription && <p>{t(additionalDescription)}</p>}
+                    </div>
                   </li>
                 ))}
               </ul>

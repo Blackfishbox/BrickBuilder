@@ -44,6 +44,16 @@ it("hides editable step names and keeps the singular instruction summary", () =>
   expect(host.querySelector('[data-testid="text-instructions-summary"]')!.textContent).toBe("1 step · 1 part");
 });
 
+it("does not show the Android background-export note inside the instruction view", () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "part", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={async () => {}} />));
+  expect(host.textContent).not.toContain("Akku-Beschränkungen");
+  expect(host.textContent).not.toContain("battery restrictions");
+});
+
 it("requires confirmation before replacing a sequence and then generates a support-first plan", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();
@@ -468,7 +478,8 @@ it("toggles occurrence highlighting across cumulative, empty and previous steps 
   const click = (id: string) => act(() => host.querySelector<HTMLButtonElement>(`[data-testid="button-instructions-${id}"]`)!.click());
   expect(props().instructionFocusIds).toBeUndefined();
   click("highlight");
-  expect(host.querySelector('[data-testid="button-instructions-highlight"]')!.getAttribute("aria-pressed")).toBe("true");
+  expect(host.querySelector('[data-testid="button-instructions-highlight"]')!.getAttribute("role")).toBe("switch");
+  expect(host.querySelector('[data-testid="button-instructions-highlight"]')!.getAttribute("aria-checked")).toBe("true");
   expect(props().instructionFocusIds).toBeUndefined();
   expect(host.querySelector('[data-testid="text-instructions-highlight-legend"]')).toBeNull();
   click("next");
@@ -480,6 +491,7 @@ it("toggles occurrence highlighting across cumulative, empty and previous steps 
   click("prev");
   expect(props().instructionFocusIds).toEqual(new Set(["new"]));
   click("highlight");
+  expect(host.querySelector('[data-testid="button-instructions-highlight"]')!.getAttribute("aria-checked")).toBe("false");
   expect(props().instructionFocusIds).toBeUndefined();
   expect(onChange).not.toHaveBeenCalled();
   expect(source).toEqual(original);
@@ -615,6 +627,10 @@ it("keeps the instruction header actions available at narrow mobile widths with 
   expect(host.querySelector('[data-testid="button-instructions-export-pdf"]')?.getAttribute("aria-label")).toBe("Anleitung als PDF exportieren");
   expect(host.querySelector('[data-testid="button-instructions-export-studio-pdf"]')).toBeNull();
   expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
+  const highlight = host.querySelector('[data-testid="button-instructions-highlight"]')!;
+  expect(highlight.parentElement?.parentElement).toBe(header());
+  expect(highlight.previousElementSibling?.querySelector('[data-testid="button-instructions-close"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="button-instructions-highlight"]')?.closest(".ins-card")).toBeNull();
 
   render(withStudioLayout);
   expect(header().classList.contains("has-studio-pdf")).toBe(true);
@@ -623,11 +639,11 @@ it("keeps the instruction header actions available at narrow mobile widths with 
   expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
 
   const css = readFileSync("src/features/instructions/instructions.css", "utf8");
-  expect(css).toMatch(/@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*?\.ins-head\s*\{[^}]*grid-template-columns:\s*max-content\s+44px/);
-  expect(css).toMatch(/\.ins-head\.has-studio-pdf\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)\s+44px/);
+  expect(css).toMatch(/@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*?\.ins-head\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   expect(css).toMatch(/\.ins-head-title strong\s*\{[^}]*overflow-wrap:\s*anywhere/);
-  expect(css).toMatch(/\.ins-head > \.ins-primary\s*\{[^}]*width:\s*auto[^}]*overflow-wrap:\s*anywhere/);
-  expect(css).toMatch(/\.ins-head\.has-studio-pdf > \.ins-primary\s*\{[^}]*width:\s*100%/);
+  expect(css).toMatch(/\.ins-head-actions\s*\{[^}]*justify-content:\s*flex-end/);
+  expect(css).toMatch(/\.ins-head-controls\s*\{[^}]*align-items:\s*flex-end/);
+  expect(css).toMatch(/\.ins-head-actions\s*\{[^}]*width:\s*100%[^}]*justify-content:\s*flex-end/);
 });
 
 it("saves a focused angle edit before passing the plan to PDF export", async () => {

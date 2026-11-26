@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Capacitor } from "@capacitor/core";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model";
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
@@ -348,16 +347,26 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             partUnit: t(total === 1 ? "instruction.partUnit" : "instruction.partsUnit"),
           })}</strong>
         </div>
-        <button className="ins-primary" onClick={() => void exportPdf()} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
-          <FileDown size={16} /> PDF
-        </button>
-        {studioPdfAvailable && (
-          <button className="ins-primary ins-studio-pdf" onClick={() => void exportPdf(true)} disabled={!!exporting || total === 0}
-            aria-label={t("instruction.exportStudioPdf")} data-testid="button-instructions-export-studio-pdf">
-            <FileDown size={16} /> {t("instruction.studioPdfShort")}
+        <div className="ins-head-controls">
+          <div className="ins-head-actions">
+            <button className="ins-primary" onClick={() => void exportPdf()} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
+              <FileDown size={16} /> PDF
+            </button>
+            {studioPdfAvailable && (
+              <button className="ins-primary ins-studio-pdf" onClick={() => void exportPdf(true)} disabled={!!exporting || total === 0}
+                aria-label={t("instruction.exportStudioPdf")} data-testid="button-instructions-export-studio-pdf">
+                <FileDown size={16} /> {t("instruction.studioPdfShort")}
+              </button>
+            )}
+            <button className="ins-icon" onClick={onClose} aria-label={t("instruction.close")} data-testid="button-instructions-close"><X size={18} /></button>
+          </div>
+          <button className="ins-ghost ins-highlight" role="switch" aria-checked={highlight}
+            aria-label={t("instruction.highlight", { state: highlight ? t("instruction.on") : t("instruction.off") })}
+            onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
+            <span>{t("instruction.highlightLabel")}</span>
+            <i className="ins-switch-track" aria-hidden="true"><i /></i>
           </button>
-        )}
-        <button className="ins-icon" onClick={onClose} aria-label={t("instruction.close")} data-testid="button-instructions-close"><X size={18} /></button>
+        </div>
       </header>
 
       {(exporting || retryingShare) && (
@@ -366,11 +375,6 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           <span>{retryingShare ? t("instruction.retryingShare") : t("instruction.exporting", { done: exporting!.done, total: exporting!.total })}</span>
           {!retryingShare && <div className="ins-bar"><i style={{ transform: `scaleX(${exporting!.total ? exporting!.done / exporting!.total : 0})` }} /></div>}
           {!retryingShare && <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">{t("inventory.cancel")}</button>}
-        </div>
-      )}
-      {exporting && Capacitor.getPlatform() === "android" && (
-        <div className="ins-banner" role="note">
-          <Info size={15} /><span>{t("instruction.background.note")}</span>
         </div>
       )}
       {exportError && (
@@ -445,10 +449,6 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           </nav>
 
           <div className="ins-card">
-            <button className="ins-ghost ins-highlight" aria-pressed={highlight}
-              onClick={() => setHighlight(value => !value)} data-testid="button-instructions-highlight">
-              {t("instruction.highlight", { state: highlight ? t("instruction.on") : t("instruction.off") })}
-            </button>
             <label className="ins-field">
               <span>{t("instruction.notes")}</span>
               <textarea rows={2} value={step.notes} maxLength={2000} onChange={e => patchStep({ notes: e.target.value })} placeholder={t("instruction.notesExample")} data-testid="input-instructions-step-notes" />
