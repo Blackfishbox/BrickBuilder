@@ -4,6 +4,7 @@ import { XMLParser } from "fast-xml-parser";
 const mock = vi.hoisted(() => ({
   platform: "android",
   yieldExecution: vi.fn(async () => {}),
+  openBatteryOptimizationSettings: vi.fn(async () => {}),
   stopped: undefined as undefined | ((event: { jobId: string; reason: string }) => void),
   start: vi.fn(async (_options: { jobId: string }) => {}),
   update: vi.fn(async () => {}),
@@ -21,7 +22,7 @@ vi.mock("@capacitor/core", () => ({
     },
   }),
 }));
-import { withPdfBackgroundExport, yieldPdfExecution } from "./pdf-background";
+import { openBatteryOptimizationSettings, withPdfBackgroundExport, yieldPdfExecution } from "./pdf-background";
 beforeEach(() => { vi.clearAllMocks(); mock.platform = "android"; });
 afterEach(() => { mock.stopped = undefined; vi.restoreAllMocks(); });
 
@@ -39,6 +40,19 @@ it("declares a non-exported, user-started Android file-processing service with b
     "@_android:foregroundServiceType": "dataSync", "@_android:stopWithTask": "true",
   });
   expect(source).not.toContain("BOOT_COMPLETED");
+  const service = readFileSync(new URL("../../android/app/src/main/java/brickbuilder/blackfishbox/de/PdfExportService.java", import.meta.url), "utf8");
+  expect(service).toMatch(/MAX_DURATION_MS = 2L \* 60L \* 60L \* 1000L/);
+  const plugin = readFileSync(new URL("../../android/app/src/main/java/brickbuilder/blackfishbox/de/PdfExportPlugin.java", import.meta.url), "utf8");
+  expect(plugin).toContain("Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS");
+  expect(plugin).not.toContain("ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS");
+});
+
+it("opens Android's general battery optimization settings without requesting exemption permission", async () => {
+  await openBatteryOptimizationSettings();
+  expect(mock.openBatteryOptimizationSettings).toHaveBeenCalledOnce();
+  mock.platform = "web";
+  await openBatteryOptimizationSettings();
+  expect(mock.openBatteryOptimizationSettings).toHaveBeenCalledOnce();
 });
 
 it("leaves browser exports unchanged and starts no native service", async () => {

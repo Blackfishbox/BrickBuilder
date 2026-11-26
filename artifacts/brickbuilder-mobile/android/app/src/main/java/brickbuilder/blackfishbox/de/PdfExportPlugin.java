@@ -6,8 +6,11 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ActivityNotFoundException;
+import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
+import android.provider.Settings;
 import android.webkit.WebView;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.Lifecycle;
@@ -125,6 +128,25 @@ public final class PdfExportPlugin extends Plugin implements PdfExportService.Li
             PdfExportService.update(call.getString("jobId", ""), call.getInt("done", 0),
                 call.getInt("total", 0), call.getString("text", ""));
             call.resolve();
+        });
+    }
+
+    @PluginMethod public void openBatteryOptimizationSettings(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            Intent settings = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            try {
+                getActivity().startActivity(settings);
+                call.resolve();
+            } catch (ActivityNotFoundException error) {
+                Intent appSettings = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", getContext().getPackageName(), null));
+                try {
+                    getActivity().startActivity(appSettings);
+                    call.resolve();
+                } catch (RuntimeException fallbackError) {
+                    call.reject("Could not open Android battery settings", fallbackError);
+                }
+            }
         });
     }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { BRICK_DEFINITIONS, type BuilderDocument } from "@/features/editor/model";
 import BuilderCanvas from "@/features/engine/BuilderCanvas";
@@ -16,6 +17,7 @@ import { hasStudioPdfLayout } from "./studio-pdf";
 import { generateAutomaticInstructionSteps, type AutoInstructionProgress } from "./auto-generate";
 import "./instructions.css";
 import { useI18n } from "@/i18n/I18nProvider";
+import { openBatteryOptimizationSettings } from "@/platform/pdf-background";
 
 interface Props {
   document: BuilderDocument;
@@ -374,6 +376,10 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
           <LoaderCircle size={15} className="spin" />
           <span>{retryingShare ? t("instruction.retryingShare") : t("instruction.exporting", { done: exporting!.done, total: exporting!.total })}</span>
           {!retryingShare && <div className="ins-bar"><i style={{ transform: `scaleX(${exporting!.total ? exporting!.done / exporting!.total : 0})` }} /></div>}
+          {!retryingShare && Capacitor.getPlatform() === "android" && (
+            <button className="ins-ghost" onClick={() => void openBatteryOptimizationSettings()}
+              data-testid="button-instructions-battery-settings">{t("instruction.background.batterySettings")}</button>
+          )}
           {!retryingShare && <button className="ins-ghost" onClick={() => abortRef.current?.abort()} data-testid="button-instructions-export-cancel">{t("inventory.cancel")}</button>}
         </div>
       )}

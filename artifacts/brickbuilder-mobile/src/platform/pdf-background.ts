@@ -4,6 +4,7 @@ import { translate, type Locale } from "../i18n/messages";
 interface PdfExportPlugin {
   yieldExecution(): Promise<void>;
   start(options: { jobId: string; title: string; text: string; channel: string; cancel: string }): Promise<void>;
+  openBatteryOptimizationSettings(): Promise<void>;
   update(options: { jobId: string; done: number; total: number; text: string }): Promise<void>;
   stop(options: { jobId: string; success: boolean; title: string; text: string }): Promise<void>;
   waitForForeground(options: { jobId: string }): Promise<void>;
@@ -13,6 +14,11 @@ interface PdfExportPlugin {
 const native = registerPlugin<PdfExportPlugin>("PdfExport");
 let active = false;
 let rendering = false;
+
+/** Open Android's user-controlled exemption list; no special exemption permission is requested. */
+export async function openBatteryOptimizationSettings(): Promise<void> {
+  if (Capacitor.getPlatform() === "android") await native.openBatteryOptimizationSettings();
+}
 
 /** Hidden WebView timers can be throttled even while a foreground service runs. */
 export async function yieldPdfExecution(): Promise<void> {

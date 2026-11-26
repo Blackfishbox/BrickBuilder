@@ -29,7 +29,7 @@ public final class PdfExportService extends Service {
     private static final String CHANNEL = "pdf-exports";
     private static final String CANCEL = "brickbuilder.pdf.CANCEL";
     private static final int NOTIFICATION = 4101, READY_NOTIFICATION = 4102;
-    private static final long MAX_DURATION_MS = 60L * 60L * 1000L;
+    private static final long MAX_DURATION_MS = 2L * 60L * 60L * 1000L;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable timeout = () -> finish(false, "", "", "timeout");
     private PowerManager.WakeLock wakeLock;
