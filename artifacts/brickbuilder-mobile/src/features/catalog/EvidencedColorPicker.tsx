@@ -1,7 +1,10 @@
-import { useEffect, type CSSProperties } from "react";
-import { Check } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Check, Search } from "lucide-react";
 import { ensureColorEvidence, useColorEvidence } from "./client";
-import { displayColorName, evidencePalette, selectionColorEvidence, sortColorNames, type EvidenceSwatch } from "./color-evidence";
+import {
+  COLOR_FAMILIES, displayColorName, evidencePalette, filterColorPalette,
+  selectionColorEvidence, type ColorFamily, type ColorSort, type EvidenceSwatch,
+} from "./color-evidence";
 import manifest from "./color-evidence-manifest.json";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -15,12 +18,16 @@ interface Props {
 }
 export default function EvidencedColorPicker({ palette, current, references, locked, mobile, onChange }: Props) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
+  const [family, setFamily] = useState<ColorFamily>("all");
+  const [sort, setSort] = useState<ColorSort>("name-asc");
   const evidence = useColorEvidence();
   useEffect(() => { void ensureColorEvidence().catch(() => undefined); }, []);
   const result = selectionColorEvidence(references, evidence.index);
   const { visible, preserved } = evidencePalette(palette, result.codes, current);
-  const sortedVisible = sortColorNames(visible);
+  const filteredVisible = filterColorPalette(visible, query, family, sort);
   const selected = (code: string) => current.some(c => c.ldrawCode === code);
+  const familyLabel = (value: ColorFamily) => t(`color.family.${value}`);
   return <>
     <p className="color-evidence-status" role="status" data-testid="color-evidence-status">
       {locked ? t("color.locked") : result.known
@@ -33,9 +40,31 @@ export default function EvidencedColorPicker({ palette, current, references, loc
       {evidence.status === "loading" && t("color.loadingEvidence")}
       {evidence.status === "error" && <> {evidence.error} <button type="button" onClick={() => void ensureColorEvidence().catch(() => undefined)}>{t("color.retryEvidence")}</button></>}
     </p>
+    <div className={`color-picker-controls ${mobile ? "mobile" : ""}`}>
+      <label className="color-picker-search">
+        <Search size={16} aria-hidden="true" />
+        <span className="sr-only">{t("color.searchLabel")}</span>
+        <input type="search" value={query} onChange={event => setQuery(event.target.value)}
+          placeholder={t("color.searchPlaceholder")} data-testid="color-search" />
+      </label>
+      <label className="color-picker-sort">
+        <span>{t("color.sortLabel")}</span>
+        <select value={sort} onChange={event => setSort(event.target.value as ColorSort)} data-testid="color-sort">
+          <option value="name-asc">{t("color.sort.nameAsc")}</option>
+          <option value="name-desc">{t("color.sort.nameDesc")}</option>
+          <option value="code-asc">{t("color.sort.codeAsc")}</option>
+        </select>
+      </label>
+    </div>
+    <div className={`color-family-filters ${mobile ? "mobile" : ""}`} role="group" aria-label={t("color.filterLabel")}>
+      {COLOR_FAMILIES.map(value => <button key={value} type="button"
+        className={family === value ? "active" : ""}
+        aria-pressed={family === value} onClick={() => setFamily(value)}
+        data-testid={`color-family-${value}`}>{familyLabel(value)}</button>)}
+    </div>
     <div className={mobile ? "mobile-color-grid" : "color-grid"} role="group" aria-label={t("color.swatches")}
       style={{ maxHeight: mobile ? "45vh" : 180, overflowY: "auto" }}>
-      {sortedVisible.map(color => <button key={color.ldrawCode} type="button"
+      {filteredVisible.map(color => <button key={color.ldrawCode} type="button"
         className={`${mobile ? "mobile-color-option" : "swatch"} ${selected(color.ldrawCode) ? "selected" : ""}`}
         style={mobile ? undefined : { "--swatch-color": color.value } as CSSProperties}
         aria-label={t("color.selectName", { name: displayColorName(color.name) })} aria-pressed={selected(color.ldrawCode)}
@@ -44,6 +73,7 @@ export default function EvidencedColorPicker({ palette, current, references, loc
         {mobile && <><span style={{ "--swatch-color": color.value } as CSSProperties} /><span>{displayColorName(color.name)}</span></>}
         {selected(color.ldrawCode) && <Check size={mobile ? 16 : 13} />}
       </button>)}
+      {!filteredVisible.length && <p className="color-picker-empty">{t("color.noFilterMatches")}</p>}
     </div>
     {preserved.length > 0 && <div className="color-evidence-status" data-testid="preserved-colors">
       <strong>{t("color.currentPreserved")}</strong>

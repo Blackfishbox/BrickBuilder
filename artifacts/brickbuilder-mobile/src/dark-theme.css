@@ -26,6 +26,19 @@
   border-color: hsl(var(--border));
   color: hsl(var(--card-foreground));
 }
+.dark .color-picker-search,
+.dark .color-picker-sort select,
+.dark .color-family-filters button {
+  background-color: hsl(var(--input));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.dark .color-family-filters button.active {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.dark .color-picker-search input { color: hsl(var(--foreground)); }
+.dark .color-picker-search input::placeholder { color: hsl(var(--muted-foreground)); }
 .dark :is(.project-title-button:hover, .saved-project:hover, .tool-option:hover:not(.active),
   .icon-button:hover:not(:disabled), .selection-action:hover, .dock-color:hover,
   .drawer-piece:hover, .drawer-piece.chosen, .mobile-color-option.selected,

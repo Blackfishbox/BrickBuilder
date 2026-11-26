@@ -117,6 +117,46 @@ export interface EvidenceSwatch { name: string; value: string; ldrawCode: string
 export function displayColorName(name: string): string {
   return name.replace(/_+/g, " ").trim();
 }
+export const COLOR_FAMILIES = [
+  "all", "standard", "dark", "light", "medium", "transparent", "metallic", "special", "other",
+] as const;
+export type ColorFamily = typeof COLOR_FAMILIES[number];
+export type ColorSort = "name-asc" | "name-desc" | "code-asc";
+const METALLIC_COLOR = /\b(?:pearl|chrome|metallic|metal)\b|^flat silver\b/i;
+const SPECIAL_COLOR = /\b(?:glitter|opal|speckle|glow|luminous|milky|rubber|modulex|canvas|fluorescent|conductive|magnet)\b/i;
+const OTHER_COLOR = /^fabuland\b/i;
+
+export function colorBelongsToFamily(color: EvidenceSwatch, family: Exclude<ColorFamily, "all">): boolean {
+  const name = displayColorName(color.name).toLowerCase();
+  if (family === "transparent") return /\btrans(?:parent)?\b/.test(name);
+  if (family === "dark") return /^(?:very )?dark\b/.test(name);
+  if (family === "light") return /^(?:very )?light\b/.test(name);
+  if (family === "medium") return /^medium\b/.test(name);
+  if (family === "metallic") return METALLIC_COLOR.test(name);
+  if (family === "special") return SPECIAL_COLOR.test(name);
+  if (family === "other") return OTHER_COLOR.test(name);
+  if (family === "standard") {
+    return !/^(?:very )?(?:dark|light)\b|^medium\b|^trans(?:parent)?\b/.test(name) &&
+      !METALLIC_COLOR.test(name) && !SPECIAL_COLOR.test(name) && !OTHER_COLOR.test(name);
+  }
+  return !colorBelongsToFamily(color, "standard") &&
+    !colorBelongsToFamily(color, "dark") && !colorBelongsToFamily(color, "light") &&
+    !colorBelongsToFamily(color, "medium") && !colorBelongsToFamily(color, "transparent") &&
+    !colorBelongsToFamily(color, "metallic") && !colorBelongsToFamily(color, "special");
+}
+export function filterColorPalette<T extends EvidenceSwatch>(
+  colors: readonly T[], query: string, family: ColorFamily, sort: ColorSort,
+): T[] {
+  const needle = displayColorName(query).trim().toLocaleLowerCase();
+  const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  return colors.filter(color =>
+    (family === "all" || colorBelongsToFamily(color, family)) &&
+    (!needle || displayColorName(color.name).toLocaleLowerCase().includes(needle) ||
+      color.ldrawCode.toLocaleLowerCase().includes(needle)))
+    .sort((a, b) => sort === "code-asc"
+      ? Number(a.ldrawCode) - Number(b.ldrawCode) || collator.compare(displayColorName(a.name), displayColorName(b.name))
+      : collator.compare(displayColorName(a.name), displayColorName(b.name)) * (sort === "name-desc" ? -1 : 1));
+}
 export function sortColorNames<T extends { name: string }>(colors: readonly T[]): T[] {
   const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
   return [...colors].sort((a, b) => collator.compare(displayColorName(a.name), displayColorName(b.name)));
