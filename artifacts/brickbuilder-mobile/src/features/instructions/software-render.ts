@@ -180,7 +180,9 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
           });
         }
         projected.sort((left, right) => right.depth - left.depth);
-        context.fillStyle = "#ffffff"; context.globalAlpha = 1; context.fillRect(0, 0, width, height);
+        context.globalAlpha = 1;
+        if (style?.transparentBackground) context.clearRect(0, 0, width, height);
+        else { context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height); }
         for (const face of projected) {
           context.globalAlpha = face.alpha; context.fillStyle = face.color; context.beginPath();
           context.moveTo(face.points[0], face.points[1]); context.lineTo(face.points[2], face.points[3]);

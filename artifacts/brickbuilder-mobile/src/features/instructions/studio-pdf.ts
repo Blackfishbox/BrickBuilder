@@ -22,6 +22,7 @@ import { translate, type Locale } from "../../i18n/messages";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { studioCalloutStep, studioFrameHeight, studioPdfStep, studioResizeSlots, type NativeSlotRect } from "./studio-native-layout";
 import { drawStudioBom, planStudioBom, type StudioBomPage } from "./studio-bom";
+import { studioCalloutArrowPoints, studioCalloutCell } from "./studio-callout-layout";
 
 type XmlRecord = Record<string, unknown>;
 type ComponentPlacement = "LeftTop" | "LeftBottom" | "RightTop" | "RightBottom" | "None";
@@ -545,6 +546,7 @@ function renderNativeCallouts(
   pdf: jsPDF, wrapper: StudioNode, nodes: StudioNode[], slot: StudioRect,
   document: BuilderDocument, plan: InstructionPlan, renderer: InstructionImageRenderer, globalStyle: XmlRecord | undefined,
   scale: number, locale: Locale, signal?: AbortSignal, onlyItem?: StudioNode,
+  highlight = false,
 ) {
   if (!supportedStudioCallout(wrapper, nodes) || wrapper.attributes.IsVisible?.toLowerCase() === "false") return;
   const ink: StudioColor = { rgb: [0, 0, 0], alpha: 1 };
@@ -554,7 +556,8 @@ function renderNativeCallouts(
     const rect = studioCalloutRect(studioVector(item.attributes.Rect, 4)!, slot);
     const [x, y, width, height] = rect;
     const styleNode = objectStyle(item, nodes, globalStyle);
-    const box = studioBox(styleNode), [pl, pr, pb, pt] = paddingOf(box, scale);
+    const box = studioBox(styleNode), padding = paddingOf(box, 1);
+    const [pl, pr, pb, pt] = padding;
     drawStyledBox(pdf, x, y, width, height, box, scale);
     const entries = studioChildren(item, nodes, "CallOutStepItemData")
       .filter(entry => entry.attributes.IsVisible?.toLowerCase() !== "false");
@@ -570,7 +573,6 @@ function renderNativeCallouts(
     const multiplier = Number(item.attributes.MultiplierValue);
     const showMultiplier = attribute(multiplierNode ?? {}, "IsVisible").toLowerCase() !== "false" && multiplier > 1;
     const innerWidth = Math.max(1, width - pl - pr), innerHeight = Math.max(1, height - pt - pb - (showMultiplier ? 5 : 0));
-    const cellWidth = innerWidth / columns, cellHeight = innerHeight / rows;
     const visible = new Set<string>();
     for (const [index, entry] of entries.entries()) {
       signal?.throwIfAborted();
@@ -586,25 +588,31 @@ function renderNativeCallouts(
       const numberStyle = child(styleNode, "StepNumber");
       const showNumber = source.attributes.IsVisibleStepNumber?.toLowerCase() !== "false" &&
         attribute(numberStyle ?? {}, "IsVisible").toLowerCase() !== "false";
-      const col = asRows ? index % columns : Math.floor(index / rows);
-      const row = asRows ? Math.floor(index / columns) : index % rows;
-      const cellX = x + pl + col * cellWidth, cellY = y + pt + row * cellHeight;
-      const imageHeight = Math.max(1, cellHeight - (showNumber ? 6 : 0));
+      const font = studioFont(numberStyle, 12, ink);
+      const cell = studioCalloutCell([x, y, width, height - (showMultiplier ? 5 : 0)],
+        padding, index, columns, rows, asRows, showNumber ? font.size ?? 12 : 0);
+      const { col, row, cellX, cellY, cellWidth, cellHeight, imageRect } = cell;
       const calloutStep = {
         ...step, camera: undefined,
         ...(angles ? { rotation: angles.map(angle => angle * 180 / Math.PI) as [number, number, number] } : {}),
       };
       const renderStep = studioPdfStep(calloutStep, orientation?.attributes ?? preview?.attributes);
-      fitImage(renderer.image(new Set(visible), studioCalloutStep(document, renderStep, [...visible]), undefined, cellWidth / imageHeight),
-        cellX, cellY + (showNumber ? 6 : 0), cellWidth, imageHeight, pdf, renderStep !== calloutStep);
-      if (showNumber) renderStepNumber(pdf, index + 1, cellX + 1, cellY + 5,
-        cellWidth - 2, studioFont(numberStyle, 12, ink), scale);
+      const highlightIds = highlight && [...visible].some(id => !step.partIds.includes(id))
+        ? new Set(step.partIds) : undefined;
+      fitImage(renderer.image(new Set(visible), studioCalloutStep(document, renderStep, [...visible]), highlightIds,
+        imageRect[2] / imageRect[3], [],
+        studioFrameHeight(orientation?.attributes ?? preview?.attributes, imageRect[3], pdf.internal.pageSize.getHeight()),
+        { transparentBackground: true, studioEdges: true, silhouetteHighlight: true }),
+        ...imageRect, pdf, renderStep !== calloutStep);
+      if (showNumber) renderStepNumber(pdf, index + 1, cell.numberX, cell.numberY,
+        cellWidth, font, scale);
       const divider = child(styleNode, "Divider");
-      if (index > 0 && attribute(divider ?? {}, "IsVisible").toLowerCase() === "true") {
+      if ((asRows ? row > 0 && col === 0 : col > 0 && row === 0) &&
+          attribute(divider ?? {}, "IsVisible").toLowerCase() === "true") {
         const color = parsedColor(attribute(divider ?? {}, "DividerColor"));
         const thickness = Number(attribute(divider ?? {}, "DividerThickness")) || 1;
-        drawStudioArrow(pdf, asRows ? [cellX, cellY, cellX, cellY + cellHeight] :
-          [cellX, cellY, cellX + cellWidth, cellY], "NoHeads", "NoHeads", thickness,
+        drawStudioArrow(pdf, asRows ? [cellX, cellY, cellX + innerWidth, cellY] :
+          [cellX, cellY, cellX, cellY + innerHeight], "NoHeads", "NoHeads", thickness,
         color ? [...color.rgb.map(channel => channel / 255), color.alpha].join(":") : "0:0:0:1", scale);
       }
     }
@@ -625,12 +633,9 @@ function renderNativeCalloutArrow(
   if (!supportedStudioCallout(wrapper, nodes) || wrapper.attributes.IsVisible?.toLowerCase() === "false" ||
       item.attributes.IsVisible?.toLowerCase() === "false" || arrow.attributes.IsVisible?.toLowerCase() === "false") return;
   const rect = studioCalloutRect(studioVector(item.attributes.Rect, 4)!, slot);
-  const [x, y, width, height] = rect;
   const styleNode = objectStyle(item, nodes, globalStyle);
   const arrowStyle = child(styleNode, "ArrowStyle");
-  const [u, v, tx, ty] = studioVector(arrow.attributes.ArrowPosition, 4)!;
-  drawStudioArrow(pdf, [x + u * width, y + (1 - v) * height,
-    slot[0] + (0.5 + tx) * slot[2], slot[1] + (0.5 - ty) * slot[3]],
+  drawStudioArrow(pdf, studioCalloutArrowPoints(rect, slot, studioVector(arrow.attributes.ArrowPosition, 4)!),
   "NoHeads", attribute(arrowStyle ?? {}, "Style") || "TriangleEmpty",
   Number(attribute(arrowStyle ?? {}, "Thickness")) || 2, attribute(arrowStyle ?? {}, "Color"), scale);
 }
@@ -953,7 +958,9 @@ export async function exportStudioLayoutPDF(
           const [nx, ny, nw, nh] = numberRect;
           occupied.push([nx, ny, nw, components ? nh : Math.min(9, previewHeight)]);
         }
-        if (showNativeCallouts) for (const wrapper of nativeCallouts) {
+        const modelPreview = nativeStep && studioChildren(nativeStep, nodes, "StepPreview")[0];
+        const sourceFrame = studioFrameHeight(modelPreview?.attributes, previewHeight, pageHeight);
+        if (showNativeCallouts && !sourceFrame) for (const wrapper of nativeCallouts) {
           if (!supportedStudioCallout(wrapper, nodes) || wrapper.attributes.IsVisible?.toLowerCase() === "false") continue;
           for (const item of studioChildren(wrapper, nodes, "CallOutItemData")) {
             if (item.attributes.IsVisible?.toLowerCase() !== "false") {
@@ -962,7 +969,6 @@ export async function exportStudioLayoutPDF(
           }
         }
         const [modelX, modelY, modelWidth, modelHeight] = studioModelRect(slot, occupied);
-        const modelPreview = nativeStep && studioChildren(nativeStep, nodes, "StepPreview")[0];
         queuePageObject(modelPreview ?? nativeStep, () => {
           const modelArrows = nativeStep ? studioBufferExchangeArrows(nativeStep, nodes) : [];
           const cameraStep = studioPdfStep(step, modelPreview?.attributes);
@@ -970,7 +976,7 @@ export async function exportStudioLayoutPDF(
             ? studioCalloutStep(document, cameraStep, [...visible], scope) : cameraStep;
           fitImage(renderer.image(visible, renderStep, highlightIds, modelWidth / modelHeight,
             modelArrows, step.camera ? undefined : studioFrameHeight(modelPreview?.attributes, modelHeight, pageHeight),
-            { preserveColors: true, silhouetteHighlight: true, studioEdges: true }),
+            { silhouetteHighlight: true, studioEdges: true }),
             modelX, modelY, modelWidth, modelHeight, pdf, renderStep !== step);
         });
         const resolvedStepNumber = Number.isFinite(stepNumber) ? stepNumber : entry.planIndex + 1;
@@ -1022,7 +1028,7 @@ export async function exportStudioLayoutPDF(
           for (const wrapper of nativeCallouts) {
             for (const item of studioChildren(wrapper, nodes, "CallOutItemData")) {
               queuePageObject(item, () => renderNativeCallouts(pdf, wrapper, nodes,
-                [x, imageY, cellWidth, previewHeight], document, plan, renderer, calloutStyle, scale, locale, options.signal, item));
+                [x, imageY, cellWidth, previewHeight], document, plan, renderer, calloutStyle, scale, locale, options.signal, item, options.highlight));
               for (const arrow of studioChildren(item, nodes, "CallOutArrowItemData")) {
                 queuePageObject(arrow, () => renderNativeCalloutArrow(pdf, wrapper, item, arrow,
                   nodes, [x, imageY, cellWidth, previewHeight], calloutStyle, scale));

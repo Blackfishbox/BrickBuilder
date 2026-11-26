@@ -6,6 +6,7 @@ import { setWideLineResolution } from "../../engine/wide-lines";
 import type { ImportedModel } from "../../formats/types";
 import { reuseGeometryCache } from "../../engine/ldraw-geometry";
 import { THUMBNAIL_LIGHTING } from "../../engine/lighting";
+import { PART_PREVIEW_DIRECTION } from "./camera";
 
 let renderer: WebGLRenderer | undefined;
 let idle: ReturnType<typeof setTimeout> | undefined;
@@ -53,7 +54,7 @@ export function renderThumbnail(
       const radius = size.length() / 2;
       if (!Number.isFinite(radius) || radius <= 0) throw new Error("Ungültige Vorschaugeometrie.");
       const camera = new OrthographicCamera(-radius * 1.48, radius * 1.48, radius * 1.11, -radius * 1.11, radius * 0.01, radius * 12);
-      camera.position.copy(center).add(new Vector3(1.4, 1.05, 1.6).normalize().multiplyScalar(radius * 4));
+      camera.position.copy(center).add(new Vector3(...PART_PREVIEW_DIRECTION).normalize().multiplyScalar(radius * 4));
       camera.lookAt(center);
       const scene = new Scene();
       scene.add(group, new AmbientLight(0xffffff, THUMBNAIL_LIGHTING.ambient));

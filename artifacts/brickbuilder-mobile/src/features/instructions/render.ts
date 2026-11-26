@@ -82,6 +82,7 @@ export interface InstructionImageStyle {
   preserveColors?: boolean;
   silhouetteHighlight?: boolean;
   studioEdges?: boolean;
+  transparentBackground?: boolean;
 }
 export interface InstructionImageRenderer {
   image(visible: Set<string>, step: InstructionStep, highlightIds?: ReadonlySet<string>, fitAspect?: number,
@@ -178,6 +179,7 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
     const highlightOccurrences = instructionHighlightOccurrences(document.bricks, document.imported);
     const images: InstructionImageRenderer = {
       image(visible, step, highlightIds, fitAspect, modelArrows = [], minimumFrameHeight, style) {
+        renderer.setClearColor(0xffffff, style?.transparentBackground ? 0 : 1);
         signal?.throwIfAborted();
         const checkContext = () => {
           if (renderer.getContext?.()?.isContextLost?.()) {
@@ -257,7 +259,9 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         checkContext();
         const context = output.getContext("2d");
         if (!context) throw new Error("PDF-Bild konnte nicht zusammengesetzt werden.");
+        context.globalCompositeOperation = "copy";
         context.drawImage(renderer.domElement, 0, 0);
+        context.globalCompositeOperation = "source-over";
         if (modelArrows.length) {
           drawStudioModelArrows(context, camera, modelArrows, center, rotation, renderSize.width, renderSize.height);
         }

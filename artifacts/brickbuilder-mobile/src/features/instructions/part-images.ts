@@ -5,6 +5,7 @@ import { renderThumbnail } from "../parts/thumbnails/render";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { instructionPartDocument, type InstructionPart } from "./parts";
 import { configureStudioEdges } from "./studio-edges";
+import { PART_PREVIEW_DIRECTION } from "../parts/thumbnails/camera";
 
 type Input = { document: BuilderDocument; entry: InstructionPart; studio?: boolean };
 const sources = new WeakMap<object, number>();
@@ -27,8 +28,11 @@ const queue = new ThumbnailQueue<Input>(async ({ document: doc, entry: item, stu
       const renderer = await createSoftwareInstructionRenderer(isolated, currentSignal, { width: 240, height: 182, minRadius: 0.01 });
       try {
         currentSignal.throwIfAborted();
-        return renderer.image(new Set([item.part.id]), { id: "part", title: "", notes: "", partIds: [item.part.id] },
-          undefined, undefined, undefined, undefined, studio ? { studioEdges: true } : undefined);
+        const [x, y, z] = PART_PREVIEW_DIRECTION;
+        return renderer.image(new Set([item.part.id]), { id: "part", title: "", notes: "", partIds: [item.part.id],
+          ...(studio ? { camera: { theta: Math.atan2(x, z), phi: Math.acos(y / Math.hypot(x, y, z)),
+            distance: 1, referenceDistance: 1, target: [0, 0, 0], referenceTarget: [0, 0, 0] } } : {}) },
+          undefined, undefined, undefined, undefined, studio ? { studioEdges: true, transparentBackground: true } : undefined);
       } finally { renderer.dispose(); }
 }, 4 * 1024 * 1024, 128);
 

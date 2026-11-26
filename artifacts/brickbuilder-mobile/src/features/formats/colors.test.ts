@@ -116,7 +116,8 @@ describe("offline LDraw import colors", () => {
       expect(color.r).toBe(color.g);
       expect(color.g).toBe(color.b);
     }
-    expect((hemi.intensity + sun.intensity) / Math.PI).toBeCloseTo(1);
+    // Includes the brighter neutral fill approved for model/instruction views.
+    expect((hemi.intensity + sun.intensity) / Math.PI).toBeCloseTo(1.17);
   });
 });
 

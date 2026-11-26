@@ -78,7 +78,7 @@ it("renders only the active Studio subassembly, then mounts every reused occurre
   expect(calls.map(call => [...call[0]])).toEqual([
     [main], [a1], [a1, a2], [main, a1, a2], [main, a1, a2, b1, b2],
   ]);
-  expect(calls.every(call => call[6]?.silhouetteHighlight && call[6]?.preserveColors)).toBe(true);
+  expect(calls.every(call => call[6]?.silhouetteHighlight && !call[6]?.preserveColors)).toBe(true);
   expect(calls[1][2]).toBeUndefined();
   expect(calls[2][2]).toEqual(new Set([a2]));
   expect(document.imported.instances[1].matrix).toEqual(parseLDraw(source).instances[1].matrix);
@@ -183,7 +183,8 @@ it("draws native callout steps, borders, opacity, typography, dividers, multipli
     expect(commands).toContain("(3");
     expect(commands).toContain("0. 0. 1. RG");
     expect(commands).toContain("1. 0. 0. RG");
-    expect(commands).toContain("0. 1. 0. RG");
+    // Two entries in the same row do not get a divider through their images.
+    expect(commands).not.toContain("0. 1. 0. RG");
     expect(new TextDecoder().decode(bytes)).toMatch(/\/ca 0\.5/);
     expect(new TextDecoder().decode(bytes)).toContain("/Times-Italic");
     expect(new TextDecoder().decode(bytes)).toContain("/Courier-Bold");
@@ -191,6 +192,27 @@ it("draws native callout steps, borders, opacity, typography, dividers, multipli
     expect(JSON.stringify(document)).toBe(before);
   } finally { spy.mockRestore(); }
   expect(renderer.dispose).toHaveBeenCalledOnce();
+});
+
+it.each([true, false])("uses the normal PDF's fading and original-color highlight contract in main views and callouts (%s)", async highlight => {
+  const { document, renderer } = nativeFixture();
+  await exportStudioLayoutPDF(document, document.instructions!, { highlight }, async () => renderer);
+  const calls = renderer.image.mock.calls;
+  expect(calls).toHaveLength(4);
+  expect(calls.every(call => !call[6]?.preserveColors)).toBe(true);
+  expect(calls[2][2]).toEqual(highlight ? new Set(document.instructions!.steps[1].partIds) : undefined);
+  expect(calls[3][2]).toEqual(highlight ? new Set(document.instructions!.steps[1].partIds) : undefined);
+  expect(calls[1][6]?.transparentBackground).toBe(true);
+  expect(calls[2][6]?.transparentBackground).toBe(true);
+  expect(calls[3][6]?.transparentBackground).not.toBe(true);
+});
+
+it("separates callout rows, not the adjacent steps within a row", async () => {
+  const { document, renderer } = nativeFixture();
+  document.instructions!.studioLayout!.sourceXml =
+    document.instructions!.studioLayout!.sourceXml.replace('CalloutGridMaxPerLine="2"', 'CalloutGridMaxPerLine="1"');
+  const bytes = await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+  expect(pdfCommands(bytes)).toContain("0. 1. 0. RG");
 });
 
 it.each([
@@ -335,6 +357,7 @@ it("produces a viewable native-callout PDF with real source geometry through the
     let paths: string[] = [], path = "";
     const context = {
       fillStyle: "", strokeStyle: "", globalAlpha: 1, lineWidth: 1,
+      clearRect() { paths = []; },
       beginPath() { path = ""; },
       moveTo(x: number, y: number) { path += `M${x} ${y}`; },
       lineTo(x: number, y: number) { path += `L${x} ${y}`; },

@@ -11,6 +11,7 @@ import { exportStudioLayoutPDF } from "./studio-pdf";
 import { sourceInstructionPlan } from "./model";
 import { readStudioInstructions } from "./studio";
 import { instructionPartImage } from "./part-images";
+import { partProjectedSize } from "./part-projection";
 
 const bomXml = `<BOM id="inventory" index="0" OrderBy="Color_Size_Ascending" IsShownAsRow="False">
   <PartSize Scale="1"/><Label FontSize="9" FontStyle="Bold"/><Padding LRBT="2 2 2 2"/>
@@ -72,6 +73,53 @@ it("combines matching occurrences even when one lacks geometry and separates col
   expect(groups).toHaveLength(2);
   expect(groups[0].count).toBe(2);
   expect(groups[0].kind === "imported" && groups[0].part.part.status).toBe("resolved");
+});
+
+it.each(["True", "False"])("uses one physical scale for tiny and oversized parts on every page (rows %s)", row => {
+  const markup = bomXml.replace('IsShownAsRow="False"', `IsShownAsRow="${row}"`)
+    .replace('<PartSize Scale="1"/>', '<PartSize Scale="1" EnableLargeBrickScale="True" LargeBrickScale="0.5"/>');
+  const { doc, nodes, bom } = fixture(0, markup);
+  const source = [1, 4, 400].map((size, index) =>
+    `1 4 ${index * 500} 0 0 1 0 0 0 1 0 0 0 1 size${size}.dat`).join("\n");
+  doc.imported = { version: 1, format: "io", sourceName: "scales.io", sourceText: source,
+    ...parseLDraw(source), resources: {}, legalDocuments: [] };
+  for (const [index, size] of [1, 4, 400].entries()) {
+    const part = doc.imported.instances[index];
+    part.part.status = "resolved";
+    doc.imported.resources[`parts/${part.reference}`] = {
+      path: `parts/${part.reference}`, source: "test", content: `3 16 0 0 0 ${size} 0 0 0 ${size} ${size}`,
+      license: "CC0", authors: [], legalTextRefs: [],
+    };
+  }
+  const pages = planStudioBom(new jsPDF(), doc, bom, nodes, [0, 0, 50, 50], 1, "en");
+  expect(pages.length).toBeGreaterThan(1);
+  const cells = pages.flatMap(page => page.cells);
+  expect(cells).toHaveLength(3);
+  const factors = cells.map(cell => {
+    const projected = partProjectedSize(doc, cell.part)!;
+    expect(cell.imageWidth / projected[0]).toBeCloseTo(cell.imageHeight / projected[1], 8);
+    return cell.imageWidth / projected[0];
+  });
+  expect(factors[0]).toBeLessThan(1);
+  expect(factors[1]).toBeCloseTo(factors[0], 8);
+  expect(factors[2]).toBeCloseTo(factors[0], 8);
+  // No nine-millimetre minimum that enlarges the smallest part.
+  expect(cells[1].imageWidth / cells[0].imageWidth).toBeCloseTo(4, 6);
+  expect(cells[2].imageWidth / cells[0].imageWidth).toBeCloseTo(400, 6);
+});
+
+it("measures local inventory parts in their canonical pose instead of assigning the same thumbnail size", () => {
+  const { doc, nodes, bom } = fixture(2);
+  doc.bricks[0].type = "brick-1x2";
+  doc.bricks[0].tiltX = 72;
+  doc.bricks[1].type = "brick-2x4";
+  const cells = planStudioBom(new jsPDF(), doc, bom, nodes, [0, 0, 100, 100], 1, "en")[0].cells;
+  expect(cells[1].imageWidth).toBeGreaterThan(cells[0].imageWidth);
+  for (const cell of cells) {
+    const [width, height] = partProjectedSize(doc, cell.part)!;
+    expect(cell.imageWidth).toBeCloseTo(width);
+    expect(cell.imageHeight).toBeCloseTo(height);
+  }
 });
 
 it("keeps color names readable and validates tiny custom list rectangles", () => {

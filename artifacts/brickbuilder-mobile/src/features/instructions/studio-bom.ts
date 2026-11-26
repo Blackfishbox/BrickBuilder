@@ -1,10 +1,9 @@
 import type { jsPDF } from "jspdf";
-import { Box3, Vector3 } from "three";
 import type { BuilderDocument } from "../editor/model";
-import { compilePart } from "../engine/ldraw-geometry";
 import { translate, type Locale } from "../../i18n/messages";
 import { instructionColorLabel, instructionPartGroups, type InstructionPart } from "./parts";
-import { instructionPartImage } from "./part-images";
+import { studioPartImage } from "./studio-parts-image";
+import { partProjectedSize } from "./part-projection";
 import { studioChildren, type StudioRect } from "./studio-objects";
 import type { StudioNode } from "./studio-layout";
 
@@ -49,23 +48,10 @@ export function studioBomParts(document: BuilderDocument): InstructionPart[] {
 }
 
 function imageDimensions(document: BuilderDocument, part: InstructionPart, scale: number): [number, number] {
-  if (part.kind === "imported" && document.imported && part.part.part.status === "resolved") {
-    try {
-      const bounds = new Box3();
-      const vertex = new Vector3();
-      for (const surface of compilePart(document.imported, part.part.reference, "16")) {
-        for (let offset = 0; offset < surface.positions.length; offset += 3) {
-          bounds.expandByPoint(vertex.fromArray(surface.positions, offset));
-        }
-      }
-      if (!bounds.isEmpty()) {
-        const size = bounds.getSize(new Vector3());
-        // Canonical isometric footprint in millimetres (one LDU = 0.4 mm).
-        return [Math.max(9, (size.x + size.z) * Math.SQRT1_2 * 0.4 * scale),
-          Math.max(9, (size.y * 0.82 + (size.x + size.z) * 0.41) * 0.4 * scale)];
-      }
-    } catch { /* The cell retains its labels and an explicit unavailable-preview message. */ }
-  }
+  try {
+    const size = partProjectedSize(document, part);
+    if (size) return [size[0] * scale, size[1] * scale];
+  } catch { /* Keep an explicit unavailable-preview message and the inventory entry. */ }
   return [20 * scale, 16 * scale];
 }
 
@@ -108,13 +94,10 @@ export function planStudioBom(
   const lineHeight = fontSize * 25.4 / 72 * 1.15;
   if (width < 12 || height < lineHeight * 3 + 5) throw new Error(translate(locale, "instruction.pdf.bomTooSmall"));
   const imageScale = positive(partSize.Scale, 1, 0.1, 4);
-  const largeScale = partSize.EnableLargeBrickScale?.toLowerCase() === "true"
-    ? positive(partSize.LargeBrickScale, 0.5, 0.1, 1) : 1;
   const collator = new Intl.Collator(locale, { numeric: true, sensitivity: "base" });
   const entries = studioBomParts(document).map(part => {
     signal?.throwIfAborted();
-    let [imageWidth, imageHeight] = imageDimensions(document, part, imageScale);
-    if (Math.max(imageWidth, imageHeight) > 48) { imageWidth *= largeScale; imageHeight *= largeScale; }
+    const [imageWidth, imageHeight] = imageDimensions(document, part, imageScale);
     return { part, imageWidth, imageHeight };
   });
   const order = bom.attributes.OrderBy ?? "Color_Size_Ascending";
@@ -133,20 +116,25 @@ export function planStudioBom(
   const asRows = bom.attributes.IsShownAsRow?.toLowerCase() === "true";
   let cursorX = 0, cursorY = 0, stripSize = 0;
   const gap = 3;
+  const labels = (part: InstructionPart, cellWidth: number): string[] => [
+    ...pdf.splitTextToSize(`${new Intl.NumberFormat(locale).format(part.count)}x`, cellWidth - 2) as string[],
+    ...pdf.splitTextToSize(part.number.replace(/^LDraw\s+/, ""), cellWidth - 2) as string[],
+    ...pdf.splitTextToSize(instructionColorLabel(part.colorName), cellWidth - 2) as string[],
+  ];
+  // If one part cannot fit the page, reduce the ENTIRE inventory, across every
+  // continuation page. Never enlarge small pins or shrink long beams separately.
+  const maxLabelHeight = entries.reduce((maximum, entry) => Math.max(maximum,
+    labels(entry.part, Math.min(width, 22)).length * lineHeight + 2), lineHeight * 3 + 2);
+  if (maxLabelHeight + 4 > height) throw new Error(translate(locale, "instruction.pdf.bomTooSmall"));
+  const commonScale = entries.reduce((fit, entry) => Math.min(fit,
+    (width - 2) / entry.imageWidth, (height - maxLabelHeight) / entry.imageHeight), 1);
   for (const entry of entries) {
     signal?.throwIfAborted();
-    // Leave enough label room and shrink oversized images, never the quantities.
-    const cellWidth = Math.min(width, Math.max(22, Math.min(entry.imageWidth + 2, width)));
-    const number = entry.part.number.replace(/^LDraw\s+/, "");
-    const lines = [
-      ...pdf.splitTextToSize(`${new Intl.NumberFormat(locale).format(entry.part.count)}x`, cellWidth - 2) as string[],
-      ...pdf.splitTextToSize(number, cellWidth - 2) as string[],
-      ...pdf.splitTextToSize(instructionColorLabel(entry.part.colorName), cellWidth - 2) as string[],
-    ];
+    const imageWidth = entry.imageWidth * commonScale, imageHeight = entry.imageHeight * commonScale;
+    const cellWidth = Math.min(width, Math.max(22, imageWidth + 2));
+    const lines = labels(entry.part, cellWidth);
     const labelHeight = lines.length * lineHeight + 2;
     if (labelHeight + 4 > height) throw new Error(translate(locale, "instruction.pdf.bomTooSmall"));
-    const fit = Math.min(1, (cellWidth - 2) / entry.imageWidth, (height - labelHeight) / entry.imageHeight);
-    const imageWidth = entry.imageWidth * fit, imageHeight = entry.imageHeight * fit;
     const cellHeight = imageHeight + labelHeight;
     if (asRows ? cursorX + cellWidth > width + 1e-6 : cursorY + cellHeight > height + 1e-6) {
       if (asRows) { cursorY += stripSize + gap; cursorX = 0; }
@@ -166,7 +154,7 @@ export function planStudioBom(
 
 export async function drawStudioBom(
   pdf: jsPDF, document: BuilderDocument, page: StudioBomPage, locale: Locale,
-  signal?: AbortSignal, renderPart = instructionPartImage,
+  signal?: AbortSignal, renderPart = studioPartImage,
 ): Promise<void> {
   signal?.throwIfAborted();
   pdf.saveGraphicsState();
