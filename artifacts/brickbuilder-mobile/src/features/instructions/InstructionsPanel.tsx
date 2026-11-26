@@ -351,15 +351,17 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
         </div>
         <div className="ins-head-controls">
           <div className="ins-head-actions">
-            <button className="ins-primary" onClick={() => void exportPdf()} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
-              <FileDown size={16} /> PDF
-            </button>
-            {studioPdfAvailable && (
-              <button className="ins-primary ins-studio-pdf" onClick={() => void exportPdf(true)} disabled={!!exporting || total === 0}
-                aria-label={t("instruction.exportStudioPdf")} data-testid="button-instructions-export-studio-pdf">
-                <FileDown size={16} /> {t("instruction.studioPdfShort")}
+            <div className="ins-head-pdf-actions">
+              <button className="ins-primary" onClick={() => void exportPdf()} disabled={!!exporting || total === 0} aria-label={t("instruction.exportPdf")} data-testid="button-instructions-export-pdf">
+                <FileDown size={16} /> PDF
               </button>
-            )}
+              {studioPdfAvailable && (
+                <button className="ins-primary ins-studio-pdf" onClick={() => void exportPdf(true)} disabled={!!exporting || total === 0}
+                  aria-label={t("instruction.exportStudioPdf")} data-testid="button-instructions-export-studio-pdf">
+                  <FileDown size={16} /> {t("instruction.studioPdfShort")}
+                </button>
+              )}
+            </div>
             <button className="ins-icon" onClick={onClose} aria-label={t("instruction.close")} data-testid="button-instructions-close"><X size={18} /></button>
           </div>
           <button className="ins-ghost ins-highlight" role="switch" aria-checked={highlight}

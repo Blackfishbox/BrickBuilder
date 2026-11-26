@@ -629,7 +629,12 @@ it("keeps the instruction header actions available at narrow mobile widths with 
   expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
   const highlight = host.querySelector('[data-testid="button-instructions-highlight"]')!;
   expect(highlight.parentElement?.parentElement).toBe(header());
-  expect(highlight.previousElementSibling?.querySelector('[data-testid="button-instructions-close"]')).not.toBeNull();
+  const controls = highlight.parentElement!;
+  const actions = host.querySelector('[data-testid="button-instructions-export-pdf"]')!.parentElement!.parentElement!;
+  expect(actions.parentElement).toBe(controls);
+  expect(actions.querySelector('[data-testid="button-instructions-close"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="button-instructions-export-pdf"]')!.parentElement?.classList.contains("ins-head-pdf-actions")).toBe(true);
+  expect(highlight.classList.contains("ins-highlight")).toBe(true);
   expect(host.querySelector('[data-testid="button-instructions-highlight"]')?.closest(".ins-card")).toBeNull();
 
   render(withStudioLayout);
@@ -639,11 +644,12 @@ it("keeps the instruction header actions available at narrow mobile widths with 
   expect(host.querySelector('[data-testid="button-instructions-close"]')?.getAttribute("aria-label")).toBe("Anleitung schließen");
 
   const css = readFileSync("src/features/instructions/instructions.css", "utf8");
-  expect(css).toMatch(/@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*?\.ins-head\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  expect(css).toMatch(/\.ins-head\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   expect(css).toMatch(/\.ins-head-title strong\s*\{[^}]*overflow-wrap:\s*anywhere/);
-  expect(css).toMatch(/\.ins-head-actions\s*\{[^}]*justify-content:\s*flex-end/);
-  expect(css).toMatch(/\.ins-head-controls\s*\{[^}]*align-items:\s*flex-end/);
-  expect(css).toMatch(/\.ins-head-actions\s*\{[^}]*width:\s*100%[^}]*justify-content:\s*flex-end/);
+  expect(css).toMatch(/\.ins-head-actions\s*\{[^}]*justify-content:\s*space-between/);
+  expect(css).toMatch(/\.ins-head-controls\s*\{[^}]*align-items:\s*stretch/);
+  expect(css).toMatch(/\.ins-head-pdf-actions\s*\{[^}]*display:\s*flex/);
+  expect(css).toMatch(/\.ins-highlight\s*\{[^}]*align-self:\s*flex-start/);
 });
 
 it("saves a focused angle edit before passing the plan to PDF export", async () => {
