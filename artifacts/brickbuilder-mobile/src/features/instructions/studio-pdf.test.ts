@@ -54,6 +54,17 @@ function nativeFixture(calloutAttributes = "", arrowAttributes = "", extra = "",
   return { document, renderer, xml };
 }
 
+it("omits empty trailing Studio slots but retains an intentional blank separator and content pages", async () => {
+  const { document, renderer } = nativeFixture();
+  const layout = document.instructions!.studioLayout!;
+  layout.sourceXml = layout.sourceXml.replace("<Pages>", "<Pages><Page><Slot/></Page>")
+    .replace("</Pages>", '<Page><BrickBuilderTitle>Inventory notes</BrickBuilderTitle><Slot/></Page><Page><Slot/></Page><Page><Slot/></Page></Pages>');
+  const bytes = await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+  expect(Buffer.from(bytes).toString("latin1")).toContain("/Count 3");
+  const preview = await exportStudioLayoutPDF(document, document.instructions!, { previewPageIndex: 4 }, async () => renderer);
+  expect(Buffer.from(preview).toString("latin1")).toContain("/Count 1");
+});
+
 it("awaits the recoverable renderer for Studio models, native callouts and subassembly previews", async () => {
   const { document, renderer } = nativeFixture();
   document.instructions!.studioLayout!.sourceXml = document.instructions!.studioLayout!.sourceXml

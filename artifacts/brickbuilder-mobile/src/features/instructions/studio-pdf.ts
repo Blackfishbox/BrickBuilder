@@ -822,12 +822,25 @@ export async function exportStudioLayoutPdfChunks(
     type ExportPage = StudioPdfPage & { boms: { node: StudioNode; page: StudioBomPage }[] };
     const pages: ExportPage[] = [];
     const seenBomIds = new Set<string>();
-    for (const sourcePage of sourcePages) {
+    const hasPageContent = (page: StudioPdfPage) => {
+      if (page.steps.length || page.images.length || text(page.source.BrickBuilderTitle)) return true;
+      const native = pageNodes[page.sourceIndex];
+      const parents = new Set([native?.id, ...studioChildren(native, nodes, "Slot").map(slot => slot.id)]);
+      return nodes.some(node => node.parent !== undefined && parents.has(node.parent) &&
+        ["BOM", "Text", "Arrow"].includes(node.name) &&
+        node.attributes.IsVisible?.toLowerCase() !== "false");
+    };
+    const lastContentIndex = sourcePages.reduce((last, page, index) => hasPageContent(page) ? index : last, -1);
+    for (const [sourceIndex, sourcePage] of sourcePages.entries()) {
       options.signal?.throwIfAborted();
-      const firstPage: ExportPage = { ...sourcePage, boms: [] };
-      pages.push(firstPage);
       const nativePage = pageNodes[sourcePage.sourceIndex];
       const slots = studioChildren(nativePage, nodes, "Slot");
+      // Studio can leave completely empty slots after its final inventory.
+      // Retain covers/annotation pages and explicit layout previews, but do
+      // not turn these empty trailing placeholders into blank PDF pages.
+      if (options.previewPageIndex === undefined && sourceIndex > lastContentIndex) continue;
+      const firstPage: ExportPage = { ...sourcePage, boms: [] };
+      pages.push(firstPage);
       const boms = [...studioChildren(nativePage, nodes, "BOM"),
         ...slots.flatMap(slot => studioChildren(slot, nodes, "BOM"))];
       for (const bom of boms) {

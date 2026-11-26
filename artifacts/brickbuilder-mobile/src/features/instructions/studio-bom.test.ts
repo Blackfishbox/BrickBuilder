@@ -157,6 +157,8 @@ it("expands the source BOM into complete PDF pages, previews only the BOM, and d
     <Page template="OneByOne"><Slot><Step SerializedIndex="0"/></Slot></Page>
     <Page template="OneByOne"><Slot>${bomXml}</Slot></Page>
     <Page template="OneByOne"><Slot>${bomXml.replace('index="0"', 'index="1"')}</Slot></Page>
+    <Page template="OneByOne"><Slot/></Page>
+    <Page template="OneByOne"><Slot/></Page>
     </Pages></Instruction>`;
   doc.instructions = readStudioInstructions(xml, sourceInstructionPlan(doc.imported));
   const expectedInventoryPages = planStudioBom(new jsPDF(), doc, fixture(0).bom, fixture(0).nodes,

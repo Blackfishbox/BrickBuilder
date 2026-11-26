@@ -1,7 +1,7 @@
 import {
   AmbientLight, Box3, BufferGeometry, Color, DirectionalLight,
   Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Matrix4,
-  Mesh, MeshBasicMaterial, MeshLambertMaterial, DoubleSide, OrthographicCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer,
+  Mesh, LineSegments, MeshBasicMaterial, MeshLambertMaterial, DoubleSide, OrthographicCamera, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from "three";
 import type { BrickType, BuilderDocument } from "../editor/model";
 import { brickTransformMatrix } from "../editor/brick-transform";
@@ -279,12 +279,16 @@ export async function createInstructionRenderer(document: BuilderDocument, signa
         }
         if (highlightIds?.size && style?.silhouetteHighlight) {
           const maskMaterial = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide });
-          const edges: Mesh[] = [];
+          const edges: (Mesh | LineSegments)[] = [];
           const selected = new Set([...highlightIds].filter(id => visible.has(id)));
           try {
             applyVisibility(selected);
             assembly.traverse(object => {
-              if (object instanceof Mesh && object.userData.isWideEdgeMesh && object.visible) {
+              // Compact edges are LineSegments with shader-only instance
+              // transforms. A generic mask material cannot transform them.
+              // The mask must contain surfaces only, for every edge backend.
+              if ((object instanceof LineSegments ||
+                (object instanceof Mesh && object.userData.isWideEdgeMesh)) && object.visible) {
                 edges.push(object); object.visible = false;
               }
             });

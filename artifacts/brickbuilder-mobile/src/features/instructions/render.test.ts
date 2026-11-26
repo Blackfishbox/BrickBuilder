@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { Box3, BufferGeometry, Color, InstancedMesh, Matrix4, Mesh, ShaderMaterial, Vector3, type Camera, type Scene } from "three";
+import { Box3, BufferGeometry, Color, InstancedMesh, LineSegments, LineBasicMaterial, Matrix4, Mesh, ShaderMaterial, Vector3, type Camera, type Scene } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { createLocalBrickGeometry } from "../engine/local-brick-geometry";
 import { brickTransformMatrix } from "../editor/brick-transform";
@@ -154,6 +154,39 @@ function stubCanvas() {
   vi.stubGlobal("document", { createElement: () => canvas });
   return { canvas, context };
 }
+
+it("excludes compact line batches as well as wide edges from every highlight mask and restores visibility", async () => {
+  stubCanvas();
+  const doc = repeatedDocument(2);
+  const renderer = await createInstructionRenderer(doc);
+  const visible = new Set(doc.bricks.map(part => part.id));
+  const step = { id: "s", title: "", notes: "", partIds: [...visible] };
+  try {
+    renderer.image(visible, step);
+    const scene = frames.mock.lastCall![0] as Scene;
+    const compact = new LineSegments(new BufferGeometry(), new LineBasicMaterial());
+    const hidden = compact.clone();
+    hidden.visible = false;
+    scene.traverse(object => {
+      if (object.userData.partId === doc.bricks[0].id) object.parent!.add(compact, hidden);
+    });
+    let masks = 0;
+    frames.mockImplementationOnce(() => {}).mockImplementationOnce((rendered: Scene) => {
+      expect(rendered.overrideMaterial).not.toBeNull();
+      expect(compact.visible).toBe(false);
+      expect(hidden.visible).toBe(false);
+      rendered.traverse(object => {
+        if (object instanceof Mesh && object.userData.isWideEdgeMesh) expect(object.visible).toBe(false);
+      });
+      masks++;
+    });
+    renderer.image(visible, step, new Set([doc.bricks[1].id]), 1, [], undefined, { silhouetteHighlight: true });
+    expect(masks).toBe(1);
+    expect(compact.visible).toBe(true);
+    expect(hidden.visible).toBe(false);
+    compact.geometry.dispose(); compact.material.dispose();
+  } finally { renderer.dispose(); }
+});
 
 it("shares WebGL geometry but not occurrence colors, visibility or highlights, and disposes once", async () => {
   stubCanvas();
