@@ -75,19 +75,6 @@ export function visibleEdgeLines(surfaces: readonly Surface[], legacy = false): 
   return positions;
 }
 
-/** Same sampled segment order as visibleEdgeLines, without allocating face normals. */
-export function visibleEdgeColorCodes(surfaces: readonly Surface[], legacy = false): string[] {
-  const { sources, stride } = edgeLayout(surfaces, legacy);
-  const codes: string[] = [];
-  let segment = 0;
-  for (const source of sources) {
-    for (let offset = 0; offset + 5 < source.positions.length; offset += 6, segment++) {
-      if (segment % stride === 0) codes.push(source.surface.colorCode);
-    }
-  }
-  return codes;
-}
-
 /** Retain the source surface appearance and lighting normal for wide edges. */
 export function visibleEdgeData(surfaces: readonly Surface[]): VisibleEdgeData {
   const { sources, stride, selectedSegments } = edgeLayout(surfaces);

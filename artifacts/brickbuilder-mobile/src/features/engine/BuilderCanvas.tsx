@@ -56,7 +56,6 @@ import { floatingParts, legacyBrickBounds } from "./floating";
 import { stackingBounds } from "./stacking";
 import type { ConnectionTransform } from "../connections/types";
 import { createBuilderLighting, SOFTWARE_LIGHTING, softwareLightIntensity } from "./lighting";
-import { partEdgeColor } from "./edge-contrast";
 import type { Affine, ImportedModel } from "../formats/types";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
@@ -335,7 +334,7 @@ export class FallbackRenderer {
         focused?: boolean,
       ) => {
         const a = new Vector3(), b = new Vector3(), normal = new Vector3();
-        const strokes = new Map<string, { color: string; ink: string; segments: ProjectedPoint[][] }>();
+        const strokes = new Map<string, ProjectedPoint[][]>();
         for (let index = 0; index + 5 < positions.length && remainingEdgeSegments > 0; index += 6) {
           remainingEdgeSegments--;
           a.fromArray(positions, index).applyMatrix4(transform);
@@ -344,19 +343,16 @@ export class FallbackRenderer {
           const second = project(b.x, b.y + yOffset, b.z);
           if (first.depth < 0.1 || second.depth < 0.1) continue;
           normal.fromArray(normals, index).transformDirection(transform);
-          const shade = ambient + direct * Math.abs(normal.dot(light));
+          const shade = (ambient + direct * Math.abs(normal.dot(light))) *
+            (thickEdges ? 1 : NORMAL_EDGE_CONTRAST);
           const base = new Color(colorForSegment(index / 6));
-          const stroke = partEdgeColor(base, thickEdges, shade), core = partEdgeColor(base);
-          if (focused !== undefined) {
-            instructionDisplayColor(stroke, focused);
-            instructionDisplayColor(core, focused);
-          }
-          const color = stroke.getStyle(), ink = `#${core.getHexString()}`, key = `${color}|${ink}`;
-          const batch = strokes.get(key) ?? { color, ink, segments: [] };
-          batch.segments.push([first, second]);
-          strokes.set(key, batch);
+          if (focused !== undefined) instructionDisplayColor(base, focused);
+          const color = base.multiplyScalar(shade).getStyle();
+          const segments = strokes.get(color) ?? [];
+          segments.push([first, second]);
+          strokes.set(color, segments);
         }
-        for (const { color, ink, segments } of strokes.values()) {
+        for (const [color, segments] of strokes) {
           context.beginPath();
           for (const [first, second] of segments) {
             context.moveTo(first.x, first.y); context.lineTo(second.x, second.y);
@@ -366,7 +362,7 @@ export class FallbackRenderer {
           if (thickEdges) {
             const previousWidth = context.lineWidth;
             context.lineWidth = NORMAL_EDGE_WIDTH_PX;
-            context.strokeStyle = ink;
+            context.strokeStyle = "#000000";
             context.stroke();
             context.lineWidth = previousWidth;
           }
@@ -450,8 +446,7 @@ export class FallbackRenderer {
         const edges = localBrickEdges(brick.type);
         drawSegments(
           edges, transform, 0, localBrickEdgeNormals(brick.type),
-           () => brick.color, new Vector3(0.4, 0.8, 0.5).normalize(), SOFTWARE_LIGHTING.ambient, SOFTWARE_LIGHTING.direct,
-           instructionFocusIds === undefined ? undefined : instructionFocusIds.has(brick.id),
+          () => color.getStyle(), new Vector3(0.4, 0.8, 0.5).normalize(), SOFTWARE_LIGHTING.ambient, SOFTWARE_LIGHTING.direct,
         );
       }
 
@@ -1079,8 +1074,9 @@ export function BuilderCanvas({
             const enabled = propsRef.current.thickEdges;
             if (object.userData.legacyEdges && profile === "legacy") {
               object.material.uniforms.lineWidth.value = enabled ? 18 : 1;
-              object.material.uniforms.edgeOpacity.value = 1;
-              object.visible = enabled || !interactive;
+              object.material.uniforms.edgeOpacity.value = enabled ? 1 : 0.25;
+              object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#ffffff" : "#000000");
+              object.visible = enabled || (!interactive && !object.name.startsWith("brick-edges-"));
             } else if (!object.userData.legacyEdges && profile === "standard") {
               object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX * ratio;
               object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;

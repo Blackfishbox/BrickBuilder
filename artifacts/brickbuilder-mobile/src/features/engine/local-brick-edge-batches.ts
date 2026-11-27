@@ -33,7 +33,7 @@ export function createLocalBrickEdgeBatches(bricks: readonly Brick[], legacy = f
     const bounds = new Box3(), transformed = new Box3();
     geometry.computeBoundingBox();
     const local = geometry.boundingBox!.clone();
-    const colors = new Uint8Array(parts.length * 3);
+    const colors = legacy ? undefined : new Uint8Array(parts.length * 3);
     parts.forEach((brick, index) => {
       const matrix = brickTransformMatrix(brick), elements = matrix.elements;
       for (let row = 0; row < 3; row++) {

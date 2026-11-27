@@ -6,12 +6,11 @@ import {
 } from "three";
 import type { ImportedInstance, ImportedModel } from "../formats/types";
 import { resolveColor } from "../formats/colors";
-import { compilePart, visibleEdgeCount, visibleEdgeData, visibleEdgeLines, visibleEdgeColorCodes, worldMatrix, type Surface } from "./ldraw-geometry";
-import { installInstructionFocus, FOCUS_ATTRIBUTE, FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER } from "./instruction-focus";
+import { compilePart, visibleEdgeCount, visibleEdgeData, visibleEdgeLines, worldMatrix, type Surface } from "./ldraw-geometry";
+import { installInstructionFocus, FOCUS_ATTRIBUTE, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER } from "./instruction-focus";
 import { expandWideLines, wideLineMaterial } from "./wide-lines";
 import { compactFaceAttributes } from "./compact-faces";
 import { expandLegacyLines, legacyLineMaterial, LEGACY_EDGE_BYTES_PER_SEGMENT } from "./legacy-lines";
-import { FALLBACK_EDGE_VERTEX, FALLBACK_EDGE_VERTEX_HEADER, needsWhiteEdges } from "./edge-contrast";
 const sharedAttributes = new WeakMap<Float32Array, BufferAttribute>();
 function sharedAttribute(array: Float32Array): BufferAttribute {
   let attribute = sharedAttributes.get(array);
@@ -126,13 +125,11 @@ function compactLineMaterial(): ShaderMaterial {
     transparent: true, depthWrite: false,
     uniforms: { instructionFocusEnabled: { value: false } },
     vertexShader: FOCUS_VERTEX_HEADER + `
-      ${FALLBACK_EDGE_VERTEX_HEADER}
       attribute vec4 instanceRow0;
       attribute vec4 instanceRow1;
       attribute vec4 instanceRow2;
       void main() {
         ${FOCUS_VERTEX}
-        ${FALLBACK_EDGE_VERTEX}
         vec4 p = vec4(position, 1.0);
         vec3 v = vec3(dot(instanceRow0, p), dot(instanceRow1, p), dot(instanceRow2, p));
         gl_Position = projectionMatrix * modelViewMatrix * vec4(v, 1.0);
@@ -140,13 +137,13 @@ function compactLineMaterial(): ShaderMaterial {
       }`,
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
       uniform bool instructionFocusEnabled;
-      varying float vContrastInk;
       void main() {
-        gl_FragColor = vec4(vec3(vContrastInk), 1.0);
-        if (instructionFocusEnabled && vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
-          gl_FragColor.a *= 0.12;
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        if (instructionFocusEnabled) {
+          gl_FragColor = vInstructionFocus > 1.5
+            ? vec4(0.6, 0.015, 0.01, 0.95)
+            : vec4(vec3(0.45), 0.12);
         }
-        ${FOCUS_FRAGMENT}
         #include <colorspace_fragment>
       }`,
   });
@@ -186,19 +183,6 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
       }
     });
   }
-  if (mode === "thin" || mode === "legacy") {
-    const codes = visibleEdgeColorCodes(surfaces, mode === "legacy");
-    const stride = mode === "legacy" ? detail.legacyEdgeStride ?? 1 : 1;
-    const verticesPerSegment = mode === "thin" ? 2 : 6;
-    const ink = new Uint8Array(geometry.getAttribute("position").count);
-    const color = new Color();
-    for (let segment = 0, output = 0; segment < codes.length; segment += stride, output++) {
-      const code = codes[segment];
-      const value = code === "16" ? 2 : Number(needsWhiteEdges(color.set(resolveColor(code)?.hex ?? "#ff00ff")));
-      ink.fill(value, output * verticesPerSegment, (output + 1) * verticesPerSegment);
-    }
-    geometry.setAttribute("edgeContrastOverride", new BufferAttribute(ink, 1));
-  }
   const rows = [new Float32Array(instances.length * 4), new Float32Array(instances.length * 4), new Float32Array(instances.length * 4)];
   const bounds = new Box3(), transformed = new Box3();
   geometry.computeBoundingBox();
@@ -210,7 +194,7 @@ function addEdges(root: Group, surfaces: Surface[], instances: ImportedInstance[
     bounds.union(transformed.copy(local).applyMatrix4(matrix));
   });
   rows.forEach((row, index) => geometry.setAttribute(`instanceRow${index}`, new InstancedBufferAttribute(row, 4)));
-  {
+  if (mode === "wide") {
     const edgeColors = new Uint8Array(instances.length * 3);
     const color = new Color();
     instances.forEach((instance, index) => {
@@ -289,7 +273,7 @@ function legacyEdgeStride(batches: { segments: number; instances: number }[], bu
     let bytes = 0, repeatedSegments = 0;
     for (const batch of batches) {
       const count = Math.ceil(batch.segments / stride);
-      bytes += count * LEGACY_EDGE_BYTES_PER_SEGMENT + batch.instances * 55;
+      bytes += count * LEGACY_EDGE_BYTES_PER_SEGMENT + batch.instances * 52;
       repeatedSegments += count * batch.instances;
     }
     return bytes <= budget && repeatedSegments <= MAX_WIDE_EDGE_OCCURRENCES;
@@ -332,7 +316,7 @@ export async function createImportedGroupAsync(model: ImportedModel, options: Sc
             if (viewport === "legacy") legacyBatches.push({ segments, instances: instances.length });
             else {
               wideEdgeBytes += segments * WIDE_EDGE_BYTES_PER_SEGMENT + instances.length * 55;
-              thinEdgeBytes += segments * 26 + instances.length * 55;
+              thinEdgeBytes += segments * 24 + instances.length * 52;
               edgeOccurrences += segments * instances.length;
             }
           }

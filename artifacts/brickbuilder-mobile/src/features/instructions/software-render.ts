@@ -10,7 +10,7 @@ import { resolveColor } from "../formats/colors";
 import type { InstructionImageRenderer } from "./render";
 import { drawInstructionOutlines, groupInstructionHighlights, instructionHighlightOccurrences, instructionGroupFrames } from "./outlines";
 import { applyPdfStepCamera, fitStudioCamera, setPdfDefaultCamera, studioRenderSize } from "./camera";
-import { partEdgeColor } from "../engine/edge-contrast";
+import { NORMAL_EDGE_CONTRAST } from "../engine/wide-lines";
 import { drawStudioModelArrows, studioModelArrowPoints, type StudioModelArrow } from "./studio-objects";
 import { drawHighlightSilhouette } from "./silhouette";
 import { softwareLightIntensity } from "../engine/lighting";
@@ -217,9 +217,14 @@ export async function createSoftwareInstructionRenderer(document: BuilderDocumen
             if (first.z < -1 || first.z > 1 || second.z < -1 || second.z > 1) continue;
             const sourceColor = source.colorCodes?.[segment];
             color.set(resolveColor(sourceColor && sourceColor !== "16" ? sourceColor : source.inheritedColor)?.hex ?? "#ff00ff");
-             const ink = partEdgeColor(color);
-             if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(ink, highlightIds.has(source.id));
-             const stroke = ink.getStyle();
+            if (highlightIds !== undefined && !style?.preserveColors) instructionDisplayColor(color, highlightIds.has(source.id));
+            let stroke = color.clone().multiplyScalar(
+              softwareLightIntensity(firstNormal.dot(light)) * NORMAL_EDGE_CONTRAST,
+            ).getStyle();
+            if (style?.studioEdges) {
+              const luminance = color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
+              stroke = luminance < 0.025 ? "#959595" : "#070707";
+            }
             const points = lineStrokes.get(stroke) ?? [];
             points.push(
               (first.x + 1) * width / 2, (1 - first.y) * height / 2,

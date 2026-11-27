@@ -683,26 +683,6 @@ it("draws thin black standard edges without changing opaque part faces", () => {
   expect(observedPaints.some(paint => paint.globalAlpha === 1 && paint.fillStyle !== "rgb(0,0,0)")).toBe(true);
 });
 
-it.each([false, true])("uses white ink on dark parts in software, independent of theme (darkMode=%s)", async darkMode => {
-  const software = await softwareRendering.createSoftwareScene({
-    ...engineFixture(1, 1), instances: engineFixture(1, 1).instances.map(part => ({ ...part, colorCode: "0" })),
-  });
-  const local: Brick = { id: "dark-local", type: "brick-2x2", color: "#0a3463", x: 0, y: 0, z: 0, rotation: 0 };
-  const renderer = new FallbackRenderer();
-  renderer.setSize(600, 600);
-  const camera = new PerspectiveCamera(42, 1, 0.1, 4000);
-  camera.position.set(10, 10, 10); camera.lookAt(0, 0, 0);
-  for (const thick of [false, true]) {
-    observedStrokes.length = 0;
-    renderer.render(camera, new Vector3(), [local], null, software, 0, false, new Set([local.id]),
-      constructionArea(new Box3()), darkMode, null, null, thick);
-    expect(observedStrokes.some(stroke => stroke.color === "rgb(255,255,255)")).toBe(true);
-    if (thick) expect(observedStrokes.some(stroke =>
-      stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "#ffffff")).toBe(true);
-    expect(observedStrokes.some(stroke => stroke.color === "rgb(153,4,3)")).toBe(false);
-  }
-});
-
 it("outlines every selected local part in the compatibility renderer", () => {
   const bricks: Brick[] = [
     { id: "outline-first", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 },

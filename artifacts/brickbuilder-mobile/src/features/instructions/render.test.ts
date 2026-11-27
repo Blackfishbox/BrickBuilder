@@ -143,31 +143,6 @@ function repeatedDocument(count = 128): BuilderDocument {
   return document;
 }
 
-it.each([false, true])("uses true white on dark source parts in software PDF images (Studio=%s)", async studioEdges => {
-  const document = createEmptyDocument();
-  document.bricks = [
-    { id: "black", type: "brick-2x2", color: "#05131d", x: -3, y: 0, z: 0, rotation: 0 },
-    { id: "dark-blue", type: "brick-2x2", color: "#0a3463", x: 0, y: 0, z: 0, rotation: 0 },
-    { id: "bright", type: "brick-2x2", color: "#ffffff", x: 3, y: 0, z: 0, rotation: 0 },
-  ];
-  const strokes: string[] = [];
-  const context = { fillStyle: "", strokeStyle: "", globalAlpha: 1, lineWidth: 1,
-    fillRect() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
-    stroke() { strokes.push(this.strokeStyle); } };
-  vi.stubGlobal("document", { createElement: () => ({
-    width: 0, height: 0, getContext: () => context, toDataURL: () => "data:image/png;base64,edges",
-  }) });
-  const renderer = await createSoftwareInstructionRenderer(document);
-  try {
-    const ids = new Set(document.bricks.map(brick => brick.id));
-    const step = { id: "s", title: "", notes: "", partIds: [...ids] };
-    renderer.image(ids, step, undefined, undefined, [], undefined, { studioEdges });
-    expect(strokes).toContain("rgb(255,255,255)");
-    expect(strokes).toContain("rgb(0,0,0)");
-    expect(strokes.every(stroke => ["rgb(255,255,255)", "rgb(0,0,0)"].includes(stroke))).toBe(true);
-  } finally { renderer.dispose(); }
-});
-
 function stubCanvas() {
   const context = {
     fillStyle: "", globalAlpha: 1, fillRect: vi.fn(), drawImage: vi.fn(),
