@@ -80,12 +80,14 @@ it("distinguishes automatic PWA geometry requests from optional Android download
 
     expect(english).toContain("the PWA automatically requests them");
     expect(english).toContain("There is no setting in the PWA to turn off these requests");
-    expect(english).toContain("Online geometry loading is disabled by default");
+    expect(english).toContain("available only while Premium is unlocked");
+    expect(english).toContain("disabled by default even for Premium users");
     expect(english).not.toContain("This Android version");
 
     expect(german).toContain("fordert die PWA sie automatisch");
     expect(german).toContain("In der PWA gibt es keine Einstellung, um diese Anfragen zu deaktivieren");
-    expect(german).toContain("Das Online-Nachladen von Geometrien ist standardmäßig deaktiviert");
+    expect(german).toContain("nur mit freigeschaltetem Premium verfügbar");
+    expect(german).toContain("Auch für Premium-Nutzer ist es standardmäßig ausgeschaltet");
     expect(german).not.toContain("Die hier beschriebene Android-Fassung");
   } finally {
     dom.window.close();
@@ -127,6 +129,26 @@ it("uses the requested privacy labels and emphasizes the API URL", () => {
     expect(document.querySelector('main[data-locale="de"]')?.textContent).toContain(
       "welcher vom Verantwortlichen des Servers nicht betrieben wird",
     );
+  } finally {
+    dom.window.close();
+  }
+});
+
+it("clearly separates Android Premium, parts-download consent, RevenueCat and Google Play Billing", () => {
+  const dom = new JSDOM(readFileSync(new URL("../../public/privacy.html", import.meta.url), "utf8"), {
+    url: "https://brickbuilder.test/",
+  });
+  try {
+    const english = dom.window.document.querySelector('main[data-locale="en"]')!.textContent!;
+    const german = dom.window.document.querySelector('main[data-locale="de"]')!.textContent!;
+    for (const [policy, terms] of [
+      [english, ["only while Premium is unlocked", "separately enable", "Google Play Billing",
+        "RevenueCat", "buying Premium alone does not grant", "PWA does not use Google Play Billing"]],
+      [german, ["nur mit freigeschaltetem Premium", "gesondert einschalten", "Google Play Billing",
+        "RevenueCat", "Premium-Kauf allein erteilt diese Erlaubnis nicht", "PWA verwendet weder Google Play Billing"]],
+    ] as const) {
+      for (const term of terms) expect(policy).toContain(term);
+    }
   } finally {
     dom.window.close();
   }
