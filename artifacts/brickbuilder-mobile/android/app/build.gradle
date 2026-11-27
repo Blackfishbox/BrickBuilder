@@ -71,6 +71,15 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    constraints {
+        implementation("org.jetbrains.kotlin:kotlin-parcelize-runtime:2.4.20") {
+            because("Use the Kotlin release containing the CVE-2026-53914 fix.")
+        }
+        implementation("com.google.crypto.tink:tink-android:1.23.0") {
+            because("Use the Tink release containing the CVE-2026-15432 fix.")
+        }
+    }
 }
 
 apply from: 'capacitor.build.gradle'
