@@ -537,3 +537,8 @@ it("keeps dark inventory errors and storage details on readable theme tokens", (
   expect(darkThemeCss).toMatch(/\.dark \.sm-drawer \.sm-notice[\s\S]*?color:\s*hsl\(150 32% 82%\)/);
   expect(darkThemeCss).toMatch(/\.dark \.fmt-drawer :is\(input, select, textarea\)[\s\S]*?color:\s*hsl\(var\(--foreground\)\)/);
 });
+
+it("outlines color circles in dark mode", () => {
+  expect(darkThemeCss).toMatch(/\.dark \.swatch\s*\{\s*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*\.82\)/);
+  expect(darkThemeCss).toMatch(/\.dark \.mobile-color-option > span:first-child,\s*\.dark \.dock-color-dot\s*\{[\s\S]*?border:\s*1px solid rgba\(255,\s*255,\s*255,\s*\.82\)/);
+});

@@ -39,6 +39,12 @@
 }
 .dark .color-picker-search input { color: hsl(var(--foreground)); }
 .dark .color-picker-search input::placeholder { color: hsl(var(--muted-foreground)); }
+.dark .swatch { border: 1px solid rgba(255, 255, 255, .82); }
+.dark .mobile-color-option > span:first-child,
+.dark .dock-color-dot {
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, .82);
+}
 .dark :is(.project-title-button:hover, .saved-project:hover, .tool-option:hover:not(.active),
   .icon-button:hover:not(:disabled), .selection-action:hover, .dock-color:hover,
   .drawer-piece:hover, .drawer-piece.chosen, .mobile-color-option.selected,
