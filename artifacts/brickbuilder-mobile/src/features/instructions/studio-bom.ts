@@ -3,6 +3,7 @@ import type { BuilderDocument } from "../editor/model";
 import { translate, type Locale } from "../../i18n/messages";
 import { instructionColorLabel, instructionPartGroups, type InstructionPart } from "./parts";
 import { studioPartImage } from "./studio-parts-image";
+import type { InstructionPartImageSize } from "./part-images";
 import { partProjectedSize } from "./part-projection";
 import { studioChildren, type StudioRect } from "./studio-objects";
 import type { StudioNode } from "./studio-layout";
@@ -53,6 +54,17 @@ function imageDimensions(document: BuilderDocument, part: InstructionPart, scale
     if (size) return [size[0] * scale, size[1] * scale];
   } catch { /* Keep an explicit unavailable-preview message and the inventory entry. */ }
   return [20 * scale, 16 * scale];
+}
+
+const STUDIO_BOM_IMAGE_DPI = 180;
+const STUDIO_BOM_MAX_IMAGE_EDGE = 768;
+
+export function studioBomRasterSize(widthMm: number, heightMm: number): InstructionPartImageSize {
+  const scale = Math.min(STUDIO_BOM_IMAGE_DPI / 25.4, STUDIO_BOM_MAX_IMAGE_EDGE / Math.max(widthMm, heightMm));
+  return {
+    width: Math.max(1, Math.ceil(widthMm * scale)),
+    height: Math.max(1, Math.ceil(heightMm * scale)),
+  };
 }
 
 function rgb(raw: string | undefined): [number, number, number] | undefined {
@@ -172,7 +184,8 @@ export async function drawStudioBom(
       signal?.throwIfAborted();
       const imageX = cell.x + (cell.width - cell.imageWidth) / 2;
       try {
-        const data = await renderPart(document, cell.part, signal ?? new AbortController().signal);
+        const data = await renderPart(document, cell.part, signal ?? new AbortController().signal,
+          studioBomRasterSize(cell.imageWidth, cell.imageHeight));
         signal?.throwIfAborted();
         const image = pdf.getImageProperties(data);
         const ratio = Math.min(cell.imageWidth / image.width, cell.imageHeight / image.height);

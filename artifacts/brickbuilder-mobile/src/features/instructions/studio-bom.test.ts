@@ -3,15 +3,17 @@ import { jsPDF } from "jspdf";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { unzlibSync } from "fflate";
 import { Resvg } from "@resvg/resvg-js";
-import { createEmptyDocument } from "../editor/model";
+import { createEmptyDocument, type BuilderDocument } from "../editor/model";
 import { parseLDraw } from "../formats/ldraw/parser";
 import { studioNodes } from "./studio-layout";
-import { drawStudioBom, planStudioBom, studioBomParts } from "./studio-bom";
+import { drawStudioBom, planStudioBom, studioBomParts, studioBomRasterSize } from "./studio-bom";
 import { exportStudioLayoutPDF } from "./studio-pdf";
 import { sourceInstructionPlan } from "./model";
 import { readStudioInstructions } from "./studio";
 import { instructionPartImage } from "./part-images";
 import { partProjectedSize } from "./part-projection";
+import type { InstructionPart } from "./parts";
+import type { InstructionPartImageSize } from "./part-images";
 
 const bomXml = `<BOM id="inventory" index="0" OrderBy="Color_Size_Ascending" IsShownAsRow="False">
   <PartSize Scale="1"/><Label FontSize="9" FontStyle="Bold"/><Padding LRBT="2 2 2 2"/>
@@ -122,6 +124,24 @@ it("measures local inventory parts in their canonical pose instead of assigning 
   }
 });
 
+it("renders parts-list images at print resolution with a bounded maximum", () => {
+  expect(studioBomRasterSize(50, 25)).toEqual({ width: 355, height: 178 });
+  expect(studioBomRasterSize(1000, 500)).toEqual({ width: 768, height: 384 });
+});
+
+it("passes the print-sized raster dimensions to Studio inventory thumbnails", async () => {
+  const { doc, nodes, bom } = fixture(1);
+  const pdf = new jsPDF();
+  const page = planStudioBom(pdf, doc, bom, nodes, [0, 0, 100, 100], 1, "en")[0];
+  const renderPart = vi.fn(async (
+    _document: BuilderDocument, _part: InstructionPart, _signal: AbortSignal, _size?: InstructionPartImageSize,
+  ) => png());
+
+  await drawStudioBom(pdf, doc, page, "en", undefined, renderPart);
+
+  expect(renderPart.mock.calls[0][3]).toEqual(studioBomRasterSize(page.cells[0].imageWidth, page.cells[0].imageHeight));
+});
+
 it("keeps color names readable and validates tiny custom list rectangles", () => {
   const { doc, nodes, bom } = fixture(0);
   const source = "1 72 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat";
@@ -206,6 +226,7 @@ it("renders a real multi-page parts PDF with geometry-backed thumbnails for visu
       fillRect(x: number, y: number, width: number, height: number) {
         paths = [`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${this.fillStyle}"/>`];
       },
+      clearRect() { paths = []; },
     };
     return { width: 0, height: 0, getContext: () => context, toDataURL() {
       return `data:image/png;base64,${Buffer.from(new Resvg(
@@ -214,11 +235,19 @@ it("renders a real multi-page parts PDF with geometry-backed thumbnails for visu
     } };
   } });
   try {
+    const imageFailures: unknown[] = [];
+    const renderPart = async (
+      document: BuilderDocument, part: InstructionPart, signal: AbortSignal, size: InstructionPartImageSize,
+    ) => {
+      try { return await instructionPartImage(document, part, signal, true, size); }
+      catch (error) { imageFailures.push(error); throw error; }
+    };
     for (const [index, page] of pages.entries()) {
       if (index) pdf.addPage([100, 100]);
-      await drawStudioBom(pdf, doc, page, "en", undefined, instructionPartImage);
+      await drawStudioBom(pdf, doc, page, "en", undefined, renderPart);
     }
     const bytes = new Uint8Array(pdf.output("arraybuffer"));
+    expect(imageFailures).toEqual([]);
     expect(Buffer.from(bytes).toString("latin1").match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(14);
     const directory = new URL("../../../generated-artifacts/", import.meta.url);
     mkdirSync(directory, { recursive: true });

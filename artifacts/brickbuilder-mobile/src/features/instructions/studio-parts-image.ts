@@ -1,12 +1,12 @@
 import type { BuilderDocument } from "../editor/model";
 import type { InstructionPart } from "./parts";
-import { instructionPartImage } from "./part-images";
+import { instructionPartImage, type InstructionPartImageSize } from "./part-images";
 
 /** Catalog thumbnails include framing margins; Studio's parts boxes do not. */
 export async function studioPartImage(
-  document: BuilderDocument, entry: InstructionPart, signal: AbortSignal,
+  document: BuilderDocument, entry: InstructionPart, signal: AbortSignal, size?: InstructionPartImageSize,
 ): Promise<string> {
-  const source = await instructionPartImage(document, entry, signal, true);
+  const source = await instructionPartImage(document, entry, signal, true, size);
   signal.throwIfAborted();
   const image = new Image();
   await new Promise<void>((resolve, reject) => {

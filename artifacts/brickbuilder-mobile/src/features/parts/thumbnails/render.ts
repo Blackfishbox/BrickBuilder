@@ -11,6 +11,7 @@ import { PART_PREVIEW_DIRECTION } from "./camera";
 let renderer: WebGLRenderer | undefined;
 let idle: ReturnType<typeof setTimeout> | undefined;
 let unavailableUntil = 0;
+const DEFAULT_RENDER_SIZE = { width: 160, height: 120 };
 
 function releaseRenderer() {
   renderer?.dispose();
@@ -32,6 +33,7 @@ export function configureThumbnailEdges(root: Group, width: number, height: numb
 export function renderThumbnail(
   model: ImportedModel, colorCode: string,
   configureEdges: (root: Group, width: number, height: number) => void = configureThumbnailEdges,
+  size = DEFAULT_RENDER_SIZE,
 ): string {
   if (idle) clearTimeout(idle);
   if (Date.now() < unavailableUntil) throw new Error("3D-Vorschau derzeit nicht verfügbar.");
@@ -39,19 +41,19 @@ export function renderThumbnail(
     if (!renderer) {
       renderer = new WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: "low-power" });
       renderer.setPixelRatio(1);
-      renderer.setSize(160, 120);
       renderer.setClearColor(0xffffff, 0);
     }
+    renderer.setSize(size.width, size.height);
     const colored = { ...model, instances: model.instances.map(instance => ({ ...instance, colorCode })) };
     reuseGeometryCache(model, colored);
     const group = createImportedGroup(colored);
     try {
-      configureEdges(group, 160, 120);
+      configureEdges(group, size.width, size.height);
       const bounds = new Box3().setFromObject(group);
       if (bounds.isEmpty()) throw new Error("Keine Vorschaugeometrie.");
       const center = bounds.getCenter(new Vector3());
-      const size = bounds.getSize(new Vector3());
-      const radius = size.length() / 2;
+      const modelSize = bounds.getSize(new Vector3());
+      const radius = modelSize.length() / 2;
       if (!Number.isFinite(radius) || radius <= 0) throw new Error("Ungültige Vorschaugeometrie.");
       const camera = new OrthographicCamera(-radius * 1.48, radius * 1.48, radius * 1.11, -radius * 1.11, radius * 0.01, radius * 12);
       camera.position.copy(center).add(new Vector3(...PART_PREVIEW_DIRECTION).normalize().multiplyScalar(radius * 4));
