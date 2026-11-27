@@ -9,6 +9,8 @@ import { createEmptyDocument } from "@/features/editor/model";
 import { parseInventory } from "@/features/inventory/import";
 import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
 import { setRemoteGeometryEnabled } from "@/features/privacy/geometry-consent";
+const premium = vi.hoisted(() => ({ active: false, status: "ready" }));
+vi.mock("@/features/premium/usePremium", () => ({ usePremium: () => premium }));
 
 const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
 const editorCss = readFileSync("src/components/mobile/editor.css", "utf8");
@@ -58,6 +60,7 @@ let oldWidth: number;
 let oldHeight: number;
 
 afterEach(() => {
+  premium.active = false; premium.status = "ready";
   if (root) act(() => root!.unmount());
   root = undefined;
   host?.remove();
@@ -426,6 +429,25 @@ it("keeps all three mobile panels open on a grip tap and moves them only after d
 function openProjectMenu(container: HTMLElement) {
   act(() => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
 }
+
+it("places the Premium purchase directly below privacy only for non-premium Android users", async () => {
+  const container = await mount("light");
+  openProjectMenu(container);
+  const privacy = container.querySelector('[data-testid="button-open-privacy"]')!;
+  const purchase = container.querySelector('[data-testid="button-open-premium"]')!;
+  expect(privacy.nextElementSibling).toBe(purchase);
+  expect(purchase.textContent).toContain("Premium kaufen");
+  premium.active = true;
+  act(() => root!.render(<I18nProvider><App /></I18nProvider>));
+  expect(container.querySelector('[data-testid="button-open-premium"]')).toBeNull();
+  premium.active = false; premium.status = "loading";
+  act(() => root!.render(<I18nProvider><App /></I18nProvider>));
+  expect(container.querySelector('[data-testid="button-open-premium"]')).toBeNull();
+  premium.status = "ready";
+  vi.stubEnv("VITE_NATIVE_ANDROID", "false");
+  act(() => root!.render(<I18nProvider><App /></I18nProvider>));
+  expect(container.querySelector('[data-testid="button-open-premium"]')).toBeNull();
+});
 
 it.each(["light", "dark"] as const)(
   "opens the mobile format, storage, privacy and inventory surfaces in %s mode",

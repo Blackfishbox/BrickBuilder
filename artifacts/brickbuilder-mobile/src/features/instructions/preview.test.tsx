@@ -5,6 +5,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { PerspectiveCamera, Vector3 } from "three";
 import { createEmptyDocument, type BuilderDocument } from "../editor/model";
+const premium = vi.hoisted(() => ({ active: false }));
+vi.mock("../premium/usePremium", () => ({ usePremium: () => premium }));
 import { LANGUAGE_STORAGE_KEY } from "../../i18n/I18nProvider";
 import InstructionsPanel from "./InstructionsPanel";
 import { sourceInstructionPlan, updateInstructions } from "./model";
@@ -514,6 +516,27 @@ it("passes the enabled highlight option to PDF export", async () => {
   });
   expect(onExportPDF).toHaveBeenCalledOnce();
   expect(onExportPDF.mock.calls[0][3]).toBe(true);
+});
+
+it("offers branding-free export only with Premium and passes the switch to PDF export", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "new", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  const onExportPDF = vi.fn(async (..._args: unknown[]) => {});
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  const render = () => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={onExportPDF} />);
+  act(render);
+  expect(host.querySelector('[data-testid="button-instructions-omit-branding"]')).toBeNull();
+  premium.active = true;
+  try {
+    act(render);
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-omit-branding"]')!.click());
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-pdf"]')!.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    expect(onExportPDF.mock.calls[0][4]).toBe(true);
+  } finally { premium.active = false; }
 });
 
 it("hides the complete instruction body while a PDF is being created", async () => {

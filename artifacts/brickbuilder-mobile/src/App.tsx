@@ -61,6 +61,8 @@ import type { InstructionPart } from '@/features/instructions/parts';
 import type { PreparedExport } from '@/platform/export-file';
 import { sharePreparedExport } from '@/platform/export-file';
 import { watchForOpenedIOFiles } from '@/platform/io-file-open';
+import PremiumDialog from '@/features/premium/PremiumDialog';
+import { usePremium } from '@/features/premium/usePremium';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -80,6 +82,8 @@ function readThickEdgesPreference(): boolean {
 
 function App() {
   const { locale, setLocale, t } = useI18n();
+  const premium = usePremium();
+  const [premiumOpen, setPremiumOpen] = useState(false);
   const catalog = useCatalog();
   const COLORS = catalogPalette().map(color => ({ name: color.name, value: color.hex, ldrawCode: color.ldrawCode }));
   const editor = useBuilder();
@@ -471,6 +475,12 @@ function App() {
               <button type="button" className="popover-action" onClick={() => { setPrivacyOpen(true); setProjectMenu(false); }} data-testid="button-open-privacy">
                 <FilePlus2 size={16} /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
               </button>
+              {isAndroidBuild() && !premium.active && (premium.status === "ready" || premium.status === "error") && (
+                <button type="button" className="popover-action" onClick={() => { setPremiumOpen(true); setProjectMenu(false); }}
+                  data-testid="button-open-premium">
+                  <Plus size={16} /> {t(premium.status === "error" ? "premium.retry" : "premium.buy")}
+                </button>
+              )}
               <label className="language-row">
                 <span>{t("language")}</span>
                 <select data-testid="select-language" aria-label={t("language")} value={locale}
@@ -570,7 +580,7 @@ function App() {
                 viewExporterRef={viewExporterRef}
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 emptyDoubleTapZoomEnabled={!gestureHelpOpen && !projectMenu && !partsOpen && !colorsOpen &&
-                  !formatsOpen && !instructionsOpen && !storageOpen && !privacyOpen && !confirmNew &&
+                  !formatsOpen && !instructionsOpen && !storageOpen && !privacyOpen && !premiumOpen && !confirmNew &&
                   !finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                 darkMode={theme === 'dark'}
@@ -840,16 +850,16 @@ function App() {
       {gestureHelpOpen && <GestureHelpDialog onClose={() => setGestureHelpOpen(false)} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}
-          onExportPDF={async (plan, onProgress, signal, highlight) => {
+          onExportPDF={async (plan, onProgress, signal, highlight, omitBranding) => {
             const { exportInstructionPdfFile } = await import('@/platform/instruction-pdf-export');
             instructionExportRef.current = null;
-            await exportInstructionPdfFile({ document: editor.document, plan, onProgress, signal, highlight, locale,
+            await exportInstructionPdfFile({ document: editor.document, plan, onProgress, signal, highlight, locale, omitBranding,
               onPrepared: file => { instructionExportRef.current = file; } });
           }}
-          onExportStudioPDF={async (plan, onProgress, signal, highlight) => {
+          onExportStudioPDF={async (plan, onProgress, signal, highlight, omitBranding) => {
             const { exportInstructionPdfFile } = await import('@/platform/instruction-pdf-export');
             instructionExportRef.current = null;
-            await exportInstructionPdfFile({ document: editor.document, plan, onProgress, signal, highlight, locale, studio: true,
+            await exportInstructionPdfFile({ document: editor.document, plan, onProgress, signal, highlight, locale, studio: true, omitBranding,
               onPrepared: file => { instructionExportRef.current = file; } });
           }}
           onRetryExport={async () => {
@@ -861,6 +871,7 @@ function App() {
       </Suspense>}
       {storageOpen && <StorageManager currentProjectId={editor.document.id} onClose={() => setStorageOpen(false)} onProjectsChanged={editor.refreshProjects} />}
       {privacyOpen && <PrivacyDialog onClose={() => setPrivacyOpen(false)} />}
+      {premiumOpen && <PremiumDialog onClose={() => setPremiumOpen(false)} />}
       {!formatsOpen && (
         <ImportPartNotification key={editor.document.id} model={editor.imported} floating />
       )}

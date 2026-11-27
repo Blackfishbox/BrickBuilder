@@ -18,14 +18,15 @@ import { generateAutomaticInstructionSteps, type AutoInstructionProgress } from 
 import "./instructions.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import { openBatteryOptimizationSettings } from "@/platform/pdf-background";
+import { usePremium } from "../premium/usePremium";
 
 interface Props {
   document: BuilderDocument;
   darkMode?: boolean;
   onChange: (plan: InstructionPlan) => void;
   onClose: () => void;
-  onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
-  onExportStudioPDF?: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean) => Promise<void>;
+  onExportPDF: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean, omitBranding?: boolean) => Promise<void>;
+  onExportStudioPDF?: (plan: InstructionPlan, onProgress: (done: number, total: number) => void, signal: AbortSignal, highlight: boolean, omitBranding?: boolean) => Promise<void>;
   onRetryExport?: () => Promise<boolean>;
 }
 
@@ -37,6 +38,8 @@ const noop = () => undefined;
 
 export default function InstructionsPanel({ document, darkMode = false, onChange, onClose, onExportPDF, onExportStudioPDF, onRetryExport }: Props) {
   const { t } = useI18n();
+  const premium = usePremium();
+  const [omitBranding, setOmitBranding] = useState(false);
   const plan = useMemo(() => {
     const source = effectiveInstructions(document);
     return {
@@ -308,7 +311,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
       controller.signal.throwIfAborted();
       const exportHandler = studioLayout ? onExportStudioPDF : onExportPDF;
       if (!exportHandler) throw new Error(t("instruction.studioPdfUnavailable"));
-      await exportHandler(exportPlan, (done, total) => setExporting({ done, total }), controller.signal, highlight);
+      await exportHandler(exportPlan, (done, total) => setExporting({ done, total }), controller.signal, highlight, omitBranding && premium.active);
     } catch (error) {
       if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : t("format.exportError"));
     } finally {
@@ -370,6 +373,12 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             <span>{t("instruction.highlightLabel")}</span>
             <i className="ins-switch-track" aria-hidden="true"><i /></i>
           </button>
+          {premium.active && <button className="ins-ghost ins-highlight" role="switch" aria-checked={omitBranding}
+            disabled={!!exporting} onClick={() => setOmitBranding(value => !value)}
+            data-testid="button-instructions-omit-branding">
+            <span>{t("premium.omitBranding")}</span>
+            <i className="ins-switch-track" aria-hidden="true"><i /></i>
+          </button>}
         </div>
       </header>
 

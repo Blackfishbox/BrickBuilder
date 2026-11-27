@@ -351,6 +351,16 @@ describe("local construction instructions", () => {
     expect(progress).toHaveBeenLastCalledWith(2, 2);
   });
 
+  it("omits footer branding from all normal PDF pages when requested", async () => {
+    const doc = fixture();
+    const png = `data:image/png;base64,${readFileSync(new URL("../../../public/icons/brickbuilder-512.png", import.meta.url)).toString("base64")}`;
+    const bytes = await exportInstructionPDF(doc, doc.instructions!, { omitBranding: true },
+      async () => ({ image: () => png, dispose: vi.fn() }));
+    const streams = pdfPageTextStreams(bytes);
+    expect(streams).toHaveLength(2);
+    streams.forEach(stream => expect(stream).not.toContain("BrickBuilder"));
+  });
+
   it("omits step names and keeps every part, callout, and long note across PDF continuation pages", async () => {
     const source = Array.from({ length: 50 }, (_, index) =>
       `1 4 ${index * 40} 0 0 1 0 0 0 1 0 0 0 1 test-part-${String(index).padStart(2, "0")}.dat`,

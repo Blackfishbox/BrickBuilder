@@ -3,8 +3,18 @@ import { afterEach, expect, it, vi } from "vitest";
 import { GEOMETRY_API, remoteGeometryEnabled, requireGeometryPermission, setRemoteGeometryEnabled } from "./geometry-consent";
 import { findOnline, hashBytes, OnlineGeometry } from "../formats/online-geometry";
 import { acquireThumbnailGeometry } from "../parts/thumbnails/acquire";
+const premium = vi.hoisted(() => ({ active: true }));
+vi.mock("../premium/store", () => ({ premiumActive: () => premium.active }));
 
-afterEach(() => { localStorage.clear(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { premium.active = true; localStorage.clear(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+it("blocks Android downloads without Premium even with existing consent, but leaves the PWA unchanged", () => {
+  vi.stubEnv("VITE_NATIVE_ANDROID", "true");
+  premium.active = false;
+  setRemoteGeometryEnabled(true);
+  expect(() => requireGeometryPermission()).toThrow("Premium");
+  vi.stubEnv("VITE_NATIVE_ANDROID", "false");
+  expect(() => requireGeometryPermission()).not.toThrow();
+});
 it("uses the canonical first-party geometry API origin", () => {
   expect(GEOMETRY_API).toBe("https://brickbuilder.blackfishbox.de/api");
 });

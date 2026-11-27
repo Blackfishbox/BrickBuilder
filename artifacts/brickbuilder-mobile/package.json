@@ -93,6 +93,7 @@
     "@capacitor/core": "^8.6.0",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/share": "^8.0.3",
+    "@revenuecat/purchases-capacitor": "^15.0.0",
     "dexie": "^4.4.7",
     "fast-xml-parser": "^5.12.1",
     "fflate": "^0.8.3",

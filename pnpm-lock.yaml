@@ -168,6 +168,9 @@ importers:
       '@replit/connectors-sdk':
         specifier: ^0.4.3
         version: 0.4.3
+      '@replit/revenuecat-sdk':
+        specifier: ^5.0.0
+        version: 5.0.0(typescript@5.9.3)
     devDependencies:
       prettier:
         specifier: ^3.9.10
@@ -248,6 +251,9 @@ importers:
       '@capacitor/share':
         specifier: ^8.0.3
         version: 8.0.3(@capacitor/core@8.6.2)
+      '@revenuecat/purchases-capacitor':
+        specifier: ^15.0.0
+        version: 15.0.0(@capacitor/core@8.6.2)
       dexie:
         specifier: ^4.4.7
         version: 4.4.7
@@ -2279,6 +2285,11 @@ packages:
   '@replit/connectors-sdk@0.4.3':
     resolution: {integrity: sha512-7XoaRty/O6JF161UkVBI8UewZ96XCNNN1kRvT9Q41IRH3xr+6ImylvXtirIghydDd2FCQvIkY4HQscOOr45otA==}
 
+  '@replit/revenuecat-sdk@5.0.0':
+    resolution: {integrity: sha512-waW/1S5P53KNoTAfDdN+aDevzaTKSPb1GdLTWdFSwYaRqOlS+ljm8lkD3SHcLqhjnTgC/tmhNH4oo1TeLfKeXA==}
+    peerDependencies:
+      typescript: ^5
+
   '@replit/vite-plugin-cartographer@0.5.21':
     resolution: {integrity: sha512-E5rco8Mov05QDfUOjoim3MVJdDX0/pBYql5Jay3w9cqmU/QOL6cEOUAjsBZPB/V8FEChsk++sZUrcWt1bHaAoQ==}
 
@@ -2367,6 +2378,14 @@ packages:
   '@resvg/resvg-js@2.6.2':
     resolution: {integrity: sha512-xBaJish5OeGmniDj9cW5PRa/PtmuVU3ziqrbr5xJj901ZDN4TosrVaNZpEiLZAxdfnhAe7uQ7QFWfjPe9d9K2Q==}
     engines: {node: '>= 10'}
+
+  '@revenuecat/purchases-capacitor@15.0.0':
+    resolution: {integrity: sha512-UHoLhkBSZvTsr0G4cXTTlLBxu8hAVhp8oavlX2xdqunG8puCTMUguaN52LrQgfYSh/y6+cZvnH187NCRc2ZhFA==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  '@revenuecat/purchases-typescript-internal-esm@21.0.0':
+    resolution: {integrity: sha512-v+oMVu4FeZkS4P8z9lMAgzgHbLMUdF784Otd1vrzl7ky3/A5ho1D3plNhEGwD77N1TJIBPoXURCca4TY0Ib/eQ==}
 
   '@rolldown/pluginutils@1.0.0-rc.3':
     resolution: {integrity: sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q==}
@@ -7070,6 +7089,10 @@ snapshots:
 
   '@replit/connectors-sdk@0.4.3': {}
 
+  '@replit/revenuecat-sdk@5.0.0(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
+
   '@replit/vite-plugin-cartographer@0.5.21':
     dependencies:
       '@babel/parser': 7.29.9
@@ -7136,6 +7159,13 @@ snapshots:
       '@resvg/resvg-js-win32-arm64-msvc': 2.6.2
       '@resvg/resvg-js-win32-ia32-msvc': 2.6.2
       '@resvg/resvg-js-win32-x64-msvc': 2.6.2
+
+  '@revenuecat/purchases-capacitor@15.0.0(@capacitor/core@8.6.2)':
+    dependencies:
+      '@capacitor/core': 8.6.2
+      '@revenuecat/purchases-typescript-internal-esm': 21.0.0
+
+  '@revenuecat/purchases-typescript-internal-esm@21.0.0': {}
 
   '@rolldown/pluginutils@1.0.0-rc.3': {}
 

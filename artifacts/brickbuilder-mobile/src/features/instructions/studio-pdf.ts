@@ -1147,7 +1147,7 @@ export async function exportStudioLayoutPdfChunks(
       options.onProgress?.(pageIndex + 1, pages.length);
       await yieldPdfExecution();
     }
-    if (options.previewPageIndex === undefined && pages.length) {
+    if (options.previewPageIndex === undefined && pages.length && !options.omitBranding) {
       let lastInstructionPage = 0;
       for (const [index, page] of pages.entries()) {
         if (page.steps.length || page.images.length) lastInstructionPage = index + 1;

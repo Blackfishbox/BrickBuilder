@@ -2,9 +2,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useState } from "react";
 import { GEOMETRY_API, isAndroidBuild, remoteGeometryEnabled, setRemoteGeometryEnabled } from "./geometry-consent";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePremium } from "../premium/usePremium";
 
 export default function PrivacyDialog({ onClose }: { onClose(): void }) {
   const { t } = useI18n();
+  const premium = usePremium();
   const [enabled, setEnabled] = useState(remoteGeometryEnabled);
   const [error, setError] = useState("");
   const geometryInfo = t("privacy.geometryInfo", { api: GEOMETRY_API });
@@ -15,6 +17,7 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
       {isAndroidBuild() && <section className="rounded-md border p-3 text-sm">
         <label className="flex min-h-12 items-center gap-3 font-medium">
           <input type="checkbox" className="h-6 w-6 shrink-0" checked={enabled}
+            disabled={!premium.active && !enabled}
             onChange={event => {
               const value = event.target.checked;
               if (setRemoteGeometryEnabled(value)) { setEnabled(value); setError(""); }
@@ -22,6 +25,7 @@ export default function PrivacyDialog({ onClose }: { onClose(): void }) {
             }} />
           {t("privacy.loadGeometry")}
         </label>
+        {!premium.active && <p className="mb-2 font-medium">{t("premium.required")}</p>}
         <p>{apiStart < 0 ? geometryInfo : <>
           {geometryInfo.slice(0, apiStart)}
           <strong>{GEOMETRY_API}</strong>

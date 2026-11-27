@@ -7,3 +7,6 @@ project(':capacitor-filesystem').projectDir = new File('../../../node_modules/.p
 
 include ':capacitor-share'
 project(':capacitor-share').projectDir = new File('../../../node_modules/.pnpm/@capacitor+share@8.0.3_@capacitor+core@8.6.2/node_modules/@capacitor/share/android')
+
+include ':revenuecat-purchases-capacitor'
+project(':revenuecat-purchases-capacitor').projectDir = new File('../../../node_modules/.pnpm/@revenuecat+purchases-capacitor@15.0.0_@capacitor+core@8.6.2/node_modules/@revenuecat/purchases-capacitor/android')

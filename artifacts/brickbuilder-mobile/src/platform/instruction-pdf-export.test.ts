@@ -12,7 +12,19 @@ vi.mock("../features/instructions/studio-pdf", () => ({ exportStudioLayoutPdfChu
 vi.mock("./export-file", () => ({ prepareExportFile: mocks.prepare, sharePreparedExport: mocks.share }));
 vi.mock("./pdf-background", () => ({ withPdfBackgroundExport: mocks.protect }));
 import { exportInstructionPdfFile } from "./instruction-pdf-export";
-beforeEach(() => vi.clearAllMocks());
+const premium = vi.hoisted(() => ({ active: false }));
+vi.mock("../features/premium/store", () => ({ premiumActive: () => premium.active }));
+beforeEach(() => { vi.clearAllMocks(); premium.active = false; });
+
+it.each([false, true])("allows branding removal only with a confirmed Premium entitlement: %s", async active => {
+  premium.active = active;
+  mocks.protect.mockImplementationOnce(async (_locale, signal, progress, operation) => operation(signal, progress));
+  await exportInstructionPdfFile({
+    document: createEmptyDocument("Model"), plan: { version: 1, steps: [] }, locale: "en",
+    signal: new AbortController().signal, onProgress: vi.fn(), highlight: false, omitBranding: true, onPrepared: vi.fn(),
+  });
+  expect(mocks.normal).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ omitBranding: active }));
+});
 
 it.each([false, true])("protects rendering and local saving before sharing for Studio=%s", async studio => {
   const signal = new AbortController().signal, progress = vi.fn(), retained = vi.fn();
@@ -30,7 +42,7 @@ it.each([false, true])("protects rendering and local saving before sharing for S
     locale: "en", signal, highlight: true, studio, onProgress: progress, onPrepared: retained,
   });
   expect(studio ? mocks.studio : mocks.normal).toHaveBeenCalledWith(expect.anything(), expect.anything(),
-    { signal, onProgress: progress, highlight: true, locale: "en" });
+    { signal, onProgress: progress, highlight: true, locale: "en", omitBranding: false });
   expect(mocks.prepare).toHaveBeenCalledWith(new Uint8Array(studio ? [3, 4] : [1, 2]),
     studio ? "Truck-Studio-Layout.pdf" : "Truck-Instructions.pdf", "application/pdf", signal);
   expect(mocks.share).toHaveBeenCalledWith(saved);

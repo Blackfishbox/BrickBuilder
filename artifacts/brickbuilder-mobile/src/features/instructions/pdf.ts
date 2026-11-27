@@ -20,6 +20,7 @@ export interface InstructionPdfOptions {
   onProgress?: (done: number, total: number) => void;
   highlight?: boolean;
   locale?: Locale;
+  omitBranding?: boolean;
 }
 
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
@@ -124,10 +125,10 @@ export async function exportInstructionPdfChunks(
     const count = pdf.getNumberOfPages();
     for (let page = 1; page <= count; page++) {
       pdf.setPage(page); pdf.setFontSize(8); pdf.setTextColor(95);
-      if (page === lastInstructionPage) {
+      if (page === lastInstructionPage && !options.omitBranding) {
         await drawInstructionPdfFooter(pdf, translate(locale, "instruction.pdf.generatedWithBrickBuilder"));
       } else {
-        pdf.text(`BrickBuilder · ${document.name}`, 16, 290, { maxWidth: 150 });
+        pdf.text(options.omitBranding ? document.name : `BrickBuilder · ${document.name}`, 16, 290, { maxWidth: 150 });
       }
       pdf.text(`${page} / ${count}`, 194, 290, { align: "right" });
     }

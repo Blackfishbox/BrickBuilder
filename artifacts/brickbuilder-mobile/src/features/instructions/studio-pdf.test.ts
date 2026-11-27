@@ -620,6 +620,16 @@ it("exports one PDF page per imported Studio page with the source format and ste
   expect(renderer.dispose).toHaveBeenCalledOnce();
 
   const originalLayoutXml = document.instructions.studioLayout!.sourceXml;
+  const unbrandedRenderer: InstructionImageRenderer = {
+    image: () => image, dispose: vi.fn(),
+  };
+  const unbrandedBytes = await exportStudioLayoutPDF(document, document.instructions, {
+    omitBranding: true,
+  }, async () => unbrandedRenderer, async () => image);
+  expect(pdfPageCommands(unbrandedBytes)).toHaveLength(2);
+  expect(pdfCommands(unbrandedBytes, true)).not.toContain("Anleitung erzeugt mit BrickBuilder");
+  expect(new TextDecoder().decode(unbrandedBytes).match(/\/Subtype \/Image/g)).toHaveLength(2);
+  expect(unbrandedRenderer.dispose).toHaveBeenCalledOnce();
   const previewCalls: string[] = [];
   const previewRenderer: InstructionImageRenderer = {
     image(_visible, step) { previewCalls.push(step.id); return image; },
