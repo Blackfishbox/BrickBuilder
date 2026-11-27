@@ -436,6 +436,8 @@ it("places the Premium purchase directly below privacy only for non-premium Andr
   const privacy = container.querySelector('[data-testid="button-open-privacy"]')!;
   const purchase = container.querySelector('[data-testid="button-open-premium"]')!;
   expect(privacy.nextElementSibling).toBe(purchase);
+  expect(privacy.querySelector("svg")?.classList.contains("lucide-scale")).toBe(true);
+  expect(purchase.querySelector("svg")?.classList.contains("lucide-star")).toBe(true);
   expect(purchase.textContent).toContain("Premium kaufen");
   premium.active = true;
   act(() => root!.render(<I18nProvider><App /></I18nProvider>));

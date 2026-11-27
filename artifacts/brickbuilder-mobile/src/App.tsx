@@ -30,8 +30,10 @@ import {
   PackageOpen,
   Palette,
   Plus,
+  Scale,
   Save,
   Settings2,
+  Star,
   Trash2,
   Undo2,
   Redo2,
@@ -473,12 +475,12 @@ function App() {
                 <HardDrive size={16} /> {t("project.storage")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setPrivacyOpen(true); setProjectMenu(false); }} data-testid="button-open-privacy">
-                <FilePlus2 size={16} /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
+                <Scale size={16} /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
               </button>
               {isAndroidBuild() && !premium.active && (premium.status === "ready" || premium.status === "error") && (
                 <button type="button" className="popover-action" onClick={() => { setPremiumOpen(true); setProjectMenu(false); }}
                   data-testid="button-open-premium">
-                  <Plus size={16} /> {t(premium.status === "error" ? "premium.retry" : "premium.buy")}
+                  <Star size={16} /> {t(premium.status === "error" ? "premium.retry" : "premium.buy")}
                 </button>
               )}
               <label className="language-row">
