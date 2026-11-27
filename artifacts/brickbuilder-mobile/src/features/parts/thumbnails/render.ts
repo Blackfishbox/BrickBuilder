@@ -29,6 +29,14 @@ export function configureThumbnailEdges(root: Group, width: number, height: numb
   });
 }
 
+export function createThumbnailCamera(radius: number, width: number, height: number): OrthographicCamera {
+  const viewHeight = radius * 2.22;
+  const viewWidth = viewHeight * width / height;
+  return new OrthographicCamera(
+    -viewWidth / 2, viewWidth / 2, viewHeight / 2, -viewHeight / 2, radius * 0.01, radius * 12,
+  );
+}
+
 /** A single detached canvas, never a WebGL context for each library row. */
 export function renderThumbnail(
   model: ImportedModel, colorCode: string,
@@ -55,7 +63,7 @@ export function renderThumbnail(
       const modelSize = bounds.getSize(new Vector3());
       const radius = modelSize.length() / 2;
       if (!Number.isFinite(radius) || radius <= 0) throw new Error("Ungültige Vorschaugeometrie.");
-      const camera = new OrthographicCamera(-radius * 1.48, radius * 1.48, radius * 1.11, -radius * 1.11, radius * 0.01, radius * 12);
+      const camera = createThumbnailCamera(radius, size.width, size.height);
       camera.position.copy(center).add(new Vector3(...PART_PREVIEW_DIRECTION).normalize().multiplyScalar(radius * 4));
       camera.lookAt(center);
       const scene = new Scene();
