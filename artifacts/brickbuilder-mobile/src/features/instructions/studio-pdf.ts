@@ -1,3 +1,5 @@
+import { instructionAxle } from "./axles";
+import { appendAxleGuidePages, collectAxleGuides, nativeAxleGuideReferences, type AxleGuideCollection } from "./axle-guides";
 import { yieldPdfExecution } from "../../platform/pdf-background";
 import { XMLParser } from "fast-xml-parser";
 import { GState, jsPDF } from "jspdf";
@@ -760,8 +762,10 @@ async function renderStudioPartList(
     }
 
     applyFont(pdf, style.font, unitScale, 5, 14);
+    const axle = entry.kind === "imported" && instructionAxle(document, entry.part.reference);
     withTextOpacity(pdf, style.font.color, () =>
-      pdf.text(`${entry.count}x`, cellX + 1, imageY + imageSize + 3, { maxWidth: cellWidth }));
+      pdf.text(`${entry.count}x${axle && axle.length ? ` · ${axle.length}` : ""}`,
+      cellX + 1, imageY + imageSize + 3, { maxWidth: cellWidth }));
   }
   const overflow = groups.length - shown;
   if (overflow > 0) {
@@ -789,6 +793,7 @@ export async function exportStudioLayoutPdfChunks(
   const plan = effectiveInstructions({ ...document, instructions: input });
   if (plan.studioLayout) plan.studioLayout = { sourceXml: applyStudioLayout(plan.studioLayout), edits: [] };
   const locale = options.locale ?? "de";
+  const axleGuides: AxleGuideCollection = new Map();
   const { pages: sourcePages, size, margins, scale, imageData, styles } =
     studioPages(document, plan, locale, options.previewPageIndex);
   const nodes = studioNodes(plan.studioLayout!.sourceXml);
@@ -994,6 +999,16 @@ export async function exportStudioLayoutPdfChunks(
           }
         }
         const partsStep = { ...step, partIds: [...new Set([...step.partIds, ...calloutPartIds])] };
+        if (options.previewPageIndex === undefined) {
+          const slotNode = nativeStep?.parent === undefined ? undefined : nodes[nativeStep.parent];
+          const existingGuides = [
+            ...studioChildren(nativePage, nodes, "SizeGuide"),
+            ...(slotNode ? studioChildren(slotNode, nodes, "SizeGuide") : []),
+          ];
+          collectAxleGuides(axleGuides, document, instructionHighlightIds(document, partsStep),
+            translate(locale, "instruction.pdf.axlePageStep", { page: pageIndex + 1, step: stepNumber }),
+            nativeAxleGuideReferences(existingGuides));
+        }
         const newParts = instructionHighlightIds(document, partsStep);
         const hasEarlierParts = [...visible].some(id => !newParts.has(id));
         const highlightIds = options.highlight && hasEarlierParts ? newParts : undefined;
@@ -1139,6 +1154,7 @@ export async function exportStudioLayoutPdfChunks(
       options.onProgress?.(pageIndex + 1, pages.length);
       await yieldPdfExecution();
     }
+    await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal);
     return instructionPdfChunks(pdf, options.signal);
   } finally {
     renderer.dispose();

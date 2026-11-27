@@ -12,6 +12,7 @@ import { instructionPartImage } from "./part-images";
 import { drawInstructionPartBox } from "./pdf-parts";
 import { exportInstructionCalloutImage, instructionHighlightIds } from "./callouts";
 import { translate, translatePlural, type Locale } from "../../i18n/messages";
+import { appendAxleGuidePages, collectAxleGuides, type AxleGuideCollection } from "./axle-guides";
 
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
@@ -49,9 +50,12 @@ export async function exportInstructionPdfChunks(
       creator: "BrickBuilder",
     });
     const visible = new Set<string>();
+    const axleGuides: AxleGuideCollection = new Map();
     for (const [index, step] of plan.steps.entries()) {
       options.signal?.throwIfAborted();
       if (index) pdf.addPage();
+      collectAxleGuides(axleGuides, document, instructionHighlightIds(document, step),
+        translate(locale, "instruction.pdf.axlePageStep", { page: pdf.getNumberOfPages(), step: index + 1 }));
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
       pdf.text(instructionStepNumber(index + 1), 16, 20);
       let imageY = 24;
@@ -112,6 +116,7 @@ export async function exportInstructionPdfChunks(
       // Give Android a chance to repaint progress and deliver cancellation.
       await yieldPdfExecution();
     }
+    await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal);
     const count = pdf.getNumberOfPages();
     for (let page = 1; page <= count; page++) {
       pdf.setPage(page); pdf.setFontSize(8); pdf.setTextColor(95);

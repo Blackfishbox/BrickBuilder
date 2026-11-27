@@ -6,7 +6,8 @@ export const normalizeSizeGuideReference = (reference: string) =>
 
 export function sizeGuidePart(document: BuilderDocument, reference: string) {
   const number = normalizeSizeGuideReference(reference);
-  return document.imported?.instances.find(part => normalizeSizeGuideReference(part.reference) === number);
+  const matches = document.imported?.instances.filter(part => normalizeSizeGuideReference(part.reference) === number);
+  return matches?.find(part => part.part.status === "resolved") ?? matches?.[0];
 }
 
 export type SizeGuideProjection = {

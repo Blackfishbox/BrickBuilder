@@ -16,6 +16,7 @@ import { includeIOAssemblies } from "../formats/io/assemblies";
 import { drawStudioArrow } from "./studio-pdf-arrow";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { studioSizeGuideLabels } from "./studio-size-guide";
+import { exportInstructionPDF } from "./pdf";
 
 const sourceText = [
   "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3004.dat",
@@ -55,6 +56,36 @@ function nativeFixture(calloutAttributes = "", arrowAttributes = "", extra = "",
   const renderer = { image: vi.fn<InstructionImageRenderer["image"]>(() => image), dispose: vi.fn() };
   return { document, renderer, xml };
 }
+
+it("collects new axles from native callout steps even when the parent step adds no axle", async () => {
+  const { document, renderer } = nativeFixture();
+  document.imported!.instances[1].part.name = "Technic Axle 4 with Stop";
+  const bytes = await exportStudioLayoutPDF(document, document.instructions!, { locale: "en" }, async () => renderer);
+  const commands = pdfCommands(bytes, true);
+  expect(commands).toContain("4L");
+  expect(commands).toContain("Page 1, step 1; Page 1, step 2");
+  expect(commands).toContain("measuring geometry unavailable");
+  expect(Buffer.from(bytes).toString("latin1")).toContain("/Count 2");
+  expect(JSON.stringify(document.instructions)).not.toContain("Axle measuring references");
+});
+
+it.each(["normal", "studio"])("omits misleading axle lengths and references for connectors in %s PDFs", async mode => {
+  const { document, renderer } = nativeFixture();
+  const part = document.imported!.instances[1];
+  part.part.name = "Technic, Axle and Pin Connector Angled #1";
+  document.imported!.resources["parts/3003.dat"] = {
+    path: "parts/3003.dat", content: "0 Technic Axle Joiner Perpendicular\n3 16 0 0 0 20 0 0 0 20 0",
+    author: "Synthetic fixture", license: "CC0-1.0", sourceUrl: "",
+  };
+  const bytes = mode === "normal"
+    ? await exportInstructionPDF(document, document.instructions!, { locale: "en" }, async () => renderer)
+    : await exportStudioLayoutPDF(document, document.instructions!, { locale: "en" }, async () => renderer);
+  const commands = pdfCommands(bytes, true);
+  expect(commands).not.toContain("Axle measuring references");
+  expect(commands).not.toContain("1:1");
+  expect(commands).not.toContain(" mm");
+  expect(Buffer.from(bytes).toString("latin1")).toContain(`/Count ${mode === "normal" ? 2 : 1}`);
+});
 
 it("omits empty trailing Studio slots but retains an intentional blank separator and content pages", async () => {
   const { document, renderer } = nativeFixture();
@@ -120,11 +151,11 @@ it("renders only the active Studio subassembly, then mounts every reused occurre
   expect(document.imported.instances[1].matrix).toEqual(parseLDraw(source).instances[1].matrix);
 });
 
-function pdfCommands(bytes: Uint8Array): string {
+function pdfCommands(bytes: Uint8Array, includeVectorOnly = false): string {
   const raw = Buffer.from(bytes).toString("latin1");
   return [...raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map(match => {
     try { return new TextDecoder().decode(unzlibSync(Buffer.from(match[1], "latin1"))); } catch { return ""; }
-  }).filter(stream => /\/I\d+ Do/.test(stream)).join("\n");
+  }).filter(stream => includeVectorOnly || /\/I\d+ Do/.test(stream)).join("\n");
 }
 
 it("exports the right cumulative models after mixed source steps and expanded custom parts", async () => {

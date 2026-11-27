@@ -4,10 +4,11 @@ import { studioVector, type StudioRect } from "./studio-objects";
 import type { StudioNode } from "./studio-layout";
 import { normalizeSizeGuideReference as normalize, sizeGuidePart, sizeGuideProjection } from "./size-guide-geometry";
 import type { Locale } from "../../i18n/messages";
+import { instructionAxle } from "./axles";
 
 // The native XML reader preserves numeric attribute entities. Studio uses these
 // as row delimiters; literal newlines also occur in edited layouts.
-const sizeGuideReferences = (parts: string) =>
+export const sizeGuideReferences = (parts: string) =>
   parts.replace(/&#(?:10|13|x0*[ad]);/gi, "\n").trim().split(/[\r\n]+/)
     .map(line => line.trim().split(/\s+/)[0]).filter(Boolean);
 
@@ -16,9 +17,9 @@ export function studioSizeGuideLabels(document: BuilderDocument, parts: string):
   return sizeGuideReferences(parts).map(reference => {
     const number = normalize(reference);
     const part = sizeGuidePart(document, reference);
+    const axle = instructionAxle(document, reference);
+    if (axle) return [axle.length, axle.name, number].filter(Boolean).join(" · ");
     const name = part?.part.name;
-    const namedLength = name?.match(/\baxle\s+(\d+(?:\.\d+)?)/i)?.[1];
-    if (namedLength) return `${namedLength}L · ${name} · ${number}`;
     if (name) return `${name} · ${number}`;
     // Missing names must not turn a stop's overall extent into a guessed length.
     try {

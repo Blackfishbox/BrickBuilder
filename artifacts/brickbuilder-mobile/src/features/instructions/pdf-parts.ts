@@ -1,3 +1,4 @@
+import { instructionAxle } from "./axles";
 import type { jsPDF } from "jspdf";
 import type { BuilderDocument } from "../editor/model";
 import { instructionColorLabel, type InstructionPart } from "./parts";
@@ -73,7 +74,8 @@ export async function drawInstructionPartBox(
     pdf.setTextColor(35, 55, 46); pdf.setFont("helvetica", "bold"); pdf.setFontSize(9);
     pdf.text(`${entry.count}×`, x + 27, top + 4, { align: "right" });
     pdf.setFontSize(7);
-    const number = (pdf.splitTextToSize(entry.number, 26) as string[]).slice(0, 2);
+    const axle = entry.kind === "imported" && instructionAxle(document, entry.part.reference);
+    const number = (pdf.splitTextToSize(axle && axle.length ? `${axle.length} · ${entry.number}` : entry.number, 26) as string[]).slice(0, 2);
     pdf.text(number, x + 15, top + 21, { align: "center" });
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(6.5);
     const color = (pdf.splitTextToSize(instructionColorLabel(entry.colorName), 26) as string[]).slice(0, 2);

@@ -12,6 +12,10 @@ import { sizeGuideProjection } from "./size-guide-geometry";
 import { exportStudioLayoutPDF } from "./studio-pdf";
 import { createSoftwareInstructionRenderer } from "./software-render";
 import { Resvg } from "@resvg/resvg-js";
+import { instructionAxle } from "./axles";
+import { appendAxleGuidePages, collectAxleGuides, nativeAxleGuideReferences, type AxleGuideCollection } from "./axle-guides";
+import { instructionHighlightIds } from "./callouts";
+import { exportInstructionPDF } from "./pdf";
 
 // Original synthetic geometry: freely publishable, no catalog/private meshes.
 // Cross-section boxes include real thickness, asymmetrical stops and offsets.
@@ -131,13 +135,13 @@ describe("physical source-geometry size guides", () => {
     expect(() => drawStudioSizeGuide(pdf, fixture(), node(), [5, 5, 200, 10])).toThrow("Platz");
   });
 
-  it("exports a complete native Studio PDF with actual software-rendered models and measurable vectors", async () => {
+  it.each(["native", "automatic", "normal"])("exports a complete %s PDF with actual software-rendered models and measurable vectors", async mode => {
     const document = fixture();
     const guide = '<SizeGuide rect="0.05 0.9 100 15" Parts="half.dat&#10;stop.dat&#10;vertical.dat&#10;deep.dat"/>';
     const xml = `<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType>
       <LengthUnit>Millimeters</LengthUnit><Margins>5 5 5 5</Margins></PageSetup><GlobalStyle>
-      <PartsList IsVisible="False"/><SubModelPreview IsVisible="False"/></GlobalStyle></GlobalSetting>
-      <Pages><Page><Slot><Step SerializedIndex="0"/>${guide}</Slot></Page></Pages></Instruction>`;
+      <PartsList IsVisible="${mode === "native" ? "False" : "True"}"/><SubModelPreview IsVisible="False"/></GlobalStyle></GlobalSetting>
+      <Pages><Page><Slot><Step SerializedIndex="0"/>${mode === "native" ? guide : ""}</Slot></Page></Pages></Instruction>`;
     document.instructions = readStudioInstructions(xml, sourceInstructionPlan(document.imported!));
     const original = globalThis.document;
     globalThis.document = { createElement: () => {
@@ -164,8 +168,9 @@ describe("physical source-geometry size guides", () => {
       };
     } } as unknown as Document;
     try {
-      const bytes = await exportStudioLayoutPDF(document, document.instructions, { locale: "en" },
-        createSoftwareInstructionRenderer);
+      const bytes = mode === "normal"
+        ? await exportInstructionPDF(document, document.instructions, { locale: "de" }, createSoftwareInstructionRenderer)
+        : await exportStudioLayoutPDF(document, document.instructions, { locale: "en" }, createSoftwareInstructionRenderer);
       const commands = streams(bytes);
       expect(commands.includes("5.5L")).toBe(true);
       expect(commands.includes("with Stop")).toBe(true);
@@ -177,9 +182,147 @@ describe("physical source-geometry size guides", () => {
         expect(widths.some(value => Math.abs(value - width) < 0.00001)).toBe(true);
       }
       expect(Buffer.from(bytes).toString("latin1")).toContain("/Subtype /Image");
+      if (mode !== "native") {
+        expect(commands).toContain(mode === "normal" ? "Achsen-Messhilfen" : "Axle measuring references");
+        expect(commands).toContain(mode === "normal" ? "Seite 1, Schritt 1" : "Page 1, step 1");
+      }
       const directory = new URL("../../../generated-artifacts/", import.meta.url);
       mkdirSync(directory, { recursive: true });
-      writeFileSync(new URL("synthetic-size-guides.pdf", directory), bytes);
+      writeFileSync(new URL(`synthetic-size-guides-${mode}.pdf`, directory), bytes);
     } finally { globalThis.document = original; }
+  });
+});
+
+describe("automatic axle references", () => {
+  it.each([
+    ["Technic Angle Connector #1", "Technic, Axle and Pin Connector Angled #1"],
+    ["Technic Axle Joiner Perpendicular", "Technic, Axle and Pin Connector Perpendicular"],
+    ["Technic Axle Joiner Inline", "Technic, Axle Connector 2L (Smooth with x Hole)"],
+    ["Technic Axle Joiner Inline", "Technic Axle 4"],
+    ["Technic Axle and Pin Connector Angled", "Technic Axle and Pin Connector Angled"],
+  ])("never turns source/catalog connectors into axle annotations: %s / %s", async (source, catalog) => {
+    const document = fixture(), guides: AxleGuideCollection = new Map();
+    const part = document.imported!.instances[0];
+    document.imported!.resources["parts/half.dat"].content = `0 ${source}\n` +
+      document.imported!.resources["parts/half.dat"].content;
+    part.part.name = catalog;
+    expect(instructionAxle(document, part.reference)).toBeUndefined();
+    collectAxleGuides(guides, document, [part.id], "Page 1, step 1");
+    expect(guides.size).toBe(0);
+    const pdf = new jsPDF({ compress: false });
+    await appendAxleGuidePages(pdf, document, guides, "en");
+    expect(pdf.getNumberOfPages()).toBe(1);
+    expect(pdf.output()).not.toContain("Axle measuring references");
+    expect(studioSizeGuideLabels(document, "half.dat")[0]).not.toMatch(/^\d+(?:\.\d+)?L/);
+  });
+
+  it("uses actual axle metadata, including flexible axles and half lengths, but not axle connectors", () => {
+    const document = fixture();
+    const part = document.imported!.instances[0];
+    for (const name of ["Technic Axle 5.5 with Stop", "Technic, Axle 5.5", "Technic Axle Flexible 5.5"]) {
+      part.part.name = name;
+      expect(instructionAxle(document, part.reference)?.length).toBe("5.5L");
+    }
+    for (const name of ["Technic Axle Pin", "Technic Axle Connector 2", "Brick 1 x 2 with Axle Hole", "Arbitrary Axle 4 label"]) {
+      part.part.name = name;
+      expect(instructionAxle(document, part.reference)).toBeUndefined();
+    }
+    part.part.name = "Train Axle Metal 4 x 44";
+    expect(instructionAxle(document, part.reference)?.length).toBe("44 mm");
+    part.part.status = "missing";
+    expect(instructionAxle(document, part.reference)).toMatchObject({ name: "Train Axle Metal 4 x 44", length: undefined });
+    // A source title remains evidence even if a catalog mapping/name is missing.
+    document.imported!.resources["parts/half.dat"].content = "0 Technic Axle  5.5 with Stop\n" +
+      document.imported!.resources["parts/half.dat"].content;
+    delete part.part.name;
+    expect(instructionAxle(document, part.reference)?.length).toBe("5.5L");
+  });
+
+  it("deduplicates native references only when their guides are visible and usable", () => {
+    const document = fixture(), guides: AxleGuideCollection = new Map();
+    const hidden = node("stop.dat"); hidden.attributes.IsVisible = "False";
+    const bad = node("deep.dat", "0 1 0 0");
+    const existing = nativeAxleGuideReferences([node("half.dat"), hidden, bad]);
+    collectAxleGuides(guides, document, document.imported!.instances.map(part => part.id), "Page 1, step 1", existing);
+    expect([...guides.keys()]).toEqual(["stop", "vertical", "deep"]);
+    collectAxleGuides(guides, document, [document.imported!.instances[0].id], "Page 2, step 2", existing);
+    expect(guides.has("half")).toBe(false);
+  });
+
+  it("keeps reused callout occurrences and their step references without duplicate silhouettes", () => {
+    const document = fixture(), guides: AxleGuideCollection = new Map();
+    document.imported!.instances.forEach(part => { part.sourceOccurrence = [99]; });
+    const first = document.imported!.instances[0];
+    first.sourceOccurrence = [1, 0];
+    const second = { ...first, id: "reused-axle", sourceOccurrence: [2, 0] };
+    document.imported!.instances.push(second);
+    for (const occurrence of [1, 2]) {
+      const step = { id: `step-${occurrence}`, title: "", notes: "", partIds: [],
+        callouts: [{ id: `callout-${occurrence}`, title: "", occurrence: [occurrence] }] };
+      collectAxleGuides(guides, document, instructionHighlightIds(document, step), `Step ${occurrence}`);
+    }
+    expect(guides.size).toBe(1);
+    expect([...guides.get("half")!.contexts]).toEqual(["Step 1", "Step 2"]);
+    expect(guides.has("stop")).toBe(false);
+  });
+
+  it.each(["mm", "pt"] as const)("keeps exact physical shapes and a 50 mm control measurement in %s PDFs", async unit => {
+    const document = fixture(), guides: AxleGuideCollection = new Map();
+    collectAxleGuides(guides, document, document.imported!.instances.map(part => part.id), "Page 33, step 70");
+    const pdf = new jsPDF({ unit, compress: false });
+    pdf.text("Original diagram page", 10, 10);
+    await appendAxleGuidePages(pdf, document, guides, "en");
+    expect(pdf.getNumberOfPages()).toBe(2);
+    const output = pdf.output();
+    expect(output).toContain("/PrintScaling /None");
+    expect(output).toContain("Page 33, step 70");
+    expect(output).toContain("Control measurement: 50 mm");
+    const paths = triangles(output);
+    expect(paths).toHaveLength(20);
+    const widths = paths.map(t => (Math.max(t[0], t[2], t[4]) - Math.min(t[0], t[2], t[4])) * 25.4 / 72);
+    for (const width of [44, 32.8, 24, 20]) expect(widths.some(x => Math.abs(x - width) < 1e-5)).toBe(true);
+    const segments = [...output.matchAll(/(-?[\d.]+) (-?[\d.]+) m\s+(-?[\d.]+) (-?[\d.]+) l\s+S/g)];
+    expect(segments.some(m => Math.abs((Number(m[3]) - Number(m[1])) * 25.4 / 72 - 50) < 1e-5)).toBe(true);
+  });
+
+  it("retains honest nominal lengths when geometry is missing, invalid or too large for the paper", async () => {
+    for (const failure of ["missing", "invalid", "too-large"]) {
+      const document = fixture(), guides: AxleGuideCollection = new Map();
+      const part = document.imported!.instances[0];
+      if (failure === "missing") part.part.status = "missing";
+      if (failure === "invalid") document.imported!.resources["parts/half.dat"].content = "3 16 NaN 0 0 0 0 0 0 0 0";
+      if (failure === "too-large") document.imported!.resources["parts/half.dat"].content = box(0, 0, 0, 3000, 8, 8);
+      collectAxleGuides(guides, document, [part.id], "Seite 33, Schritt 70");
+      const pdf = new jsPDF({ compress: false });
+      await appendAxleGuidePages(pdf, document, guides, "de");
+      expect(pdf.output()).toContain("5.5L");
+      expect(pdf.output()).toContain("Nur L");
+      expect(pdf.output()).not.toContain("1:1) Tj");
+      expect(triangles(pdf.output())).toHaveLength(0);
+    }
+  });
+
+  it("paginates long reference lists without dropping steps or adding empty trailing pages", async () => {
+    const document = fixture(), guides: AxleGuideCollection = new Map();
+    const ids = [document.imported!.instances[0].id];
+    for (let i = 1; i <= 1500; i++) collectAxleGuides(guides, document, ids, `Page ${i}, step ${i}`);
+    const pdf = new jsPDF({ compress: false });
+    await appendAxleGuidePages(pdf, document, guides, "en");
+    expect(pdf.getNumberOfPages()).toBeGreaterThan(2);
+    const output = pdf.output();
+    expect(output).toContain("step 1500");
+    expect(triangles(output)).toHaveLength(4);
+    const last = output.slice(output.lastIndexOf("stream\n", output.lastIndexOf("endstream")));
+    expect(last).toContain("step 1500");
+    expect([...output.matchAll(/Axle measuring references/g)]).toHaveLength(pdf.getNumberOfPages() - 1);
+  });
+
+  it("does not add pages when no axles are used and honors cancellation", async () => {
+    const pdf = new jsPDF();
+    await appendAxleGuidePages(pdf, fixture(), new Map(), "en");
+    expect(pdf.getNumberOfPages()).toBe(1);
+    const document = fixture(), guides: AxleGuideCollection = new Map();
+    collectAxleGuides(guides, document, [document.imported!.instances[0].id], "Step 1");
+    await expect(appendAxleGuidePages(pdf, document, guides, "en", AbortSignal.abort())).rejects.toThrow();
   });
 });
