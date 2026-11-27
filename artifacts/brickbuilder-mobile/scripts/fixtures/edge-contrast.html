@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Dark-part edge contrast regression</title>
+<style>
+  body { font: 15px sans-serif; background: #ddd; margin: 16px; }
+  main { display: grid; grid-template-columns: 500px 500px; gap: 12px; }
+  canvas { width: 500px; height: 340px; background: #bfc8c1; }
+  h2 { font-size: 16px; margin: 6px 0; } pre { white-space: pre-wrap; }
+</style>
+<h1>White edges on dark parts; black edges on white parts</h1>
+<main id="views"></main>
+<pre id="result">Pending</pre>
+<pre id="normal-pdf" hidden></pre><pre id="studio-pdf" hidden></pre>
+<script type="module">
+import { Mesh, ShaderMaterial, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget } from "three";
+import { createEmptyDocument } from "/src/features/editor/model.ts";
+import { createImportedGroup, disposeImportedScene } from "/src/features/engine/imported-scene.ts";
+import { parseLDraw } from "/src/features/formats/ldraw/parser.ts";
+import { createBuilderLighting } from "/src/features/engine/lighting.ts";
+import { setWideLineResolution, NORMAL_EDGE_WIDTH_PX, THICK_EDGE_WIDTH_PX } from "/src/features/engine/wide-lines.ts";
+import { applyInstructionFocus } from "/src/features/engine/instruction-focus.ts";
+import { readStudioInstructions } from "/src/features/instructions/studio.ts";
+import { sourceInstructionPlan } from "/src/features/instructions/model.ts";
+import { exportInstructionPDF } from "/src/features/instructions/pdf.ts";
+import { exportStudioLayoutPDF } from "/src/features/instructions/studio-pdf.ts";
+
+const result = document.querySelector("#result");
+function assert(value, message) { if (!value) throw new Error(message); }
+function pdf64(bytes) {
+  let value = "";
+  for (let i = 0; i < bytes.length; i += 8192) value += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(value);
+}
+const sourceText = ["0 FILE main.ldr",
+  "1 0 0 0 0 1 0 0 0 1 0 0 0 1 test.dat", "0 STEP",
+  "1 0x20A3463 60 0 0 1 0 0 0 1 0 0 0 1 test.dat",
+  "1 15 120 0 0 1 0 0 0 1 0 0 0 1 test.dat", "0 STEP"].join("\n");
+const model = { version: 1, format: "io", sourceName: "synthetic.io", sourceText,
+  ...parseLDraw(sourceText), resources: {}, legalDocuments: [] };
+// Six real quad faces with source perimeter edges: synthetic and redistributable.
+const vertices = [[0,0,0],[20,0,0],[20,-24,0],[0,-24,0],[0,0,20],[20,0,20],[20,-24,20],[0,-24,20]];
+const quads = [[0,1,2,3],[4,7,6,5],[0,4,5,1],[3,2,6,7],[0,3,7,4],[1,5,6,2]];
+const perimeter = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+model.resources["parts/test.dat"] = { path: "parts/test.dat", author: "Synthetic fixture", license: "CC0-1.0",
+  sourceUrl: "https://example.invalid/test.dat", content: "0 Synthetic contrast block\n" +
+    quads.map(face => "4 16 " + face.flatMap(i => vertices[i]).join(" ")).join("\n") + "\n" +
+    perimeter.map(edge => "2 24 " + edge.flatMap(i => vertices[i]).join(" ")).join("\n") };
+model.instances.forEach(part => { part.part.status = "resolved"; part.part.name = "Synthetic contrast block"; });
+const doc = createEmptyDocument("Edge contrast");
+doc.imported = model;
+const xml = `<Instruction><GlobalSetting><PageSetup><PaperType>A4</PaperType><LengthUnit>Millimeters</LengthUnit>
+<Margins>5 5 5 5</Margins></PageSetup><GlobalStyle><StepNumber IsVisible="True"/>
+<PartsList IsVisible="False"/><SubModelPreview IsVisible="False"/></GlobalStyle></GlobalSetting>
+<Pages><Page template="OneByTwo"><Slot Rect="0 0 200 140"><Step SerializedIndex="0"/></Slot>
+<Slot Rect="0 140 200 140"><Step SerializedIndex="1"/></Slot></Page></Pages></Instruction>`;
+doc.instructions = readStudioInstructions(xml, sourceInstructionPlan(model));
+try {
+  const renderer = new WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setSize(500, 340);
+  const target = new WebGLRenderTarget(500, 340);
+  const camera = new OrthographicCamera(-5, 5, 3.4, -3.4, 0.1, 100);
+  camera.position.set(10, 7, 10); camera.lookAt(3, 0.4, 0);
+  const reports = [];
+  for (const [mode, thick] of [["wide", false], ["wide", true], ["thin", false], ["legacy", false]]) {
+    const scene = new Scene();
+    scene.add(createBuilderLighting());
+    const root = createImportedGroup(model, { compactFaces: mode === "thin", edges: mode });
+    scene.add(root);
+    const edge = root.getObjectByName("ldraw:instanced-edges"), material = edge.material;
+    if (mode !== "thin") {
+      material.uniforms.lineWidth.value = thick ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX;
+      if (mode === "wide") {
+        material.uniforms.edgeContrast.value = thick ? 1 : 0;
+        material.uniforms.blackLineWidth.value = thick ? NORMAL_EDGE_WIDTH_PX : 0;
+      }
+      setWideLineResolution(material, 500, 340);
+    }
+    // Isolate true shader pixels, not canvas CSS backgrounds or mocked materials.
+    for (const child of root.children) child.visible = child === edge;
+    const read = () => {
+      renderer.setRenderTarget(target); renderer.setClearColor(0, 0);
+      renderer.render(scene, camera);
+      const bytes = new Uint8Array(500 * 340 * 4);
+      renderer.readRenderTargetPixels(target, 0, 0, 500, 340, bytes);
+      let white = 0, black = 0, red = 0, peak = 0;
+      for (let i = 0; i < bytes.length; i += 4) {
+        if (bytes[i + 3] < 100) continue;
+        peak = Math.max(peak, Math.min(bytes[i], bytes[i+1], bytes[i+2]));
+        // Transparent render targets contain alpha-blended RGB at antialiased edges.
+        if (Math.min(bytes[i], bytes[i+1], bytes[i+2]) / (bytes[i+3] / 255) > 240) white++;
+        if (Math.max(bytes[i], bytes[i+1], bytes[i+2]) < 15) black++;
+        if (bytes[i] > 120 && bytes[i] > bytes[i+1] * 3 && bytes[i] > bytes[i+2] * 3) red++;
+      }
+      return { white, black, red, peak };
+    };
+    const pixels = read();
+    assert(pixels.white > 100 && pixels.black > 50, `${mode}/${thick}: missing contrasting edges ${JSON.stringify(pixels)}; colors ${JSON.stringify(model.instances.map(p => p.colorCode))}; source ${JSON.stringify(Array.from(edge.geometry.getAttribute("instanceEdgeColor").array))}; base ${JSON.stringify(Array.from(edge.geometry.getAttribute("edgeUseInstanceColor")?.array ?? []).slice(0,12))}`);
+    applyInstructionFocus(root, new Set(model.instances.map(part => part.id)));
+    const focused = read();
+    assert(focused.white > 100 && focused.red === 0, `${mode}: focus overwrote ink ${JSON.stringify(focused)}`);
+    applyInstructionFocus(root);
+    for (const child of root.children) child.visible = true;
+    renderer.setRenderTarget(null); renderer.setClearColor(0xbfc8c1, 1); renderer.render(scene, camera);
+    const canvas = document.createElement("canvas"); canvas.width = 500; canvas.height = 340;
+    canvas.getContext("2d").drawImage(renderer.domElement, 0, 0);
+    const section = document.createElement("section");
+    const title = document.createElement("h2"); title.textContent = `${mode}${thick ? " — thick" : " — normal"}`;
+    section.append(title, canvas); document.querySelector("#views").append(section);
+    reports.push(`${mode}/${thick}: ${JSON.stringify(pixels)}`);
+    disposeImportedScene(root);
+  }
+  assert(renderer.info.programs.every(program => program.diagnostics?.runnable !== false), "Shader compilation failed");
+  target.dispose(); renderer.dispose();
+  // Both are actual exported PDFs, including real rendered model PNGs.
+  const normal = await exportInstructionPDF(doc, doc.instructions, { locale: "en" }, undefined, async () => undefined);
+  const studio = await exportStudioLayoutPDF(doc, doc.instructions, { locale: "en" }, undefined, async () => undefined);
+  for (const [name, bytes] of [["normal", normal], ["studio", studio]]) {
+    assert(new TextDecoder().decode(bytes.subarray(0, 5)) === "%PDF-", `${name}: no PDF output`);
+    assert(bytes.length > 10_000, `${name}: missing real diagrams`);
+    document.querySelector(`#${name}-pdf`).textContent = pdf64(bytes);
+    reports.push(`${name} PDF: ${bytes.length} bytes`);
+  }
+  result.textContent = "PASS\n" + reports.join("\n");
+  document.body.dataset.result = "passed";
+} catch (error) {
+  document.body.dataset.result = "failed"; result.textContent = error.stack;
+}
+</script>
+</html>

@@ -3,10 +3,11 @@ import {
   FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER,
 } from "./instruction-focus";
 import { BUILDER_LIGHTING } from "./lighting";
+import { EDGE_CONTRAST_GLSL } from "./edge-contrast";
 
 /** A deliberately obvious outline width when the user enables thick edges. */
 export const THICK_EDGE_WIDTH_PX = 5.5;
-/** Black standard-width edges keep touching pieces visibly separated, independent of part color or lighting. */
+/** Standard-width contrast ink, independent of lighting (white on very dark parts). */
 export const NORMAL_EDGE_CONTRAST = 0;
 /** Thin but readable in CSS pixels, including high-density mobile canvases. */
 export const NORMAL_EDGE_WIDTH_PX = 1.5;
@@ -245,6 +246,7 @@ export function wideLineMaterial(): ShaderMaterial {
         gl_Position = clip;
       }`,
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
+      ${EDGE_CONTRAST_GLSL}
       uniform bool instructionFocusEnabled;
       uniform float edgeContrast;
       uniform float lineWidth;
@@ -268,20 +270,21 @@ export function wideLineMaterial(): ShaderMaterial {
         float hemisphere = mix(hemisphereGround, 1.0, skyWeight) * hemisphereIntensity;
         float sunlight = max(0.0, dot(visibleNormal, normalize(sunDirection))) * sunIntensity;
         vec3 baseColor = mix(vEdgeColor, vInstanceEdgeColor, vEdgeUseInstanceColor);
+        vec3 contrastInk = partContrastColor(baseColor);
         float edgeWidth = max(fwidth(vLineSide), 0.0001);
         float coverage = 1.0 - smoothstep(1.0 - edgeWidth, 1.0, abs(vLineSide));
-        gl_FragColor = vec4(baseColor * (hemisphere + sunlight) * edgeContrast, coverage);
+        vec3 strokeColor = mix(contrastInk, baseColor * (hemisphere + sunlight), edgeContrast);
+        // Dark plastics always use white, including the thick outer stroke.
+        gl_FragColor = vec4(mix(strokeColor, vec3(1.0), contrastInk.r), coverage);
         if (blackLineWidth > 0.0) {
           float coreWidth = clamp(blackLineWidth / max(lineWidth, 0.0001), 0.0, 1.0);
           float coreCoverage = 1.0 - smoothstep(
             max(0.0, coreWidth - edgeWidth * 0.5),
             coreWidth + edgeWidth * 0.5, abs(vLineSide));
-          gl_FragColor.rgb *= 1.0 - coreCoverage;
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, contrastInk, coreCoverage);
         }
-        if (instructionFocusEnabled) {
-          gl_FragColor = vInstructionFocus > 1.5
-            ? vec4(0.6, 0.015, 0.01, 0.95)
-            : vec4(vec3(0.45), 0.12);
+        if (instructionFocusEnabled && vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
+          gl_FragColor.a *= 0.12;
         }
         ${FOCUS_FRAGMENT}
         #include <colorspace_fragment>

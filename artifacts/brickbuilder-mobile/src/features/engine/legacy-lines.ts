@@ -1,9 +1,10 @@
-import { BufferAttribute, BufferGeometry, Color, DoubleSide, ShaderMaterial, Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, DoubleSide, ShaderMaterial, Vector2 } from "three";
 import { FOCUS_FRAGMENT, FOCUS_FRAGMENT_HEADER, FOCUS_VERTEX, FOCUS_VERTEX_HEADER } from "./instruction-focus";
+import { FALLBACK_EDGE_VERTEX, FALLBACK_EDGE_VERTEX_HEADER } from "./edge-contrast";
 
 // Uniform-color WebGL lines from the renderer immediately before 0b018c5.
-// No per-vertex face normals, lighting attributes, or instance colors.
-export const LEGACY_EDGE_BYTES_PER_SEGMENT = 6 * 8 * Float32Array.BYTES_PER_ELEMENT;
+// No face normals or lighting attributes; contrast costs one extra byte per vertex.
+export const LEGACY_EDGE_BYTES_PER_SEGMENT = 6 * (8 * Float32Array.BYTES_PER_ELEMENT + 1);
 
 export function expandLegacyLines(source: Float32Array, stride = 1): BufferGeometry {
   const segments = Math.ceil(source.length / 6 / stride);
@@ -29,7 +30,8 @@ export function expandLegacyLines(source: Float32Array, stride = 1): BufferGeome
     .setAttribute("position", new BufferAttribute(positions, 3))
     .setAttribute("lineEnd", new BufferAttribute(opposite, 3))
     .setAttribute("lineEndpoint", new BufferAttribute(endpoints, 1))
-    .setAttribute("lineSide", new BufferAttribute(sides, 1));
+    .setAttribute("lineSide", new BufferAttribute(sides, 1))
+    .setAttribute("edgeContrastOverride", new BufferAttribute(new Uint8Array(segments * 6).fill(2), 1));
 }
 
 export function legacyLineMaterial(): ShaderMaterial {
@@ -38,11 +40,11 @@ export function legacyLineMaterial(): ShaderMaterial {
     uniforms: {
       lineWidth: { value: 1 },
       resolution: { value: new Vector2(1, 1) },
-      edgeOpacity: { value: 0.25 },
-      edgeColor: { value: new Color("#101713") },
+      edgeOpacity: { value: 1 },
       instructionFocusEnabled: { value: false },
     },
     vertexShader: FOCUS_VERTEX_HEADER + `
+      ${FALLBACK_EDGE_VERTEX_HEADER}
       attribute vec4 instanceRow0;
       attribute vec4 instanceRow1;
       attribute vec4 instanceRow2;
@@ -53,6 +55,7 @@ export function legacyLineMaterial(): ShaderMaterial {
       uniform vec2 resolution;
       void main() {
         ${FOCUS_VERTEX}
+        ${FALLBACK_EDGE_VERTEX}
         vec4 p = vec4(position, 1.0);
         vec4 q = vec4(lineEnd, 1.0);
         vec3 a = vec3(dot(instanceRow0, p), dot(instanceRow1, p), dot(instanceRow2, p));
@@ -73,13 +76,11 @@ export function legacyLineMaterial(): ShaderMaterial {
     fragmentShader: FOCUS_FRAGMENT_HEADER + `
       uniform bool instructionFocusEnabled;
       uniform float edgeOpacity;
-      uniform vec3 edgeColor;
+      varying float vContrastInk;
       void main() {
-        gl_FragColor = vec4(edgeColor, edgeOpacity);
-        if (instructionFocusEnabled) {
-          gl_FragColor = vInstructionFocus > 1.5
-            ? vec4(0.6, 0.015, 0.01, 0.95)
-            : vec4(vec3(0.45), 0.12);
+        gl_FragColor = vec4(vec3(vContrastInk), edgeOpacity);
+        if (instructionFocusEnabled && vInstructionFocus > 0.5 && vInstructionFocus < 1.5) {
+          gl_FragColor.a *= 0.12;
         }
         ${FOCUS_FRAGMENT}
         #include <colorspace_fragment>

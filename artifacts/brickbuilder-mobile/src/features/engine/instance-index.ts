@@ -47,9 +47,23 @@ function markMatrix(draw: Draw, slot: number, matrix: Matrix4): void {
   }
 }
 function markColor(draw: Draw, slot: number, code: string): void {
+  if (!(draw instanceof InstancedMesh)) {
+    const attribute = draw.geometry.getAttribute("instanceEdgeColor") as InstancedBufferAttribute | undefined;
+    if (attribute) {
+      scratchColor.set(resolveColor(code)?.hex ?? "#ff00ff").convertLinearToSRGB();
+      attribute.setXYZ(slot, scratchColor.r, scratchColor.g, scratchColor.b);
+      attribute.addUpdateRange(slot * 3, 3); attribute.needsUpdate = true;
+    }
+    return;
+  }
   if (!(draw instanceof InstancedMesh) || !draw.userData.inherited) return;
   draw.setColorAt(slot, scratchColor.set(resolveColor(code)?.hex ?? "#ff00ff"));
   draw.instanceColor!.addUpdateRange(slot * 3, 3); draw.instanceColor!.needsUpdate = true;
+}
+function instanceBytes(draw: Draw): number {
+  return draw instanceof InstancedMesh ? (draw.instanceColor ? 80 : 68) :
+    Object.values(draw.geometry.attributes).reduce((bytes, attribute) =>
+      bytes + (attribute instanceof InstancedBufferAttribute ? attribute.itemSize * attribute.array.BYTES_PER_ELEMENT : 0), 0);
 }
 function drawCount(draw: Draw, count: number): void {
   if (draw instanceof InstancedMesh) draw.count = count;
@@ -117,7 +131,7 @@ export class InstanceIndex {
   private grow(draw: Draw, required: number): Draw {
     let nextCapacity = capacity(draw);
     while (nextCapacity < required) nextCapacity = Math.max(4, Math.ceil(nextCapacity * 1.5));
-    const bytes = (nextCapacity - capacity(draw)) * (draw instanceof InstancedMesh ? (draw.instanceColor ? 80 : 68) : 52);
+    const bytes = (nextCapacity - capacity(draw)) * instanceBytes(draw);
     if (measureImportedScene(this.root).bufferBytes + bytes > this.maxBytes) throw new SceneBudgetExceeded();
     let next: Draw;
     if (draw instanceof InstancedMesh) {
@@ -138,15 +152,14 @@ export class InstanceIndex {
     } else {
       const geometry = new InstancedBufferGeometry();
       for (const [name, attribute] of Object.entries(draw.geometry.attributes)) {
-        if (!name.startsWith("instanceRow") && name !== FOCUS_ATTRIBUTE) geometry.setAttribute(name, attribute);
-      }
-      for (let row = 0; row < 3; row++) {
-        const old = draw.geometry.getAttribute(`instanceRow${row}`);
-        const array = new Float32Array(nextCapacity * 4); array.set(old.array);
-        geometry.setAttribute(`instanceRow${row}`, new InstancedBufferAttribute(array, 4));
+        if (attribute instanceof InstancedBufferAttribute) {
+          const array = attribute.array instanceof Uint8Array
+            ? new Uint8Array(nextCapacity * attribute.itemSize) : new Float32Array(nextCapacity * attribute.itemSize);
+          array.set(attribute.array);
+          geometry.setAttribute(name, new InstancedBufferAttribute(array, attribute.itemSize, attribute.normalized));
+        } else geometry.setAttribute(name, attribute);
       }
       geometry.instanceCount = draw.geometry.instanceCount;
-      geometry.setAttribute(FOCUS_ATTRIBUTE, new InstancedBufferAttribute(new Float32Array(nextCapacity), 1));
       next = draw instanceof LineSegments
         ? new LineSegments(geometry, draw.material)
         : new Mesh(geometry, draw.material);
@@ -172,10 +185,11 @@ export class InstanceIndex {
           draw.instanceColor.addUpdateRange(slot.index * 3, 3); draw.instanceColor.needsUpdate = true;
         }
       } else {
-        for (let row = 0; row < 3; row++) {
-          const attribute = draw.geometry.getAttribute(`instanceRow${row}`) as InstancedBufferAttribute;
-          attribute.array.copyWithin(slot.index * 4, last * 4, last * 4 + 4);
-          attribute.addUpdateRange(slot.index * 4, 4); attribute.needsUpdate = true;
+        for (const attribute of Object.values(draw.geometry.attributes)) {
+          if (!(attribute instanceof InstancedBufferAttribute)) continue;
+          const size = attribute.itemSize;
+          attribute.array.copyWithin(slot.index * size, last * size, last * size + size);
+          attribute.addUpdateRange(slot.index * size, size); attribute.needsUpdate = true;
         }
       }
       list[slot.index] = movedId;
@@ -230,7 +244,7 @@ export class InstanceIndex {
         for (const [draw, count] of additions) {
           let size = capacity(draw);
           while (size < ids(draw).length + count) size = Math.max(4, Math.ceil(size * 1.5));
-          reservedBytes += (size - capacity(draw)) * (draw instanceof InstancedMesh ? (draw.instanceColor ? 80 : 68) : 52);
+          reservedBytes += (size - capacity(draw)) * instanceBytes(draw);
         }
         if (reservedBytes > this.maxBytes) throw new SceneBudgetExceeded();
         // Budget rejection happens before touching a single live batch.
