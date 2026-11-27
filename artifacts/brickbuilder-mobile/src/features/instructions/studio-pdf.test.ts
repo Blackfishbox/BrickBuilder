@@ -69,6 +69,19 @@ it("collects new axles from native callout steps even when the parent step adds 
   expect(JSON.stringify(document.instructions)).not.toContain("Axle measuring references");
 });
 
+it("omits an empty Studio parts list instead of drawing its frame or empty-step message", async () => {
+  const { document, renderer } = nativeFixture();
+  const layout = document.instructions!.studioLayout!;
+  layout.sourceXml = layout.sourceXml.replace('<PartsList IsVisible="False"/>', '<PartsList IsVisible="True"/>');
+  document.instructions!.steps.forEach(step => { step.partIds = []; });
+
+  const bytes = await exportStudioLayoutPDF(document, document.instructions!, {}, async () => renderer);
+  const commands = pdfCommands(bytes, true);
+
+  expect(commands).not.toContain("No new parts");
+  expect(commands).not.toContain("Keine neuen Teile");
+});
+
 it.each(["normal", "studio"])("omits misleading axle lengths and references for connectors in %s PDFs", async mode => {
   const { document, renderer } = nativeFixture();
   const part = document.imported!.instances[1];

@@ -709,21 +709,13 @@ async function renderStudioPartList(
   renderPart = studioPartImage,
 ): Promise<void> {
   const groups = instructionPartGroups(document, step.partIds);
-  if (height < 4) return;
+  if (height < 4 || groups.length === 0) return;
   drawStyledBox(pdf, x, y, width, height, style, unitScale,
     style.useBackground === undefined ? { rgb: [250, 249, 244], alpha: 1 } : undefined);
   const [padLeft, padRight, padBottom, padTop] = paddingOf(style, unitScale);
   const left = x + Math.max(2, padLeft), right = Math.max(2, padRight);
   const contentTop = y + Math.max(1, padTop);
   const contentBottom = y + height - Math.max(2, padBottom);
-  if (groups.length === 0) {
-    pdf.setFontSize(6);
-    withTextOpacity(pdf, style.font.color, () =>
-      pdf.text(translate(locale, "instruction.pdf.noNewParts"), left, contentTop + 2));
-    pdf.setTextColor(0);
-    return;
-  }
-
   const contentHeight = contentBottom - contentTop;
   if (contentHeight <= 0) {
     pdf.setTextColor(0);

@@ -62,10 +62,12 @@ export async function exportInstructionPdfChunks(
       const groups = instructionPartGroups(document, step.partIds);
       const callouts = step.callouts ?? [];
       const firstPageParts = callouts.length ? 6 : 12;
-      imageY += await drawInstructionPartBox(
-        pdf, document, groups.slice(0, firstPageParts), imageY, options.signal, renderPart,
-        callouts.slice(0, 3), calloutImage, locale,
-      ) + 4;
+      if (groups.length || callouts.length) {
+        imageY += await drawInstructionPartBox(
+          pdf, document, groups.slice(0, firstPageParts), imageY, options.signal, renderPart,
+          callouts.slice(0, 3), calloutImage, locale,
+        ) + 4;
+      }
       step.partIds.forEach(id => visible.add(id));
       const highlightIds = options.highlight && index > 0 ? instructionHighlightIds(document, step) : undefined;
       const image = await renderInstructionImage(renderer, visible, step, highlightIds);
@@ -88,12 +90,12 @@ export async function exportInstructionPdfChunks(
         }
       };
       const partCount = step.partIds.length;
-      const newParts = translatePlural(locale, "instruction.pdf.newParts", partCount);
+      const newParts = partCount ? translatePlural(locale, "instruction.pdf.newParts", partCount) : "";
       const calloutSummary = callouts.length
         ? ` · ${translatePlural(locale, "instruction.pdf.assemblies", callouts.length)}`
         : "";
       const cumulative = translatePlural(locale, "instruction.pdf.cumulativeParts", visible.size);
-      text(`${newParts}${calloutSummary} · ${cumulative}`, true);
+      text(`${newParts}${calloutSummary}${newParts || calloutSummary ? " · " : ""}${cumulative}`, true);
       if (step.notes) { y += 3; text(step.notes); }
       const missing = document.imported?.instances.filter(part => visible.has(part.id) && part.part.status !== "resolved") ?? [];
       if (missing.length) {

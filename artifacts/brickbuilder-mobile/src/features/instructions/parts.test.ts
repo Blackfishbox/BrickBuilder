@@ -185,6 +185,15 @@ describe("step parts illustrations", () => {
     await expect(drawInstructionPartBox(pdf, doc, groups, 24, controller.signal, abort)).rejects.toThrow();
   });
 
+it("omits the parts box and empty-step message when a step adds no parts", async () => {
+  const pdf = new jsPDF(), text = vi.spyOn(pdf, "text"), box = vi.spyOn(pdf, "roundedRect");
+  const height = await drawInstructionPartBox(pdf, fixture(), [], 24);
+
+  expect(height).toBe(0);
+  expect(text).not.toHaveBeenCalled();
+  expect(box).not.toHaveBeenCalled();
+});
+
   it("prints color names with spaces in the standard PDF parts box", async () => {
     pdfTexts.length = 0;
     const doc = fixture();
@@ -225,6 +234,27 @@ describe("step parts illustrations", () => {
     expect(strings.every(value => !/^\\d+ × LDraw \\d+ · /.test(value))).toBe(true);
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+it("omits empty parts-box labels and zero-new-parts text from the normal PDF", async () => {
+  const doc = createEmptyDocument("Empty step");
+  const plan: InstructionPlan = { version: 1, source: "manual", edited: true, warnings: [],
+    steps: [{ id: "empty", title: "", notes: "", partIds: [] }] };
+  const image = "data:image/png;base64,fixture";
+  pdfTexts.length = 0;
+
+  await exportInstructionPDF(doc, plan, {}, async () => ({
+    image: () => image, dispose: vi.fn(),
+  }), async () => image);
+
+  const strings = pdfTexts.flatMap(value => Array.isArray(value) ? value : [value])
+    .filter((value): value is string => typeof value === "string");
+  expect(strings).not.toContain("Teile in diesem Schritt");
+  expect(strings).not.toContain("Keine neuen Teile");
+  expect(strings).not.toContain("0 neue Teile");
+  expect(strings).not.toContain("Parts in this step");
+  expect(strings).not.toContain("No new parts");
+  expect(strings).not.toContain("0 new parts");
+});
 
   it("localizes instruction labels while showing only step numbers", async () => {
     const doc = createEmptyDocument("English instructions");

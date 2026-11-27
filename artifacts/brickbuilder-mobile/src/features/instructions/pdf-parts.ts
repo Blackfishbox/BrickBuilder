@@ -14,6 +14,8 @@ export async function drawInstructionPartBox(
   callouts: InstructionCallout[] = [], renderCallout = instructionCalloutImage,
   locale: Locale = "de",
 ): Promise<number> {
+  if (!entries.length && !callouts.length) return 0;
+
   const calloutRows = Math.ceil(callouts.length / 3);
   pdf.setFont("helvetica", "bold"); pdf.setFontSize(7);
   const calloutTitles = callouts.map(callout => pdf.splitTextToSize(callout.title, 56) as string[]);
@@ -32,10 +34,6 @@ export async function drawInstructionPartBox(
   pdf.text(translate(locale, callouts.length
     ? "instruction.pdf.partsAndAssembliesInStep"
     : "instruction.pdf.partsInStep"), 19, y + 5);
-  if (!entries.length && !callouts.length) {
-    pdf.setFont("helvetica", "normal");
-    pdf.text(translate(locale, "instruction.pdf.noNewParts"), 19, y + 15);
-  }
   if (callouts.length) {
     pdf.setFontSize(7);
     pdf.text(translate(locale, "instruction.pdf.insertSubassemblies"), 19, y + 11);
