@@ -25,6 +25,19 @@ import { applyPdfStepCamera } from "./camera";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+function pdfPageTextStreams(bytes: Uint8Array): string[] {
+  const output = Buffer.from(bytes).toString("latin1");
+  const objects = new Map([...output.matchAll(/(\d+)\s+0\s+obj([\s\S]*?)endobj/g)]
+    .map(match => [Number(match[1]), match[2]]));
+  return [...objects.values()].filter(body => /\/Type\s*\/Page\b/.test(body)).map(page => {
+    const reference = page.match(/\/Contents\s+(\d+)\s+0\s+R/)?.[1];
+    const body = reference ? objects.get(Number(reference)) ?? "" : "";
+    const stream = body.match(/<<([\s\S]*?)>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/);
+    if (!stream) return "";
+    const content = Buffer.from(stream[2], "latin1");
+    return Buffer.from(stream[1].includes("/FlateDecode") ? unzlibSync(content) : content).toString("latin1");
+  });
+}
 const line = (id = "3004", x = 0) => `1 4 ${x} 0 0 1 0 0 0 1 0 0 0 1 ${id}.dat`;
 function fixture(source = `${line()}\n0 STEP\n${line("3003", 40)}\n0 STEP\n`) {
   const document = createEmptyDocument("Anleitung");
@@ -328,6 +341,10 @@ describe("local construction instructions", () => {
     const bytes = await exportInstructionPDF(doc, doc.instructions!, { onProgress: progress }, async () => ({ image, dispose }));
     expect(decode(bytes.slice(0, 8))).toContain("%PDF-1.");
     expect(decode(bytes)).toContain("/Count 2");
+    const pageStreams = pdfPageTextStreams(bytes);
+    expect(pageStreams).toHaveLength(2);
+    expect(pageStreams[0]).not.toContain("Anleitung erzeugt mit BrickBuilder");
+    expect(pageStreams[1]).toContain("Anleitung erzeugt mit BrickBuilder");
     expect(image).toHaveBeenCalledTimes(2);
     expect(counts).toEqual([1, 2]);
     expect(dispose).toHaveBeenCalledOnce();

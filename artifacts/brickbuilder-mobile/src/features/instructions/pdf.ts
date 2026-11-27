@@ -13,6 +13,7 @@ import { drawInstructionPartBox } from "./pdf-parts";
 import { exportInstructionCalloutImage, instructionHighlightIds } from "./callouts";
 import { translate, translatePlural, type Locale } from "../../i18n/messages";
 import { appendAxleGuidePages, collectAxleGuides, type AxleGuideCollection } from "./axle-guides";
+import { drawInstructionPdfFooter } from "./pdf-footer";
 
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
@@ -118,11 +119,16 @@ export async function exportInstructionPdfChunks(
       // Give Android a chance to repaint progress and deliver cancellation.
       await yieldPdfExecution();
     }
+    const lastInstructionPage = pdf.getNumberOfPages();
     await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal);
     const count = pdf.getNumberOfPages();
     for (let page = 1; page <= count; page++) {
       pdf.setPage(page); pdf.setFontSize(8); pdf.setTextColor(95);
-      pdf.text(`BrickBuilder · ${document.name}`, 16, 290, { maxWidth: 150 });
+      if (page === lastInstructionPage) {
+        await drawInstructionPdfFooter(pdf, translate(locale, "instruction.pdf.generatedWithBrickBuilder"));
+      } else {
+        pdf.text(`BrickBuilder · ${document.name}`, 16, 290, { maxWidth: 150 });
+      }
       pdf.text(`${page} / ${count}`, 194, 290, { align: "right" });
     }
     return instructionPdfChunks(pdf, options.signal);

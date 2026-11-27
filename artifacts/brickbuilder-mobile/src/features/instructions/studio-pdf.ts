@@ -28,6 +28,7 @@ import { drawStudioArrow } from "./studio-pdf-arrow";
 import { studioCalloutStep, studioFrameHeight, studioPdfStep, studioResizeSlots, type NativeSlotRect } from "./studio-native-layout";
 import { studioPageArrowPoints, studioTextRect } from "./studio-objects";
 import { drawStudioBom, planStudioBom, type StudioBomPage } from "./studio-bom";
+import { drawInstructionPdfFooter } from "./pdf-footer";
 import { studioCalloutArrowPoints, studioCalloutArrowRoute, studioCalloutCell, studioCalloutTarget } from "./studio-callout-layout";
 import type { ProjectedPartBounds } from "./part-projection";
 import { drawStudioSizeGuide } from "./studio-size-guide";
@@ -1145,6 +1146,14 @@ export async function exportStudioLayoutPdfChunks(
       }
       options.onProgress?.(pageIndex + 1, pages.length);
       await yieldPdfExecution();
+    }
+    if (options.previewPageIndex === undefined && pages.length) {
+      let lastInstructionPage = 0;
+      for (const [index, page] of pages.entries()) {
+        if (page.steps.length || page.images.length) lastInstructionPage = index + 1;
+      }
+      pdf.setPage(lastInstructionPage || pages.length);
+      await drawInstructionPdfFooter(pdf, translate(locale, "instruction.pdf.generatedWithBrickBuilder"), bottom);
     }
     await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal);
     return instructionPdfChunks(pdf, options.signal);

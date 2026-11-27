@@ -171,6 +171,20 @@ function pdfCommands(bytes: Uint8Array, includeVectorOnly = false): string {
   }).filter(stream => includeVectorOnly || /\/I\d+ Do/.test(stream)).join("\n");
 }
 
+function pdfPageCommands(bytes: Uint8Array): string[] {
+  const raw = Buffer.from(bytes).toString("latin1");
+  const objects = new Map([...raw.matchAll(/(\d+)\s+0\s+obj([\s\S]*?)endobj/g)]
+    .map(match => [Number(match[1]), match[2]]));
+  return [...objects.values()].filter(body => /\/Type\s*\/Page\b/.test(body)).map(page => {
+    const reference = page.match(/\/Contents\s+(\d+)\s+0\s+R/)?.[1];
+    const body = reference ? objects.get(Number(reference)) ?? "" : "";
+    const stream = body.match(/<<([\s\S]*?)>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/);
+    if (!stream) return "";
+    const content = Buffer.from(stream[2], "latin1");
+    return Buffer.from(stream[1].includes("/FlateDecode") ? unzlibSync(content) : content).toString("latin1");
+  });
+}
+
 it("exports the right cumulative models after mixed source steps and expanded custom parts", async () => {
   const { document, renderer } = nativeFixture();
   const original = [
@@ -588,7 +602,12 @@ it("exports one PDF page per imported Studio page with the source format and ste
   const pdfText = new TextDecoder().decode(bytes);
 
   expect(pdfText).toMatch(/\/Count\s+2\b/);
-  expect(pdfText.match(/\/Subtype \/Image/g)).toHaveLength(2);
+  // Two page images plus the transparent brand mark and its alpha mask.
+  expect(pdfText.match(/\/Subtype \/Image/g)).toHaveLength(4);
+  const pageCommands = pdfPageCommands(bytes);
+  expect(pageCommands).toHaveLength(2);
+  expect(pageCommands[0]).not.toContain("Anleitung erzeugt mit BrickBuilder");
+  expect(pageCommands[1]).toContain("Anleitung erzeugt mit BrickBuilder");
   const mediaBox = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(pdfText);
   expect(mediaBox).not.toBeNull();
   expect(Number(mediaBox![1])).toBeCloseTo(841.89, 1);
@@ -611,6 +630,7 @@ it("exports one PDF page per imported Studio page with the source format and ste
   }, async () => previewRenderer, async () => image);
   const previewPdf = new TextDecoder().decode(previewBytes);
   expect(previewPdf).toMatch(/\/Count\s+1\b/);
+  expect(pdfCommands(previewBytes, true)).not.toContain("Anleitung erzeugt mit BrickBuilder");
   expect(previewCalls).toEqual([document.instructions.steps[1].id]);
   expect(previewRenderer.dispose).toHaveBeenCalledOnce();
   expect(document.instructions.studioLayout!.sourceXml).toBe(originalLayoutXml);
