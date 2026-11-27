@@ -516,6 +516,35 @@ it("passes the enabled highlight option to PDF export", async () => {
   expect(onExportPDF.mock.calls[0][3]).toBe(true);
 });
 
+it("hides the complete instruction body while a PDF is being created", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const source = createEmptyDocument();
+  source.bricks = [{ id: "new", type: "brick-1x2", color: "#ff0000", x: 0, y: 0, z: 0, rotation: 0 }];
+  source.instructions = { version: 1, source: "manual", edited: true, warnings: [], steps: [
+    { id: "one", title: "One", notes: "", partIds: ["new"] },
+  ] };
+  let finishExport!: () => void;
+  const onExportPDF = vi.fn(() => new Promise<void>(resolve => { finishExport = resolve; }));
+  host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+  act(() => root!.render(<InstructionsPanel document={source} onChange={() => {}} onClose={() => {}} onExportPDF={onExportPDF} />));
+  expect(host.querySelector('[data-testid="panel-instructions"] .ins-body')).not.toBeNull();
+
+  await act(async () => {
+    host.querySelector<HTMLButtonElement>('[data-testid="button-instructions-export-pdf"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 10));
+  });
+
+  expect(onExportPDF).toHaveBeenCalledOnce();
+  expect(host.querySelector('[data-testid="status-instructions-export"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="panel-instructions"] .ins-body')).toBeNull();
+  expect(host.querySelector('[data-testid="button-instructions-export-cancel"]')).not.toBeNull();
+
+  await act(async () => { finishExport(); await Promise.resolve(); });
+
+  expect(host.querySelector('[data-testid="status-instructions-export"]')).toBeNull();
+  expect(host.querySelector('[data-testid="panel-instructions"] .ins-body')).not.toBeNull();
+});
+
 it("retries sharing the prepared PDF without rendering it again", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const source = createEmptyDocument();

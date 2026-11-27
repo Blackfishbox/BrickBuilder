@@ -394,7 +394,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
         </div>
       )}
 
-      <div className="ins-body">
+      {!exporting && <div className="ins-body">
         <section className="ins-preview" aria-label={`${t("format.preview")} ${t("instruction.stepNumber", { number: current + 1 })}`}>
           <StepPartsBox document={document} partIds={step.partIds} callouts={step.callouts} paused={Boolean(exporting)} />
           <div className="ins-model">
@@ -581,7 +581,7 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
             <ul className="ins-note" data-testid="list-instructions-warnings">{plan.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
           )}
         </section>
-      </div>
+      </div>}
     </div>
   );
 }
