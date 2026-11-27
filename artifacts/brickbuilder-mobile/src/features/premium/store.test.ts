@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { remoteGeometryEnabled, setRemoteGeometryEnabled } from "../privacy/geometry-consent";
 const mocks = vi.hoisted(() => ({
   configure: vi.fn(), listen: vi.fn(), info: vi.fn(), offerings: vi.fn(), buy: vi.fn(), restore: vi.fn(),
 }));
@@ -81,6 +82,17 @@ describe("Android lifetime Premium", () => {
     expect(store.premiumActive()).toBe(true);
     mocks.listen.mock.calls[0][0](info());
     expect(store.premiumActive()).toBe(false);
+  });
+  it("keeps geometry permission separate when Premium is granted and revoked", async () => {
+    setRemoteGeometryEnabled(true);
+    const store = await import("./store");
+    await store.initializePremium();
+    mocks.listen.mock.calls[0][0](info(true));
+    expect(store.premiumActive()).toBe(true);
+    expect(remoteGeometryEnabled()).toBe(true);
+    mocks.listen.mock.calls[0][0](info());
+    expect(store.premiumActive()).toBe(false);
+    expect(remoteGeometryEnabled()).toBe(true);
   });
   it("retains SDK-cached access offline even if store offerings fail", async () => {
     mocks.info.mockResolvedValue({ customerInfo: info(true) });
