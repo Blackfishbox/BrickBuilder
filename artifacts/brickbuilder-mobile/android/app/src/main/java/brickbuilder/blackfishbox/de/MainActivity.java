@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PdfExportPlugin.class);
+        registerPlugin(IOFileOpenPlugin.class);
         super.onCreate(savedInstanceState);
         insetContent = findViewById(android.R.id.content);
         NativeInsets.install(getWindow(), insetContent);

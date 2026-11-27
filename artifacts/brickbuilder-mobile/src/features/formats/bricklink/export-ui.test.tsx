@@ -95,3 +95,22 @@ it("places project creation before the preview and omits the geometry retry butt
   expect(Boolean(createButton.compareDocumentPosition(previewLabel) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   expect(host.querySelector('[data-testid="button-retry-geometry"]')).toBeNull();
 });
+
+it("automatically creates a project when Android opens a Studio IO file", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  host = window.document.createElement("div"); window.document.body.appendChild(host);
+  root = createRoot(host);
+  const file = new File(["studio archive"], "opened-from-files.io");
+  const imported = createEmptyDocument("Imported from Android");
+  const onImport = vi.fn().mockResolvedValue(undefined);
+  const onClose = vi.fn();
+  importer.mockResolvedValue(imported);
+  await act(async () => {
+    root!.render(<FormatDialog document={createEmptyDocument()} initialFile={file}
+      autoImportInitialFile onClose={onClose} onImport={onImport} />);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(importer).toHaveBeenCalledWith(file, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(onImport).toHaveBeenCalledWith(imported);
+  expect(onClose).toHaveBeenCalledOnce();
+});

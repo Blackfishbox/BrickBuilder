@@ -60,6 +60,7 @@ import { displayColorName } from '@/features/catalog/color-evidence';
 import type { InstructionPart } from '@/features/instructions/parts';
 import type { PreparedExport } from '@/platform/export-file';
 import { sharePreparedExport } from '@/platform/export-file';
+import { watchForOpenedIOFiles } from '@/platform/io-file-open';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -93,6 +94,7 @@ function App() {
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [formatsOpen, setFormatsOpen] = useState(false);
+  const [externalImportFile, setExternalImportFile] = useState<File | null>(null);
   const viewExporterRef = useRef<ViewExporter | null>(null);
   const instructionExportRef = useRef<PreparedExport | null>(null);
   const [formatsMode, setFormatsMode] = useState<'import' | 'export'>('import');
@@ -128,6 +130,36 @@ function App() {
   useEffect(() => { setAdditionalSelectionIds([]); setRotationTargetQuery(""); }, [editor.document.id]);
   useEffect(() => { setRotationTargetQuery(""); }, [editor.selectedId]);
   useEffect(() => { applyColorTheme(theme); }, [theme]);
+  useEffect(() => {
+    let active = true;
+    let listener: { remove(): Promise<void> } | null = null;
+    void watchForOpenedIOFiles(
+      file => {
+        if (!active) return;
+        setExternalImportFile(file);
+        setFormatsMode('import');
+        setFormatsOpen(true);
+        setProjectMenu(false);
+      },
+      () => {
+        if (!active) return;
+        setRestoreMessage(t('format.readFailure'));
+        window.setTimeout(() => setRestoreMessage(''), 3000);
+      },
+    ).then(handle => {
+      if (!active) { void handle?.remove(); return; }
+      listener = handle;
+    }).catch(() => {
+      if (active) {
+        setRestoreMessage(t('format.readFailure'));
+        window.setTimeout(() => setRestoreMessage(''), 3000);
+      }
+    });
+    return () => {
+      active = false;
+      void listener?.remove();
+    };
+  }, [t]);
   useEffect(() => {
     if (!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen) return;
     const closeMenusOutside = (event: PointerEvent) => {
@@ -802,7 +834,9 @@ function App() {
           </section>
         </div>
       )}
-      {formatsOpen && <FormatDialog document={editor.document} viewExporterRef={viewExporterRef} initialMode={formatsMode} onClose={() => setFormatsOpen(false)} onImport={editor.importProject} />}
+      {formatsOpen && <FormatDialog document={editor.document} viewExporterRef={viewExporterRef}
+        initialMode={formatsMode} initialFile={externalImportFile} autoImportInitialFile={!!externalImportFile}
+        onClose={() => { setFormatsOpen(false); setExternalImportFile(null); }} onImport={editor.importProject} />}
       {gestureHelpOpen && <GestureHelpDialog onClose={() => setGestureHelpOpen(false)} />}
       {instructionsOpen && <Suspense fallback={<div role="status" className="canvas-loading">{t("editor.instructionsLoading")}</div>}>
         <InstructionsPanel document={editor.document} darkMode={theme === 'dark'} onChange={editor.setInstructionPlan} onClose={() => setInstructionsOpen(false)}

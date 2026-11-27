@@ -32,6 +32,8 @@ interface Props {
   viewExporterRef?: MutableRefObject<ViewExporter | null>;
   document: BuilderDocument;
   initialMode?: 'import' | 'export';
+  initialFile?: File | null;
+  autoImportInitialFile?: boolean;
   onClose(): void;
   onImport(document: BuilderDocument): Promise<void>;
 }
@@ -135,7 +137,8 @@ export function Report({ model, bricks }: { model?: ImportedModel; bricks: numbe
   );
 }
 
-export default function FormatDialog({ document, viewExporterRef, initialMode = 'import', onClose, onImport }: Props) {
+export default function FormatDialog({ document, viewExporterRef, initialMode = 'import', initialFile = null,
+  autoImportInitialFile = false, onClose, onImport }: Props) {
   const { t } = useI18n();
   const [preview, setPreview] = useState<BuilderDocument | null>(null);
   const [fileName, setFileName] = useState('');
@@ -151,6 +154,7 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
   const [partsListIssues, setPartsListIssues] = useState<PartsListIssue[]>([]);
   const [partsListExported, setPartsListExported] = useState(false);
   const token = useRef(0);
+  const handledInitialFile = useRef<File | null>(null);
   const controller = useRef<AbortController | null>(null);
   const [progress, setProgress] = useState<GeometryProgress | null>(null);
   const [mode, setMode] = useState<'import' | 'export'>(initialMode);
@@ -181,11 +185,25 @@ export default function FormatDialog({ document, viewExporterRef, initialMode = 
     try {
       const doc = await importModelFile(file, { signal: operation.signal,
         onProgress: value => { if (id === token.current) setProgress(value); } });
-      if (id === token.current) setPreview(doc);
+      if (id === token.current) {
+        setPreview(doc);
+        if (autoImportInitialFile && file === initialFile) {
+          setCreating(true);
+          try { await onImport(doc); onClose(); }
+          catch (e) { setError(e instanceof Error ? e.message : t('format.projectFailure')); }
+          finally { setCreating(false); }
+        }
+      }
     } catch (e) {
       if (id === token.current) setError(e instanceof Error ? e.message : t('format.readFailure'));
     } finally { if (id === token.current) setBusy(false); }
   };
+
+  useEffect(() => {
+    if (!initialFile || handledInitialFile.current === initialFile) return;
+    handledInitialFile.current = initialFile;
+    void pick(initialFile);
+  }, [initialFile]);
 
   const create = async () => {
     if (!preview) return;
