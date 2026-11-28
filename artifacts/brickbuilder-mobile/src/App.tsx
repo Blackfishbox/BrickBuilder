@@ -101,6 +101,11 @@ function App() {
   const languageMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const languageOptionEnRef = useRef<HTMLButtonElement | null>(null);
   const languageOptionDeRef = useRef<HTMLButtonElement | null>(null);
+  const selectLanguage = (language: "en" | "de") => {
+    setLocale(language);
+    setLanguageMenuOpen(false);
+    languageMenuTriggerRef.current?.focus();
+  };
   const handleLanguageMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const options = [languageOptionEnRef.current, languageOptionDeRef.current];
     if (event.key === "Enter" || event.key === " ") {
@@ -709,7 +714,7 @@ function App() {
                   ref={languageOptionEnRef}
                   aria-checked={locale === "en"}
                   data-testid="language-option-en"
-                  onClick={() => { setLocale("en"); setLanguageMenuOpen(false); }}
+                  onClick={() => selectLanguage("en")}
                 >
                   {t("english")}
                 </button>
@@ -719,7 +724,7 @@ function App() {
                   ref={languageOptionDeRef}
                   aria-checked={locale === "de"}
                   data-testid="language-option-de"
-                  onClick={() => { setLocale("de"); setLanguageMenuOpen(false); }}
+                  onClick={() => selectLanguage("de")}
                 >
                   {t("german")}
                 </button>

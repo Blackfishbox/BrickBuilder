@@ -978,6 +978,19 @@ it("starts in English and switches the visible app labels to German", async () =
   expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("de");
 });
 
+it.each(["en", "de"] as const)("returns focus to the language trigger after selecting %s", async targetLanguage => {
+  const initialLanguage = targetLanguage === "en" ? "de" : "en";
+  const container = await mount("light", false, initialLanguage);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  await act(async () => trigger.click());
+  const option = container.querySelector<HTMLButtonElement>(`[data-testid="language-option-${targetLanguage}"]`)!;
+  await act(async () => option.click());
+
+  expect(container.querySelector('[role="menu"]')).toBeNull();
+  expect(documentRef.documentElement.lang).toBe(targetLanguage);
+  expect(document.activeElement).toBe(trigger);
+});
+
 it.each(["Escape", "outside click"] as const)("closes the language dropdown with %s", async dismissal => {
   const container = await mount("light");
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!.click());
