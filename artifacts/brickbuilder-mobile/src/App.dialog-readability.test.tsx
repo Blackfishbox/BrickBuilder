@@ -46,7 +46,9 @@ vi.mock("@/features/engine/BuilderCanvas", () => ({
   },
 }));
 vi.mock("@/features/parts/PartsLibrary", () => ({
-  default: () => <div><input aria-label="Search parts" /><button type="button" data-testid="mock-part-choice">Choose part</button></div>,
+  default: (props: { selectedPartId?: string }) => <div><input aria-label="Search parts" />
+    {!props.selectedPartId && <button type="button" data-testid="mock-part-choice">Choose part</button>}
+  </div>,
 }));
 vi.mock("@/features/catalog/EvidencedColorPicker", () => ({
   default: (props: { onChange?: (color: { value: string; ldrawCode: string }) => void }) =>
@@ -406,6 +408,25 @@ it("keeps keyboard focus visible in the parts drawer and restores its opener on 
     control.focus();
     expect(documentRef.activeElement).toBe(control);
   }
+  const disabledControl = documentRef.createElement("button");
+  disabledControl.disabled = true;
+  drawer.appendChild(disabledControl);
+  closeButton.focus();
+  const shiftFromFirst = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+  await act(async () => closeButton.dispatchEvent(shiftFromFirst));
+  expect(shiftFromFirst.defaultPrevented).toBe(true);
+  expect(documentRef.activeElement).toBe(partChoice);
+  partChoice.focus();
+  const tabFromLast = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+  await act(async () => partChoice.dispatchEvent(tabFromLast));
+  expect(tabFromLast.defaultPrevented).toBe(true);
+  expect(documentRef.activeElement).toBe(closeButton);
+
+  opener.focus();
+  const shiftFromOutside = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+  await act(async () => opener.dispatchEvent(shiftFromOutside));
+  expect(shiftFromOutside.defaultPrevented).toBe(true);
+  expect(documentRef.activeElement).toBe(partChoice);
   expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
   expect(editorCss).toMatch(/\.parts-drawer\s*\{[^}]*max-height:\s*min\(86dvh,\s*720px\)/);
   expect(editorCss).toMatch(/\.parts-drawer\s*\{[^}]*overflow:\s*auto/);
@@ -417,6 +438,23 @@ it("keeps keyboard focus visible in the parts drawer and restores its opener on 
 
   expect(container.querySelector('[data-testid="drawer-parts"]')).toBeNull();
   expect(documentRef.activeElement).toBe(opener);
+});
+
+it("returns focus to the parts drawer when a list update removes the focused part", async () => {
+  const container = await mount("light", false, "en");
+  const opener = container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-parts"]')!;
+  await act(async () => opener.click());
+  const drawer = container.querySelector<HTMLElement>('[data-testid="drawer-parts"]')!;
+  const partChoice = drawer.querySelector<HTMLButtonElement>('[data-testid="mock-part-choice"]')!;
+  const catalogTab = drawer.querySelector<HTMLButtonElement>('[data-testid="tab-ldraw"]')!;
+  partChoice.focus();
+  expect(documentRef.activeElement).toBe(partChoice);
+
+  editor.selectedPart = { ldrawId: "3001.dat" };
+  await act(async () => root!.render(<I18nProvider><App /></I18nProvider>));
+
+  expect(drawer.querySelector('[data-testid="mock-part-choice"]')).toBeNull();
+  expect(documentRef.activeElement).toBe(catalogTab);
 });
 
 it.each(["light", "dark"] as const)("also verifies help examples in %s mode", async theme => {

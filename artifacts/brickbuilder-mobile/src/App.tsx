@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { ViewExporter } from '@/features/engine/view-export';
 import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
@@ -410,6 +410,37 @@ function App() {
   useEffect(() => {
     if (!partsOpen && !colorsOpen) return;
     const onKey = (event: KeyboardEvent) => {
+      if (partsOpen && event.key === 'Tab') {
+        const drawer = partsDrawerRef.current;
+        if (!drawer) return;
+        const focusable = [...drawer.querySelectorAll<HTMLElement>(
+          'a[href], area[href], button, input, select, textarea, [tabindex], [contenteditable="true"]',
+        )].filter(element =>
+          element.tabIndex >= 0
+          && !element.matches(':disabled')
+          && !element.closest('[hidden], [inert], [aria-hidden="true"]')
+          && !(element instanceof HTMLInputElement && element.type === 'hidden'),
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        const activeIndex = focusable.indexOf(active as HTMLElement);
+
+        if (!first) {
+          event.preventDefault();
+          drawer.focus();
+        } else if (!drawer.contains(active) || activeIndex === -1) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        } else if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
       if (event.key !== 'Escape') return;
       if (partsOpen) {
         setPartsOpen(false);
@@ -421,10 +452,22 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [partsOpen, colorsOpen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!partsOpen) return;
-    partsDrawerRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-  }, [partsOpen]);
+    const drawer = partsDrawerRef.current;
+    if (!drawer) return;
+    if (drawer.contains(document.activeElement)) return;
+    const selectedTab = drawer.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    const firstFocusable = [...drawer.querySelectorAll<HTMLElement>(
+      'a[href], area[href], button, input, select, textarea, [tabindex], [contenteditable="true"]',
+    )].find(element =>
+      element.tabIndex >= 0
+      && !element.matches(':disabled')
+      && !element.closest('[hidden], [inert], [aria-hidden="true"]')
+      && !(element instanceof HTMLInputElement && element.type === 'hidden'),
+    );
+    (selectedTab ?? firstFocusable)?.focus();
+  });
 
   useEffect(() => {
     if (projectMenu) void editor.refreshProjects().catch(() => undefined);
@@ -919,7 +962,7 @@ function App() {
 
       {partsOpen && (
         <div className="drawer-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setPartsOpen(false); }}>
-          <section className="parts-drawer rise-in" ref={partsDrawerRef} onFocusCapture={event => {
+          <section className="parts-drawer rise-in" ref={partsDrawerRef} tabIndex={-1} onFocusCapture={event => {
             if (event.target instanceof HTMLElement) {
               event.target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
             }
