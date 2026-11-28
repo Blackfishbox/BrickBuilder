@@ -45,6 +45,7 @@ export function collectAxleGuides(
 /** Append instead of reflowing Studio's fixed pages, arrows, callouts and inventory. */
 export async function appendAxleGuidePages(
   pdf: jsPDF, document: BuilderDocument, guides: AxleGuideCollection, locale: Locale, signal?: AbortSignal,
+  beforeNextPage: () => void = () => {},
 ) {
   if (!guides.size) return;
   const unit = 72 / 25.4 / pdf.internal.scaleFactor;
@@ -54,6 +55,8 @@ export async function appendAxleGuidePages(
   const line = 3.5 * unit;
   let y = 0;
   const newPage = () => {
+    signal?.throwIfAborted();
+    beforeNextPage();
     pdf.addPage([pageWidth, pageHeight], pageWidth > pageHeight ? "landscape" : "portrait");
     pdf.setFont("helvetica", "bold"); pdf.setFontSize(12); pdf.setTextColor(0);
     pdf.text(translate(locale, "instruction.pdf.axleGuides"), margin, margin + 4 * unit, { maxWidth: width });

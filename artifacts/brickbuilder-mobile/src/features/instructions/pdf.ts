@@ -14,6 +14,7 @@ import { exportInstructionCalloutImage, instructionHighlightIds } from "./callou
 import { translate, translatePlural, type Locale } from "../../i18n/messages";
 import { appendAxleGuidePages, collectAxleGuides, type AxleGuideCollection } from "./axle-guides";
 import { drawInstructionPdfFooter } from "./pdf-footer";
+import { PdfPageBudget } from "./pdf-page-budget";
 
 export interface InstructionPdfOptions {
   signal?: AbortSignal;
@@ -21,6 +22,8 @@ export interface InstructionPdfOptions {
   highlight?: boolean;
   locale?: Locale;
   omitBranding?: boolean;
+  /** Full-export policy supplied by the platform, never used for previews. */
+  maxContentPages?: number;
 }
 
 export function instructionParts(document: BuilderDocument, ids: string[]): string[] {
@@ -42,7 +45,9 @@ export async function exportInstructionPdfChunks(
   const plan = effectiveInstructions({ ...document, instructions: input });
   const locale = options.locale ?? "de";
   options.signal?.throwIfAborted();
-  options.onProgress?.(0, plan.steps.length);
+  const budget = new PdfPageBudget(options.maxContentPages);
+  const progressTotal = Math.min(plan.steps.length, budget.limit);
+  options.onProgress?.(0, progressTotal);
   const renderer = await createRenderer(document, options.signal);
   const calloutImage = renderCallout ?? ((doc, callout, signal) => exportInstructionCalloutImage(doc, callout, renderer, signal));
   try {
@@ -53,9 +58,13 @@ export async function exportInstructionPdfChunks(
     });
     const visible = new Set<string>();
     const axleGuides: AxleGuideCollection = new Map();
+    let lastInstructionPage = 1;
+    let completedSteps = 0;
+    let instructionsComplete = false;
+    await budget.render(async () => {
     for (const [index, step] of plan.steps.entries()) {
       options.signal?.throwIfAborted();
-      if (index) pdf.addPage();
+      if (index) { budget.beforeNextPage(pdf); pdf.addPage(); }
       collectAxleGuides(axleGuides, document, instructionHighlightIds(document, step),
         translate(locale, "instruction.pdf.axlePageStep", { page: pdf.getNumberOfPages(), step: index + 1 }));
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
@@ -76,6 +85,7 @@ export async function exportInstructionPdfChunks(
       pdf.addImage(image, image.startsWith("data:image/png") ? "PNG" : "JPEG", 15, imageY, 180, 136.8, undefined, "FAST");
       let y = imageY + 145;
       const continuationPage = (section: string) => {
+        budget.beforeNextPage(pdf);
         pdf.addPage();
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
         const continued = translate(locale, "instruction.pdf.continued");
@@ -116,12 +126,18 @@ export async function exportInstructionPdfChunks(
         y += await drawInstructionPartBox(pdf, document, groups.slice(offset, offset + 36), y, options.signal,
           renderPart, [], calloutImage, locale) + 4;
       }
-      options.onProgress?.(index + 1, plan.steps.length);
+      completedSteps = index + 1;
+      options.onProgress?.(Math.min(completedSteps, progressTotal), progressTotal);
       // Give Android a chance to repaint progress and deliver cancellation.
       await yieldPdfExecution();
     }
-    const lastInstructionPage = pdf.getNumberOfPages();
-    await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal);
+    lastInstructionPage = pdf.getNumberOfPages();
+    instructionsComplete = true;
+    await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal, () => budget.beforeNextPage(pdf));
+    });
+    if (!instructionsComplete) lastInstructionPage = pdf.getNumberOfPages();
+    pdf.setPage(pdf.getNumberOfPages());
+    budget.appendNotice(pdf, locale, options.signal);
     const count = pdf.getNumberOfPages();
     for (let page = 1; page <= count; page++) {
       pdf.setPage(page); pdf.setFontSize(8); pdf.setTextColor(95);
@@ -132,6 +148,8 @@ export async function exportInstructionPdfChunks(
       }
       pdf.text(`${page} / ${count}`, 194, 290, { align: "right" });
     }
+    options.signal?.throwIfAborted();
+    if (completedSteps < progressTotal) options.onProgress?.(progressTotal, progressTotal);
     return instructionPdfChunks(pdf, options.signal);
   } finally { renderer.dispose(); }
 }

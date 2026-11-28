@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createEmptyDocument } from "../features/editor/model";
 const mocks = vi.hoisted(() => ({
   normal: vi.fn(async () => new Uint8Array([1, 2])),
@@ -15,6 +15,24 @@ import { exportInstructionPdfFile } from "./instruction-pdf-export";
 const premium = vi.hoisted(() => ({ active: false }));
 vi.mock("../features/premium/store", () => ({ premiumActive: () => premium.active }));
 beforeEach(() => { vi.clearAllMocks(); premium.active = false; });
+afterEach(() => vi.unstubAllEnvs());
+
+it.each([
+  ["true", false, 10], ["true", true, undefined],
+  ["false", false, undefined], ["false", true, undefined],
+])("sets the full-export limit only for free Android: native=%s premium=%s", async (native, active, limit) => {
+  vi.stubEnv("VITE_NATIVE_ANDROID", native);
+  premium.active = active;
+  for (const studio of [false, true]) {
+    mocks.protect.mockImplementationOnce(async (_locale, signal, progress, operation) => operation(signal, progress));
+    await exportInstructionPdfFile({
+      document: createEmptyDocument("Model"), plan: { version: 1, steps: [] }, locale: "en",
+      signal: new AbortController().signal, onProgress: vi.fn(), highlight: false, studio, onPrepared: vi.fn(),
+    });
+    expect(studio ? mocks.studio : mocks.normal).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.objectContaining({ maxContentPages: limit }));
+  }
+});
 
 it.each([false, true])("allows branding removal only with a confirmed Premium entitlement: %s", async active => {
   premium.active = active;
@@ -42,7 +60,7 @@ it.each([false, true])("protects rendering and local saving before sharing for S
     locale: "en", signal, highlight: true, studio, onProgress: progress, onPrepared: retained,
   });
   expect(studio ? mocks.studio : mocks.normal).toHaveBeenCalledWith(expect.anything(), expect.anything(),
-    { signal, onProgress: progress, highlight: true, locale: "en", omitBranding: false });
+    { signal, onProgress: progress, highlight: true, locale: "en", omitBranding: false, maxContentPages: undefined });
   expect(mocks.prepare).toHaveBeenCalledWith(new Uint8Array(studio ? [3, 4] : [1, 2]),
     studio ? "Truck-Studio-Layout.pdf" : "Truck-Instructions.pdf", "application/pdf", signal);
   expect(mocks.share).toHaveBeenCalledWith(saved);

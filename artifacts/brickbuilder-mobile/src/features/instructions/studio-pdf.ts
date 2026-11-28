@@ -32,6 +32,7 @@ import { drawInstructionPdfFooter } from "./pdf-footer";
 import { studioCalloutArrowPoints, studioCalloutArrowRoute, studioCalloutCell, studioCalloutTarget } from "./studio-callout-layout";
 import type { ProjectedPartBounds } from "./part-projection";
 import { drawStudioSizeGuide } from "./studio-size-guide";
+import { PdfPageBudget } from "./pdf-page-budget";
 
 type XmlRecord = Record<string, unknown>;
 type ComponentPlacement = "LeftTop" | "LeftBottom" | "RightTop" | "RightBottom" | "None";
@@ -341,7 +342,7 @@ function customPaperSize(value: unknown, unitScale: number): [number, number] | 
 
 function studioPages(document: BuilderDocument, input: InstructionPlan, locale: Locale, previewPageIndex?: number): {
   pages: StudioPdfPage[]; size: [number, number]; margins: [number, number, number, number];
-  scale: number; imageData: Record<string, { data: string; format: "PNG" | "JPEG" }>;
+  scale: number; loadImages: (page: StudioPdfPage) => Record<string, { data: string; format: "PNG" | "JPEG" }>;
   styles: StudioPdfStyles;
 } {
   const layout = input.studioLayout;
@@ -434,28 +435,35 @@ function studioPages(document: BuilderDocument, input: InstructionPlan, locale: 
   }
   const pages = previewPageIndex === undefined ? allPages : [allPages[previewPageIndex]];
   const scale = unitScale;
-  const paths = [...new Set(pages.flatMap(page => page.images.map(image => image.path)))];
+  // Decode used assets lazily, but retain the existing once-per-export behavior
+  // for a logo/photo shared by several included Studio pages.
   const imageData: Record<string, { data: string; format: "PNG" | "JPEG" }> = Object.create(null);
-  if (paths.length) {
-    const originalBytes = document.imported?.originalBytes;
-    if (!originalBytes?.length) throw new Error(translate(locale, "instruction.pdf.missingStudioImages"));
-    const entries = readZip(new Uint8Array(originalBytes), { names: paths, studioEncryption: true });
-    for (const path of paths) {
-      const entry = Object.entries(entries).find(([name]) => name.toLowerCase() === path.toLowerCase())?.[1];
-      if (!entry || entry.length > 8 * 1024 * 1024) {
-        throw new Error(translate(locale, "instruction.pdf.missingOrLargeStudioImage", { path }));
+  let archiveBytes: Uint8Array | undefined;
+  const loadImages = (page: StudioPdfPage) => {
+    const paths = [...new Set(page.images.map(image => image.path))].filter(path => !imageData[path]);
+    if (paths.length) {
+      const originalBytes = document.imported?.originalBytes;
+      if (!originalBytes?.length) throw new Error(translate(locale, "instruction.pdf.missingStudioImages"));
+      archiveBytes ??= new Uint8Array(originalBytes);
+      const entries = readZip(archiveBytes, { names: paths, studioEncryption: true });
+      for (const path of paths) {
+        const entry = Object.entries(entries).find(([name]) => name.toLowerCase() === path.toLowerCase())?.[1];
+        if (!entry || entry.length > 8 * 1024 * 1024) {
+          throw new Error(translate(locale, "instruction.pdf.missingOrLargeStudioImage", { path }));
+        }
+        const format = entry[0] === 0x89 && entry[1] === 0x50 && entry[2] === 0x4e && entry[3] === 0x47
+          ? "PNG" : entry[0] === 0xff && entry[1] === 0xd8 && entry[2] === 0xff ? "JPEG" : undefined;
+        if (!format) throw new Error(translate(locale, "instruction.pdf.unsupportedStudioImage", { path }));
+        let binary = "";
+        for (let offset = 0; offset < entry.length; offset += 0x8000) {
+          binary += String.fromCharCode(...entry.subarray(offset, Math.min(entry.length, offset + 0x8000)));
+        }
+        imageData[path] = { data: `data:image/${format.toLowerCase()};base64,${btoa(binary)}`, format };
       }
-      const format = entry[0] === 0x89 && entry[1] === 0x50 && entry[2] === 0x4e && entry[3] === 0x47
-        ? "PNG" : entry[0] === 0xff && entry[1] === 0xd8 && entry[2] === 0xff ? "JPEG" : undefined;
-      if (!format) throw new Error(translate(locale, "instruction.pdf.unsupportedStudioImage", { path }));
-      let binary = "";
-      for (let offset = 0; offset < entry.length; offset += 0x8000) {
-        binary += String.fromCharCode(...entry.subarray(offset, Math.min(entry.length, offset + 0x8000)));
-      }
-      imageData[path] = { data: `data:image/${format.toLowerCase()};base64,${btoa(binary)}`, format };
     }
-  }
-  return { pages, size, margins, scale, imageData, styles: studioStyles(globalStyle, unitScale) };
+    return imageData;
+  };
+  return { pages, size, margins, scale, loadImages, styles: studioStyles(globalStyle, unitScale) };
 }
 
 function fitImage(data: string, x: number, y: number, width: number, height: number, page: jsPDF, flipH = false) {
@@ -787,7 +795,8 @@ export async function exportStudioLayoutPdfChunks(
   if (plan.studioLayout) plan.studioLayout = { sourceXml: applyStudioLayout(plan.studioLayout), edits: [] };
   const locale = options.locale ?? "de";
   const axleGuides: AxleGuideCollection = new Map();
-  const { pages: sourcePages, size, margins, scale, imageData, styles } =
+  const budget = new PdfPageBudget(options.previewPageIndex === undefined ? options.maxContentPages : undefined);
+  const { pages: sourcePages, size, margins, scale, loadImages, styles } =
     studioPages(document, plan, locale, options.previewPageIndex);
   const nodes = studioNodes(plan.studioLayout!.sourceXml);
   const pageNodes = nodes.filter(node => node.name === "Page" && nodes[node.parent ?? -1]?.name === "Pages");
@@ -864,6 +873,7 @@ export async function exportStudioLayoutPdfChunks(
     };
     const lastContentIndex = sourcePages.reduce((last, page, index) => hasPageContent(page) ? index : last, -1);
     for (const [sourceIndex, sourcePage] of sourcePages.entries()) {
+      if (pages.length > budget.limit) break;
       options.signal?.throwIfAborted();
       const nativePage = pageNodes[sourcePage.sourceIndex];
       const slots = studioChildren(nativePage, nodes, "Slot");
@@ -899,10 +909,13 @@ export async function exportStudioLayoutPdfChunks(
         pages.splice(pages.indexOf(firstPage), 1);
       }
     }
-    options.onProgress?.(0, pages.length);
+    const progressTotal = Math.min(pages.length, budget.limit);
+    options.onProgress?.(0, progressTotal);
+    await budget.render(async () => {
     for (const [pageIndex, sourcePage] of pages.entries()) {
       options.signal?.throwIfAborted();
-      if (pageIndex) pdf.addPage(size, size[0] > size[1] ? "landscape" : "portrait");
+      if (pageIndex) { budget.beforeNextPage(pdf); pdf.addPage(size, size[0] > size[1] ? "landscape" : "portrait"); }
+      const imageData = loadImages(sourcePage);
       drawStyledBox(pdf, 0, 0, pageWidth, pageHeight, styles.page, scale);
       const entries = sourcePage.steps;
       const nativePage = pageNodes[sourcePage.sourceIndex];
@@ -1144,18 +1157,24 @@ export async function exportStudioLayoutPdfChunks(
         options.signal?.throwIfAborted();
         await draw();
       }
-      options.onProgress?.(pageIndex + 1, pages.length);
+      options.onProgress?.(pageIndex + 1, progressTotal);
       await yieldPdfExecution();
     }
+    });
     if (options.previewPageIndex === undefined && pages.length && !options.omitBranding) {
       let lastInstructionPage = 0;
       for (const [index, page] of pages.entries()) {
         if (page.steps.length || page.images.length) lastInstructionPage = index + 1;
       }
-      pdf.setPage(lastInstructionPage || pages.length);
+      pdf.setPage(Math.min(lastInstructionPage || pages.length, pdf.getNumberOfPages()));
       await drawInstructionPdfFooter(pdf, translate(locale, "instruction.pdf.generatedWithBrickBuilder"), bottom);
     }
-    await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal);
+    pdf.setPage(pdf.getNumberOfPages());
+    if (!budget.truncated) await budget.render(async () => {
+      await appendAxleGuidePages(pdf, document, axleGuides, locale, options.signal, () => budget.beforeNextPage(pdf));
+    });
+    budget.appendNotice(pdf, locale, options.signal);
+    options.signal?.throwIfAborted();
     return instructionPdfChunks(pdf, options.signal);
   } finally {
     renderer.dispose();

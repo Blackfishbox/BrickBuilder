@@ -382,6 +382,9 @@ export default function InstructionsPanel({ document, darkMode = false, onChange
         </div>
       </header>
 
+      {import.meta.env.VITE_NATIVE_ANDROID === "true" && !premium.active &&
+        <p className="ins-hint" data-testid="text-instructions-pdf-limit">{t("premium.pdfLimit")}</p>}
+
       {(exporting || retryingShare) && (
         <div className="ins-banner" role="status" data-testid="status-instructions-export">
           <LoaderCircle size={15} className="spin" />

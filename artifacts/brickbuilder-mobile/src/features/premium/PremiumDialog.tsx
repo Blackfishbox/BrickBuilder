@@ -39,6 +39,7 @@ export default function PremiumDialog({ onClose }: { onClose(): void }) {
         <li>{t("premium.parts")}</li>
         <li>{t("premium.exports")}</li>
       </ul>
+      <p className="text-sm">{t("premium.pdfLimit")}</p>
       <p className="text-sm">{t("premium.consent")}</p>
       {premium.active ? <p role="status">{t("premium.success")}</p> : <>
         <p>{premium.package ? t("premium.oneTime", { price: premium.package.product.priceString }) : t("premium.unavailable")}</p>

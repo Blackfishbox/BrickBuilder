@@ -6,6 +6,7 @@ import { prepareExportFile, sharePreparedExport, type PreparedExport } from "./e
 import { withPdfBackgroundExport } from "./pdf-background";
 import type { ByteSource } from "../types/byte-source";
 import { premiumActive } from "../features/premium/store";
+import { FREE_ANDROID_PDF_PAGES } from "../features/instructions/pdf-page-budget";
 
 export async function exportInstructionPdfFile(options: {
   document: BuilderDocument; plan: InstructionPlan; locale: Locale; signal: AbortSignal;
@@ -14,13 +15,16 @@ export async function exportInstructionPdfFile(options: {
   onPrepared: (file: PreparedExport) => void;
 }): Promise<void> {
   const { document, plan, locale, signal, highlight, onProgress, studio, onPrepared } = options;
-  const omitBranding = Boolean(options.omitBranding && premiumActive());
+  const premium = premiumActive();
+  const omitBranding = Boolean(options.omitBranding && premium);
+  const maxContentPages = import.meta.env.VITE_NATIVE_ANDROID === "true" && !premium
+    ? FREE_ANDROID_PDF_PAGES : undefined;
   const prepared = await withPdfBackgroundExport(locale, signal, onProgress, async (jobSignal, progress) => {
     const exportPdf = studio
       ? (await import("../features/instructions/studio-pdf")).exportStudioLayoutPdfChunks
       : (await import("../features/instructions/pdf")).exportInstructionPdfChunks;
     let bytes: ByteSource;
-    try { bytes = await exportPdf(document, plan, { signal: jobSignal, onProgress: progress, highlight, locale, omitBranding }); }
+    try { bytes = await exportPdf(document, plan, { signal: jobSignal, onProgress: progress, highlight, locale, omitBranding, maxContentPages }); }
     catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "PDF_WEBGL_CONTEXT_LOST") {
         throw new Error(translate(locale, "instruction.background.contextLost"));

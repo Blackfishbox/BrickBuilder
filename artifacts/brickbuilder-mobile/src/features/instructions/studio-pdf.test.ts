@@ -556,6 +556,17 @@ it("produces a viewable native-callout PDF with real source geometry through the
     const directory = new URL("../../../generated-artifacts/", import.meta.url);
     mkdirSync(directory, { recursive: true });
     writeFileSync(new URL("studio-native-callouts.pdf", directory), bytes);
+    // Keep a real geometry-backed example of a truncated full export, too.
+    document.instructions!.edited = true;
+    document.instructions!.studioLayout!.sourceXml = document.instructions!.studioLayout!.sourceXml.replace(
+      "</Pages>", `${Array.from({ length: 10 }, (_, index) =>
+        `<Page><BrickBuilderTitle>Example ${index + 2}</BrickBuilderTitle></Page>`).join("")}</Pages>`);
+    const limited = await exportStudioLayoutPDF(document, document.instructions!, {
+      locale: "de", maxContentPages: 10,
+    }, createSoftwareInstructionRenderer);
+    expect(Buffer.from(limited).toString("latin1")).toMatch(/\/Count\s+11\b/);
+    expect(pdfPageCommands(limited).at(-1)).toContain("(BrickBuilder Premium)");
+    writeFileSync(new URL("studio-limited-real-geometry.pdf", directory), limited);
   } finally { vi.unstubAllGlobals(); }
 }, 15_000);
 

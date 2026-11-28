@@ -28,6 +28,9 @@ it.each(["en", "de"] as const)("uses the store price and offers restoration in %
   expect(dialog.textContent).toContain("Premium Lifetime");
   expect(dialog.querySelector('[data-testid="button-premium-restore"]')).not.toBeNull();
   expect(dialog.textContent).toContain(locale === "de" ? "Kein Abonnement" : "No subscription");
+  expect(dialog.textContent).toContain(locale === "de" ? "10 Inhaltsseiten" : "10 content pages");
+  expect(dialog.textContent).toContain(locale === "de" ? "Premium und PWA haben kein Seitenlimit" : "Premium and the PWA have no page limit");
+  expect(dialog.textContent).toContain(locale === "de" ? "wahlweise ohne BrickBuilder" : "option to omit BrickBuilder");
 });
 it("shows pending confirmation rather than claiming an unconfirmed payment succeeded", async () => {
   await mount("en");

@@ -28,6 +28,7 @@ import {
   LoaderCircle,
   Languages,
   Menu,
+  Monitor,
   PackageOpen,
   Palette,
   Plus,
@@ -53,7 +54,15 @@ import PrivacyDialog from '@/features/privacy/PrivacyDialog';
 import GestureHelpDialog from '@/features/engine/GestureHelpDialog';
 import EvidencedColorPicker from '@/features/catalog/EvidencedColorPicker';
 import { resolveColor } from '@/features/formats/colors';
-import { applyColorTheme, readColorTheme, type ColorTheme } from '@/platform/color-theme';
+import {
+  applyColorTheme,
+  nextColorThemePreference,
+  readColorTheme,
+  readSystemColorTheme,
+  watchSystemColorTheme,
+  type ColorTheme,
+  type ColorThemePreference,
+} from '@/platform/color-theme';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isAndroidBuild } from '@/features/privacy/geometry-consent';
 import { isGeneratedProjectName } from '@/i18n/project-name';
@@ -94,7 +103,9 @@ function App() {
   const editor = useBuilder();
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const displayedProjectName = isGeneratedProjectName(editor.projectName) ? t("project.new") : editor.projectName;
-  const [theme, setTheme] = useState<ColorTheme>(readColorTheme);
+  const [themePreference, setThemePreference] = useState<ColorThemePreference>(readColorTheme);
+  const [systemTheme, setSystemTheme] = useState<ColorTheme>(readSystemColorTheme);
+  const theme = themePreference === "system" ? systemTheme : themePreference;
   const [edgeMode, setEdgeMode] = useState(readEdgesPreference);
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
@@ -138,7 +149,8 @@ function App() {
   }, [editor.selectedId, editor.toolMode]);
   useEffect(() => { setAdditionalSelectionIds([]); setRotationTargetQuery(""); }, [editor.document.id]);
   useEffect(() => { setRotationTargetQuery(""); }, [editor.selectedId]);
-  useEffect(() => { applyColorTheme(theme); }, [theme]);
+  useEffect(() => watchSystemColorTheme(setSystemTheme), []);
+  useEffect(() => { applyColorTheme(themePreference, document, undefined, systemTheme); }, [themePreference, systemTheme]);
   useEffect(() => {
     let active = true;
     let listener: { remove(): Promise<void> } | null = null;
@@ -516,13 +528,16 @@ function App() {
           <button
             type="button"
             className="theme-toggle"
-            onClick={() => setTheme(value => value === 'dark' ? 'light' : 'dark')}
-            aria-label={theme === 'dark' ? t("theme.lightAction") : t("theme.darkAction")}
-            aria-pressed={theme === 'dark'}
-            title={theme === 'dark' ? t("theme.lightTitle") : t("theme.darkTitle")}
+            onClick={() => setThemePreference(value => nextColorThemePreference(value))}
+            aria-label={themePreference === "system"
+              ? t("theme.current.system", { appearance: t(theme === "dark" ? "theme.darkTitle" : "theme.lightTitle") })
+              : t(themePreference === "dark" ? "theme.current.dark" : "theme.current.light")}
+            title={t(themePreference === "system" ? "theme.next.light" :
+              themePreference === "light" ? "theme.next.dark" : "theme.next.system")}
             data-testid="button-toggle-theme"
           >
-            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            {themePreference === "system" ? <Monitor size={17} /> :
+              themePreference === "dark" ? <Moon size={17} /> : <Sun size={17} />}
           </button>
           <button
             type="button"
