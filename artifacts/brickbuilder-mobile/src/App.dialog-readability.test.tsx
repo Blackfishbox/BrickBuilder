@@ -15,6 +15,7 @@ vi.mock("@/features/premium/usePremium", () => ({ usePremium: () => premium }));
 const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
 const editorCss = readFileSync("src/components/mobile/editor.css", "utf8");
 const brandCss = readFileSync("src/brand-theme.css", "utf8");
+const themeCss = readFileSync("src/index.css", "utf8");
 
 const { editor, getStorageOverview, canvasProps } = vi.hoisted(() => ({
   editor: {} as Record<string, any>,
@@ -189,6 +190,14 @@ it.each(["light", "dark"] as const)("uses real arrow and edge symbols in %s help
   const projects = dialog.querySelector(".gesture-guide-text-only")!;
   expect(projects.querySelector("svg")).toBeNull();
   expect(projects.textContent).toContain("Auf diesem Gerät");
+});
+
+it("uses logo orange rather than violet for secondary interface accents", () => {
+  expect(brandCss).toContain("--brand-highlight: 27 95% 43%");
+  expect(brandCss).toContain("--brand-highlight: 32 100% 64%");
+  expect(themeCss).toContain("--secondary: 32 100% 92%");
+  expect(themeCss).toContain("--secondary: 28 60% 28%");
+  expect(themeCss).not.toMatch(/--(?:brand-highlight|secondary|chart-2):\s*(?:26[7-9]|27\d|28\d)\s/u);
 });
 
 it("switches to selection mode and selects a tapped part from the view canvas", async () => {
