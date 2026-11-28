@@ -26,6 +26,7 @@ import {
   HardDrive,
   Hammer,
   LoaderCircle,
+  Languages,
   Menu,
   PackageOpen,
   Palette,
@@ -66,6 +67,7 @@ import { watchForOpenedIOFiles } from '@/platform/io-file-open';
 import PremiumDialog from '@/features/premium/PremiumDialog';
 import { usePremium } from '@/features/premium/usePremium';
 import { nextEdgeMode, readEdgeModePreference, type EdgeMode } from '@/features/engine/edge-mode';
+import { EdgeSample } from '@/features/engine/control-symbols';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -450,7 +452,6 @@ function App() {
           </button>
           {projectMenu && (
           <div className="project-popover rise-in">
-              <p className="popover-eyebrow">{t("project.workshop")}</p>
               <label className="rename-label" htmlFor="project-name">{t("project.name")}</label>
               <input
                 id="project-name"
@@ -461,31 +462,31 @@ function App() {
                 data-testid="input-project-name"
               />
               <button type="button" className="popover-action" onClick={() => setConfirmNew(true)} data-testid="button-new-project">
-                <FilePlus2 size={16} /> {t("project.newAction")}
+                <FilePlus2 size={20} aria-hidden="true" /> {t("project.newAction")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setFormatsMode('import'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-import">
-                <FileUp size={16} /> {t("project.import")}
+                <FileUp size={20} aria-hidden="true" /> {t("project.import")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setFormatsMode('export'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-export">
-                <FileDown size={16} /> {t("project.export")}
+                <FileDown size={20} aria-hidden="true" /> {t("project.export")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setInstructionsOpen(true); setProjectMenu(false); }} data-testid="button-open-instructions">
-                <PackageOpen size={16} /> {t("project.instructions")}
+                <PackageOpen size={20} aria-hidden="true" /> {t("project.instructions")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setStorageOpen(true); setProjectMenu(false); }} data-testid="button-open-storage">
-                <HardDrive size={16} /> {t("project.storage")}
+                <HardDrive size={20} aria-hidden="true" /> {t("project.storage")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setPrivacyOpen(true); setProjectMenu(false); }} data-testid="button-open-privacy">
-                <Scale size={16} /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
+                <Scale size={20} aria-hidden="true" /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
               </button>
               {isAndroidBuild() && !premium.active && (premium.status === "ready" || premium.status === "error") && (
                 <button type="button" className="popover-action" onClick={() => { setPremiumOpen(true); setProjectMenu(false); }}
                   data-testid="button-open-premium">
-                  <Star size={16} /> {t(premium.status === "error" ? "premium.retry" : "premium.buy")}
+                  <Star size={20} aria-hidden="true" /> {t(premium.status === "error" ? "premium.retry" : "premium.buy")}
                 </button>
               )}
               <label className="language-row">
-                <span>{t("language")}</span>
+                <span><Languages size={20} aria-hidden="true" />{t("language")}</span>
                 <select data-testid="select-language" aria-label={t("language")} value={locale}
                   onChange={event => setLocale(event.target.value as "en" | "de")}>
                   <option value="en">{t("english")}</option>
@@ -566,7 +567,7 @@ function App() {
                 setEdgeMode(next);
                 try { window.localStorage.setItem(THICK_EDGES_STORAGE_KEY, next); } catch { /* Keep the session preference if storage is unavailable. */ }
               }}>
-              <span className="thick-edges-sample" aria-hidden="true" />
+              <EdgeSample />
               <span className="thick-edges-label">{t("canvas.thickEdges")}</span>
             </button>
             <div className="history-controls">

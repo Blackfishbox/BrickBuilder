@@ -14,6 +14,7 @@ vi.mock("@/features/premium/usePremium", () => ({ usePremium: () => premium }));
 
 const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
 const editorCss = readFileSync("src/components/mobile/editor.css", "utf8");
+const brandCss = readFileSync("src/brand-theme.css", "utf8");
 
 const { editor, getStorageOverview, canvasProps } = vi.hoisted(() => ({
   editor: {} as Record<string, any>,
@@ -159,6 +160,36 @@ async function mount(theme: "light" | "dark", withSelection = false, language: "
 }
 
 const documentRef = globalThis.document;
+
+it.each(["de", "en"] as const)("shows a larger project menu without the workshop heading in %s", async language => {
+  const container = await mount("light", false, language);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
+  const menu = container.querySelector<HTMLElement>(".project-popover")!;
+  expect(menu.querySelector(".popover-eyebrow")).toBeNull();
+  for (const icon of menu.querySelectorAll(".popover-action svg, .language-row svg")) {
+    expect(icon.getAttribute("width")).toBe("20");
+    expect(icon.getAttribute("aria-hidden")).toBe("true");
+  }
+  expect(menu.querySelector(".language-row .lucide-languages")).not.toBeNull();
+  const select = menu.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
+  expect(select.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+  expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*min-height: 48px/);
+  expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*font-size: 14px/);
+  expect(brandCss).toContain("max-width: calc(100vw - 24px)");
+});
+
+it.each(["light", "dark"] as const)("uses real arrow and edge symbols in %s help", async theme => {
+  const container = await mount(theme);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  const edgeExample = dialog.querySelector(".thick-edges-sample")!;
+  expect(edgeExample.outerHTML).toBe(container.querySelector('[data-testid="button-thick-edges"] .thick-edges-sample')!.outerHTML);
+  expect(dialog.querySelector(".height-arrows")?.textContent).toBe("↑ ↓");
+  expect(dialog.querySelector(".lucide-box, .lucide-panel-top, .lucide-folder-open")).toBeNull();
+  const projects = dialog.querySelector(".gesture-guide-text-only")!;
+  expect(projects.querySelector("svg")).toBeNull();
+  expect(projects.textContent).toContain("Auf diesem Gerät");
+});
 
 it("switches to selection mode and selects a tapped part from the view canvas", async () => {
   await mount("light");

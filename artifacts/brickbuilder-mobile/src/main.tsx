@@ -8,6 +8,7 @@ import { applyColorTheme, readColorTheme } from '@/platform/color-theme';
 
 import './index.css';
 import './dark-theme.css';
+import './brand-theme.css';
 
 applyColorTheme(readColorTheme());
 registerPwa();

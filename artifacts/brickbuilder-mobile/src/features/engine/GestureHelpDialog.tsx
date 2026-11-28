@@ -24,7 +24,7 @@ export default function GestureHelpDialog({ onClose }: { onClose(): void }) {
             <div className="gesture-guide-modes">
               {HELP_MODE_OVERVIEW.map(({ icon: Icon, title, description }) => (
                 <article className="gesture-guide-mode" key={title}>
-                  <span className="gesture-guide-button-visual" aria-hidden="true"><Icon size={18} /></span>
+                  <span className="gesture-guide-button-visual" aria-hidden="true">{Icon && <Icon size={18} />}</span>
                   <div><strong>{t(title)}</strong><p>{t(description)}</p></div>
                 </article>
               ))}
@@ -35,8 +35,8 @@ export default function GestureHelpDialog({ onClose }: { onClose(): void }) {
               <h3 id={`help-section-${section.title}`}>{t(section.title)}</h3>
               <ul className="gesture-guide-buttons">
                 {section.buttons.map(({ icon: Icon, title, description, additionalDescription }, index) => (
-                  <li key={`${title}-${index}`}>
-                    <span className="gesture-guide-button-visual" aria-hidden="true"><Icon size={17} /></span>
+                  <li key={`${title}-${index}`} className={Icon ? undefined : "gesture-guide-text-only"}>
+                    {Icon && <span className="gesture-guide-button-visual" aria-hidden="true"><Icon size={17} /></span>}
                     <div>
                       <strong>{t(title)}</strong>
                       <p>{t(description)}</p>

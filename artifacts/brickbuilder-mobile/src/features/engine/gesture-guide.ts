@@ -1,14 +1,14 @@
 import type { MessageId } from "@/i18n/messages";
 import type { ToolMode } from "@/features/editor/model";
+import type { ComponentType } from "react";
+import { EdgeSample, HeightArrows } from "./control-symbols";
 import {
-  Box,
   Cloud,
   CircleHelp,
   Eye,
   FileDown,
   FilePlus2,
   FileUp,
-  FolderOpen,
   Group,
   HardDrive,
   Hammer,
@@ -21,7 +21,6 @@ import {
   Move3d,
   PackageOpen,
   Palette,
-  PanelTop,
   Plus,
   Rotate3d,
   Save,
@@ -31,7 +30,6 @@ import {
   TriangleAlert,
   Undo2,
   Redo2,
-  type LucideIcon,
 } from "lucide-react";
 
 export const DOUBLE_TAP_INTERVAL_MS = 500;
@@ -51,7 +49,7 @@ export interface GestureGuideSection {
 }
 
 export interface HelpButtonItem {
-  icon: LucideIcon;
+  icon?: ComponentType<{ size?: number }>;
   title: MessageId;
   description: MessageId;
   additionalDescription?: MessageId;
@@ -83,7 +81,7 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
   {
     title: "help.section.workspace",
     buttons: [
-      { icon: PanelTop, title: "canvas.thickEdges", description: "help.button.edges.description" },
+      { icon: EdgeSample, title: "canvas.thickEdges", description: "help.button.edges.description" },
       { icon: Undo2, title: "history.undo", description: "help.button.undo.description" },
       { icon: Redo2, title: "history.redo", description: "help.button.redo.description" },
       { icon: Palette, title: "editor.colorMode", description: "help.button.color.description" },
@@ -96,7 +94,7 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
   {
     title: "help.section.selectedPart",
     buttons: [
-      { icon: Box, title: "help.button.height", description: "help.button.height.description" },
+      { icon: HeightArrows, title: "help.button.height", description: "help.button.height.description" },
       { icon: Move3d, title: "fine.title", description: "help.button.fine.description" },
       { icon: Group, title: "group.title", description: "help.button.group.description" },
       { icon: Rotate3d, title: "tilt.title", description: "help.button.rotation.description" },
@@ -122,7 +120,7 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
       { icon: HardDrive, title: "project.storage", description: "help.menu.storage.description" },
       { icon: Scale, title: "project.privacy", description: "help.menu.privacy.description" },
       { icon: Languages, title: "language", description: "help.menu.language.description" },
-      { icon: FolderOpen, title: "project.device", description: "help.menu.projects.description" },
+      { title: "project.device", description: "help.menu.projects.description" },
     ],
   },
 ];

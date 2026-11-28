@@ -1,0 +1,90 @@
+/* Logo-derived interface accents only: never recolor part swatches or the 3D model. */
+:root {
+  --brand-highlight: 277 72% 43%;
+  --brand-glow: 190 90% 48%;
+}
+.dark {
+  --brand-highlight: 280 95% 79%;
+  --brand-glow: 210 90% 50%;
+}
+
+.editor-shell {
+  background: radial-gradient(ellipse at 48% 46%, hsl(var(--brand-glow) / .05), transparent 58%), hsl(var(--background));
+}
+.topbar, .mobile-dock, .tool-rail {
+  background: hsl(var(--card) / .94);
+  border-color: hsl(var(--border));
+}
+.project-popover, .gesture-guide-dialog, .parts-drawer, .color-drawer {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.project-title-button, .section-heading h2, .rename-label,
+.brick-count, .dock-tool, .dock-color, .more-controls {
+  color: hsl(var(--foreground));
+}
+.project-name-input, .language-row select {
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+.project-name-input:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / .16);
+}
+.saved-projects, .rail-bottom { border-color: hsl(var(--border)); }
+.saved-projects > p, .section-heading > span,
+.gesture-guide-sections h3 { color: hsl(var(--brand-highlight)); }
+.saved-project:hover, .tool-segment { background: hsl(var(--muted)); }
+.saved-project small, .no-saved-projects { color: hsl(var(--muted-foreground)); }
+.project-dot { background: hsl(var(--brand-highlight)); box-shadow: 0 0 0 3px hsl(var(--brand-highlight) / .12); }
+.save-button, .dock-parts {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 2px 0 hsl(var(--primary) / .4);
+}
+.save-button:hover, .dock-parts:hover { background: hsl(var(--primary) / .9); }
+.tool-option.active, .dock-tool.active, .dock-color.active {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border-color: hsl(var(--border));
+}
+.thick-edges-toggle {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+.thick-edges-toggle[aria-pressed="true"] {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--accent-foreground));
+}
+.gesture-guide-sections section, .gesture-guide-mode {
+  background: hsl(var(--background));
+  border-color: hsl(var(--border));
+}
+.gesture-guide-button-visual {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--primary));
+}
+.gesture-guide-sections li p, .gesture-guide-mode p { color: hsl(var(--muted-foreground)); }
+
+/* Match the specificity of existing dark-mode surfaces. */
+.dark .editor-shell { background: radial-gradient(ellipse at 48% 46%, hsl(var(--brand-glow) / .08), transparent 58%), hsl(var(--background)); }
+.dark .topbar, .dark .mobile-dock, .dark .tool-rail { background: hsl(var(--card) / .94); }
+.dark .gesture-guide-dialog { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+.dark .gesture-guide-sections section, .dark .gesture-guide-mode { background: hsl(var(--background)); border-color: hsl(var(--border)); }
+.dark .gesture-guide-sections h3 { color: hsl(var(--brand-highlight)); }
+.dark .gesture-guide-button-visual { background: hsl(var(--card)); border-color: hsl(var(--border)); color: hsl(var(--primary)); }
+.dark .gesture-guide-sections li p, .dark .gesture-guide-mode p { color: hsl(var(--muted-foreground)); }
+.dark .save-button, .dark .dock-parts { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.dark .tool-option.active, .dark .dock-tool.active, .dark .dock-color.active { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+
+/* Keep the taller menu scrollable on short mobile and landscape screens. */
+.project-popover { max-width: calc(100vw - 24px); max-height: min(76dvh, 680px); }
+.popover-action:focus-visible, .saved-project:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
