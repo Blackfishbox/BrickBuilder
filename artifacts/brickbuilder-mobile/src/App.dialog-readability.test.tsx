@@ -235,6 +235,33 @@ it.each(["de", "en"] as const)("focuses the selected language option when the me
   expect(document.activeElement).toBe(selectedOption);
 });
 
+it.each(["de", "en"] as const)("supports language menu keys from both options in %s", async language => {
+  const container = await mount("light", false, language);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  await act(async () => trigger.click());
+
+  const keyCases = [
+    { from: "en", key: "ArrowDown", to: "de" },
+    { from: "en", key: "ArrowUp", to: "de" },
+    { from: "en", key: "Home", to: "en" },
+    { from: "en", key: "End", to: "de" },
+    { from: "de", key: "ArrowDown", to: "en" },
+    { from: "de", key: "ArrowUp", to: "en" },
+    { from: "de", key: "Home", to: "en" },
+    { from: "de", key: "End", to: "de" },
+  ] as const;
+
+  for (const { from, key, to } of keyCases) {
+    const startingOption = container.querySelector<HTMLButtonElement>(`[data-testid="language-option-${from}"]`)!;
+    const expectedOption = container.querySelector<HTMLButtonElement>(`[data-testid="language-option-${to}"]`)!;
+    startingOption.focus();
+    await act(async () => {
+      startingOption.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    });
+    expect(document.activeElement, `${language} locale, ${key} from ${from}`).toBe(expectedOption);
+  }
+});
+
 it.each([
   { screen: "320px-wide screen", width: 320, height: 568 },
   { screen: "short landscape screen", width: 568, height: 320 },

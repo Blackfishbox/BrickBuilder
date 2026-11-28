@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { ViewExporter } from '@/features/engine/view-export';
 import { catalogPalette } from '@/features/formats/colors';
 import { useCatalog } from '@/features/catalog/client';
@@ -99,6 +99,18 @@ function App() {
   const languageMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const languageOptionEnRef = useRef<HTMLButtonElement | null>(null);
   const languageOptionDeRef = useRef<HTMLButtonElement | null>(null);
+  const handleLanguageMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const options = [languageOptionEnRef.current, languageOptionDeRef.current];
+    const activeIndex = options.indexOf(document.activeElement as HTMLButtonElement | null);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : (activeIndex + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+    options[nextIndex]?.focus();
+  };
   const [confirmNew, setConfirmNew] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
@@ -613,7 +625,13 @@ function App() {
               <CONTROL_SYMBOLS.language size={18} />
             </button>
             {languageMenuOpen && (
-              <div className="language-dropdown rise-in" id="language-dropdown" role="menu" aria-label={t("language")}>
+              <div
+                className="language-dropdown rise-in"
+                id="language-dropdown"
+                role="menu"
+                aria-label={t("language")}
+                onKeyDown={handleLanguageMenuKeyDown}
+              >
                 <button
                   type="button"
                   role="menuitemradio"
