@@ -93,6 +93,8 @@ function App() {
   const [colorsOpen, setColorsOpen] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const projectMenuOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const colorDrawerOpenerRef = useRef<HTMLElement | null>(null);
+  const colorDrawerRef = useRef<HTMLElement | null>(null);
   const partsDrawerOpenerRef = useRef<HTMLElement | null>(null);
   const partsDrawerRef = useRef<HTMLElement | null>(null);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
@@ -387,9 +389,20 @@ function App() {
     })),
   ] : [{ name: resolveColor(editor.selectedColorCode ?? "")?.name ?? t("color.custom"),
     value: editor.selectedColor, ldrawCode: editor.selectedColorCode ?? "" }];
+  const closeColorDrawer = () => {
+    setColorsOpen(false);
+    colorDrawerOpenerRef.current?.focus();
+  };
+  const openColorDrawer = (opener: HTMLElement) => {
+    colorDrawerOpenerRef.current = opener;
+    setColorsOpen(true);
+  };
   const colorPicker = (mobile = false) => <EvidencedColorPicker palette={COLORS} current={currentColors}
     references={colorReferences} locked={false} mobile={mobile}
-    onChange={color => { editor.setSelectedColor(color.value, color.ldrawCode, rotationTargetIds); if (mobile) setColorsOpen(false); }} />;
+    onChange={color => {
+      editor.setSelectedColor(color.value, color.ldrawCode, rotationTargetIds);
+      if (mobile) closeColorDrawer();
+    }} />;
   const activeInventoryRow = editor.selectedInventory && editor.document.inventory?.id === editor.selectedInventory.listId
     ? editor.document.inventory.rows.find(row => row.id === editor.selectedInventory!.rowId) : undefined;
   useEffect(() => {
@@ -446,11 +459,19 @@ function App() {
         setPartsOpen(false);
         partsDrawerOpenerRef.current?.focus();
       }
-      setColorsOpen(false);
+      if (colorsOpen) closeColorDrawer();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [partsOpen, colorsOpen]);
+
+  useLayoutEffect(() => {
+    if (!colorsOpen) return;
+    const drawer = colorDrawerRef.current;
+    const search = drawer?.querySelector<HTMLElement>('input[type="search"]');
+    const closeButton = drawer?.querySelector<HTMLElement>('.drawer-heading .icon-button');
+    (search ?? closeButton)?.focus();
+  }, [colorsOpen]);
 
   useLayoutEffect(() => {
     if (!partsOpen) return;
@@ -861,7 +882,7 @@ function App() {
             <div className="color-heading"><span>{t("editor.color")}</span><span className="color-name">{selectedColor.name}</span></div>
             {colorPicker()}
             {rotationTargetIds.length > 1 && editor.toolMode !== "view" && <button type="button" className="selection-action"
-              onClick={() => setColorsOpen(true)}>{t("editor.moreColors")}</button>}
+              onClick={event => openColorDrawer(event.currentTarget)}>{t("editor.moreColors")}</button>}
           </div>
 
           <div className="rail-section selection-section">
@@ -932,7 +953,7 @@ function App() {
         <button
           type="button"
           className="dock-color"
-          onClick={() => setColorsOpen(true)}
+          onClick={event => openColorDrawer(event.currentTarget)}
           aria-label={t("editor.partColor")}
           data-testid="mobile-button-colors"
         >
@@ -944,12 +965,16 @@ function App() {
       </nav>
 
       {colorsOpen && (
-        <div className="drawer-scrim color-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setColorsOpen(false); }}>
-          <section className="color-drawer rise-in" role="dialog" aria-modal="true" aria-labelledby="colors-title" data-testid="drawer-colors">
+        <div className="drawer-scrim color-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) closeColorDrawer(); }}>
+          <section className="color-drawer rise-in" ref={colorDrawerRef} onFocusCapture={event => {
+            if (event.target instanceof HTMLElement) {
+              event.target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+            }
+          }} role="dialog" aria-modal="true" aria-labelledby="colors-title" data-testid="drawer-colors">
             <div className="drawer-handle" />
             <div className="drawer-heading">
               <div><p className="popover-eyebrow">{t("editor.sectionColor")}</p><h2 id="colors-title">{t("color.title")}</h2></div>
-              <button type="button" className="icon-button" onClick={() => setColorsOpen(false)} aria-label={t("color.close")} data-testid="button-close-colors"><X size={18} /></button>
+              <button type="button" className="icon-button" onClick={closeColorDrawer} aria-label={t("color.close")} data-testid="button-close-colors"><X size={18} /></button>
             </div>
             {rotationTargetIds.length > 1 && <p className="color-evidence-status" data-testid="text-color-selection-count">
               {t("color.multiSelectionHint", { count: rotationTargetIds.length })}

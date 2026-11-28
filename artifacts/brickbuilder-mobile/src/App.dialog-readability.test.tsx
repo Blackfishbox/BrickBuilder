@@ -51,8 +51,11 @@ vi.mock("@/features/parts/PartsLibrary", () => ({
   </div>,
 }));
 vi.mock("@/features/catalog/EvidencedColorPicker", () => ({
-  default: (props: { onChange?: (color: { value: string; ldrawCode: string }) => void }) =>
-    <button type="button" data-testid="mock-color-picker" onClick={() => props.onChange?.({ value: "#112233", ldrawCode: "1" })}>Farbauswahl</button>,
+  default: (props: { mobile?: boolean; onChange?: (color: { value: string; ldrawCode: string }) => void }) => <>
+    {props.mobile && <input type="search" data-testid="color-search" aria-label="Search colors" />}
+    <button type="button" data-testid={props.mobile ? "mobile-color-option" : "mock-color-picker"}
+      onClick={() => props.onChange?.({ value: "#112233", ldrawCode: "1" })}>Farbauswahl</button>
+  </>,
 }));
 vi.mock("@/features/inventory/InventoryThumbnail", () => ({ default: () => <div aria-hidden="true" /> }));
 vi.mock("@/storage/management", () => ({
@@ -437,6 +440,44 @@ it("keeps keyboard focus visible in the parts drawer and restores its opener on 
   });
 
   expect(container.querySelector('[data-testid="drawer-parts"]')).toBeNull();
+  expect(documentRef.activeElement).toBe(opener);
+});
+
+it("focuses the color search and restores its opener after Escape", async () => {
+  const container = await mount("light", false, "en", { viewport: { width: 320, height: 280 } });
+  const opener = container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-colors"]')!;
+  opener.focus();
+  await act(async () => opener.click());
+
+  const drawer = container.querySelector<HTMLElement>('[data-testid="drawer-colors"]')!;
+  const search = drawer.querySelector<HTMLInputElement>('[data-testid="color-search"]')!;
+  const colorOption = drawer.querySelector<HTMLButtonElement>('[data-testid="mobile-color-option"]')!;
+  const scrollIntoView = vi.fn();
+  colorOption.scrollIntoView = scrollIntoView;
+
+  expect(documentRef.activeElement).toBe(search);
+  colorOption.focus();
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+  expect(editorCss).toMatch(/\.color-drawer\s*\{[^}]*overflow-y:\s*auto/);
+  expect(editorCss).toMatch(/\.color-drawer :is\([^}]*\):focus\s*\{[^}]*scroll-margin-block:\s*12px/);
+
+  await act(async () => {
+    colorOption.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  expect(container.querySelector('[data-testid="drawer-colors"]')).toBeNull();
+  expect(documentRef.activeElement).toBe(opener);
+});
+
+it("returns focus to the color drawer opener after choosing a color", async () => {
+  const container = await mount("light", false, "en");
+  const opener = container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-colors"]')!;
+  await act(async () => opener.click());
+  const choice = container.querySelector<HTMLButtonElement>('[data-testid="mobile-color-option"]')!;
+
+  await act(async () => choice.click());
+
+  expect(container.querySelector('[data-testid="drawer-colors"]')).toBeNull();
   expect(documentRef.activeElement).toBe(opener);
 });
 
@@ -1041,7 +1082,7 @@ it("keeps multi-selection checkboxes in sync with viewport selection and applies
   expect(container.querySelector<HTMLInputElement>('[data-testid="group-selection-item-selected-brick"] input')!.checked).toBe(true);
 
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-colors"]')!.click());
-  const colorButton = documentRef.body.querySelector<HTMLButtonElement>('[data-testid="drawer-colors"] [data-testid="mock-color-picker"]')!;
+  const colorButton = documentRef.body.querySelector<HTMLButtonElement>('[data-testid="drawer-colors"] [data-testid="mobile-color-option"]')!;
   await act(async () => colorButton.click());
   expect(editor.setSelectedColor).toHaveBeenCalledWith("#112233", "1", ["selected-brick", "second-brick"]);
 });

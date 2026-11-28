@@ -360,7 +360,8 @@
 .color-family-filters.mobile button { min-height: 32px; padding-inline: 10px; }
 .drawer-scrim,.modal-scrim { position: fixed; inset: 0; z-index: 70; display: flex; justify-content: center; align-items: flex-end; background: rgba(28,42,36,.35); backdrop-filter: blur(3px); }
 .parts-drawer { width: min(100%, 520px); max-height: min(86dvh, 720px); overflow: auto; padding: 9px 22px max(20px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #faf8f0; box-shadow: 0 -10px 45px rgba(27,48,39,.18); }
-.parts-drawer :is(button, input, select, textarea, [tabindex]):focus { scroll-margin-block: 12px; }
+.parts-drawer :is(button, input, select, textarea, [tabindex]):focus,
+.color-drawer :is(button, input, select, textarea, [tabindex]):focus { scroll-margin-block: 12px; }
 .drawer-handle { width: 37px; height: 4px; border-radius: 8px; margin: 0 auto 21px; background: #d1d2c6; }
 .drawer-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .drawer-heading h2 { margin: 0; color: #2d443a; font-size: 23px; letter-spacing: -1px; }
