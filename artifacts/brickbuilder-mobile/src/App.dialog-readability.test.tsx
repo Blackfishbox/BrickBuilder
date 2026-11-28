@@ -263,6 +263,46 @@ it.each([
   expect(savedProjectText["white-space"]).toBe("nowrap");
 });
 
+it("keeps an empty project-name draft while editing and saves the replacement on blur", async () => {
+  const container = await mount("light");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
+  const input = container.querySelector<HTMLInputElement>('[data-testid="input-project-name"]')!;
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+
+  await act(async () => input.focus());
+  await act(async () => {
+    valueSetter.call(input, "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(input.value).toBe("");
+  expect(editor.setProjectName).not.toHaveBeenCalled();
+
+  await act(async () => {
+    valueSetter.call(input, "Neuer Entwurf");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.blur();
+  });
+  expect(editor.setProjectName).toHaveBeenCalledWith("Neuer Entwurf");
+});
+
+it("does not accept a blank project name when editing ends", async () => {
+  const container = await mount("light");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
+  const input = container.querySelector<HTMLInputElement>('[data-testid="input-project-name"]')!;
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+
+  await act(async () => input.focus());
+  await act(async () => {
+    valueSetter.call(input, "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(input.value).toBe("");
+
+  await act(async () => input.blur());
+  expect(editor.setProjectName).not.toHaveBeenCalled();
+  expect(input.value).toBe("Mobile-Dialoge");
+});
+
 it("keeps keyboard focus visible through the project menu at 200% text size on a short mobile screen", async () => {
   const container = await mount("light", false, "en", {
     viewport: { width: 320, height: 280 },

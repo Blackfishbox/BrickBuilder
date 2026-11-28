@@ -83,6 +83,8 @@ function App() {
   const editor = useBuilder();
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const displayedProjectName = isGeneratedProjectName(editor.projectName) ? t("project.new") : editor.projectName;
+  const [projectNameDraft, setProjectNameDraft] = useState(editor.projectName);
+  const [projectNameEditing, setProjectNameEditing] = useState(false);
   const [themePreference, setThemePreference] = useState<ColorThemePreference>(readColorTheme);
   const [systemTheme, setSystemTheme] = useState<ColorTheme>(readSystemColorTheme);
   const theme = themePreference === "system" ? systemTheme : themePreference;
@@ -512,8 +514,22 @@ function App() {
               <input
                 id="project-name"
                 className="project-name-input"
-                value={displayedProjectName}
-                onChange={(event) => editor.setProjectName(event.target.value)}
+                value={projectNameEditing ? projectNameDraft : displayedProjectName}
+                onFocus={() => {
+                  setProjectNameDraft(editor.projectName);
+                  setProjectNameEditing(true);
+                }}
+                onChange={(event) => setProjectNameDraft(event.target.value)}
+                onBlur={(event) => {
+                  const name = event.currentTarget.value.trim();
+                  setProjectNameEditing(false);
+                  if (name) {
+                    setProjectNameDraft(name);
+                    editor.setProjectName(name);
+                  } else {
+                    setProjectNameDraft(editor.projectName);
+                  }
+                }}
                 maxLength={48}
                 data-testid="input-project-name"
               />
