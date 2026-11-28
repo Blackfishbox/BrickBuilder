@@ -60,6 +60,7 @@ import type { Affine, ImportedModel } from "../formats/types";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
 import { appearanceCode, type PreparedPart } from "../editor/ldraw-editing";
 import { resolveColor } from "../formats/colors";
+import type { EdgeMode } from "./edge-mode";
 import {
   setWideLineResolution, THICK_EDGE_WIDTH_PX, NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX,
   deriveLineNormals,
@@ -90,8 +91,8 @@ interface BuilderCanvasProps {
   showConstructionControls?: boolean;
   emptyDoubleTapZoomEnabled?: boolean;
   darkMode?: boolean;
-  /** Screen-space edge stroke; false preserves the original one-pixel view. */
-  thickEdges?: boolean;
+  /** Cycled edge treatment in the interactive 3D viewport. */
+  edgeMode?: EdgeMode;
   /** Presentation only: never changes project part transforms. */
   viewRotation?: readonly [number, number, number];
   viewCamera?: InstructionCamera;
@@ -202,7 +203,7 @@ export class FallbackRenderer {
     darkMode = false,
     placementGeometry?: PlacementPreviewGeometry | null,
     placementBrick?: Brick | null,
-    thickEdges = false,
+    edgeMode = "off",
     selectedIds?: readonly string[],
   ): void {
     const context = this.context;
@@ -344,7 +345,7 @@ export class FallbackRenderer {
           if (first.depth < 0.1 || second.depth < 0.1) continue;
           normal.fromArray(normals, index).transformDirection(transform);
           const shade = (ambient + direct * Math.abs(normal.dot(light))) *
-            (thickEdges ? 1 : NORMAL_EDGE_CONTRAST);
+            (edgeMode === "thick" ? 1 : NORMAL_EDGE_CONTRAST);
           const base = new Color(colorForSegment(index / 6));
           if (focused !== undefined) instructionDisplayColor(base, focused);
           const color = base.multiplyScalar(shade).getStyle();
@@ -359,7 +360,7 @@ export class FallbackRenderer {
           }
           context.strokeStyle = color;
           context.stroke();
-          if (thickEdges) {
+          if (edgeMode === "thick") {
             const previousWidth = context.lineWidth;
             context.lineWidth = NORMAL_EDGE_WIDTH_PX;
             context.strokeStyle = "#000000";
@@ -368,8 +369,8 @@ export class FallbackRenderer {
           }
         }
       };
-    context.lineWidth = thickEdges ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX;
-    if (imported) {
+    context.lineWidth = edgeMode === "thick" ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX;
+    if (edgeMode !== "off" && imported) {
       const light = new Vector3(-0.4, 0.8, 0.5).normalize();
       for (const record of imported.edgeRecords) {
         if (remainingEdgeSegments <= 0) break;
@@ -385,7 +386,7 @@ export class FallbackRenderer {
         }
       }
     }
-    if (placementGeometry) {
+    if (edgeMode !== "off" && placementGeometry) {
       const transform = worldMatrix(placementGeometry.matrix);
       const light = new Vector3(0.4, 0.8, 0.5).normalize();
       for (const surface of placementGeometry.surfaces) {
@@ -442,7 +443,7 @@ export class FallbackRenderer {
       }
       context.globalAlpha = 1;
 
-      if (remainingEdgeSegments > 0) {
+      if (edgeMode !== "off" && remainingEdgeSegments > 0) {
         const edges = localBrickEdges(brick.type);
         drawSegments(
           edges, transform, 0, localBrickEdgeNormals(brick.type),
@@ -567,7 +568,7 @@ export function BuilderCanvas({
   selectedColor,
   selectedColorCode,
   placementPreview,
-  thickEdges = false,
+  edgeMode = "off",
   toolMode,
   onPlace,
   onSelect,
@@ -768,7 +769,7 @@ export function BuilderCanvas({
     selectedColor,
     selectedColorCode,
     placementPreview,
-    thickEdges,
+    edgeMode,
     toolMode,
     onPlace,
     onSelect,
@@ -886,7 +887,7 @@ export function BuilderCanvas({
     selectedColor,
     selectedColorCode,
     placementPreview,
-    thickEdges,
+    edgeMode,
     toolMode,
     onPlace,
     onSelect,
@@ -1071,17 +1072,18 @@ export function BuilderCanvas({
           scene.traverse(object => {
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
-            const enabled = propsRef.current.thickEdges;
+            const mode = propsRef.current.edgeMode;
+            const thick = mode === "thick";
             if (object.userData.legacyEdges && profile === "legacy") {
-              object.material.uniforms.lineWidth.value = enabled ? 18 : 1;
-              object.material.uniforms.edgeOpacity.value = enabled ? 1 : 0.25;
-              object.material.uniforms.edgeColor.value.set(propsRef.current.darkMode ? "#ffffff" : "#000000");
-              object.visible = enabled || (!interactive && !object.name.startsWith("brick-edges-"));
+              object.material.uniforms.lineWidth.value = thick ? 18 : NORMAL_EDGE_WIDTH_PX;
+              object.material.uniforms.edgeOpacity.value = 1;
+              object.material.uniforms.edgeColor.value.set("#000000");
+              object.visible = mode !== "off" && (!interactive || thick);
             } else if (!object.userData.legacyEdges && profile === "standard") {
-              object.material.uniforms.lineWidth.value = enabled ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX * ratio;
-              object.material.uniforms.edgeContrast.value = enabled ? 1 : NORMAL_EDGE_CONTRAST;
-              object.material.uniforms.blackLineWidth.value = enabled ? NORMAL_EDGE_WIDTH_PX * ratio : 0;
-              object.visible = true;
+              object.material.uniforms.lineWidth.value = thick ? THICK_EDGE_WIDTH_PX : NORMAL_EDGE_WIDTH_PX * ratio;
+              object.material.uniforms.edgeContrast.value = thick ? 1 : NORMAL_EDGE_CONTRAST;
+              object.material.uniforms.blackLineWidth.value = thick ? NORMAL_EDGE_WIDTH_PX * ratio : 0;
+              object.visible = mode !== "off";
             } else {
               object.visible = false; // A renderer swap can precede rebuilding local draw batches.
             }
@@ -1103,7 +1105,7 @@ export function BuilderCanvas({
             propsRef.current.darkMode,
             placementPreviewGeometryRef.current,
             placementPreviewBrickRef.current,
-            propsRef.current.thickEdges,
+            propsRef.current.edgeMode,
             propsRef.current.selectedIds,
           );
         }
@@ -1262,7 +1264,7 @@ export function BuilderCanvas({
     placementContextRef.current = { projectId, preview: placementPreview };
   }, [projectId, placementPreview]);
 
-  useEffect(() => { invalidatorRef.current?.(); }, [thickEdges]);
+  useEffect(() => { invalidatorRef.current?.(); }, [edgeMode]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -2403,7 +2405,7 @@ export function BuilderCanvas({
     ? t("canvas.compatibilityLarge")
     : null;
   const edgeStyle = importedRootRef.current && importedSceneDetail(importedRootRef.current).edges;
-  const edgeDetailHint = thickEdges && (edgeStyle === "thin" || edgeStyle === "none")
+  const edgeDetailHint = edgeMode === "thick" && (edgeStyle === "thin" || edgeStyle === "none")
     ? t("canvas.reducedEdges")
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>

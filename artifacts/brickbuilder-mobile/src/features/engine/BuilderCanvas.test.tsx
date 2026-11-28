@@ -168,7 +168,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); element.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it.each([false, true])("tries historical WebGL before software and rebuilds it (thick edges: %s)", async (thickEdges) => {
+it.each(["thin", "thick"] as const)("tries historical WebGL before software and rebuilds it (%s edges)", async (edgeMode) => {
   observed.webglEnabled = true;
   const model = engineFixture(1, 3);
   const props = { projectId: "graphics-recovery", bricks: [], imported: model, selectedId: null,
@@ -182,12 +182,12 @@ it.each([false, true])("tries historical WebGL before software and rebuilds it (
     });
     flushFrame();
   };
-  act(() => root.render(<BuilderCanvas {...props} thickEdges={!thickEdges} />));
+  act(() => root.render(<BuilderCanvas {...props} edgeMode="off" />));
   await waitForModel();
-  act(() => root.render(<BuilderCanvas {...props} thickEdges={thickEdges} />));
+  act(() => root.render(<BuilderCanvas {...props} edgeMode={edgeMode} />));
   flushFrame();
   expect((edges() as Mesh<never, ShaderMaterial>).material.uniforms.edgeContrast.value)
-    .toBe(thickEdges ? 1 : NORMAL_EDGE_CONTRAST);
+    .toBe(edgeMode === "thick" ? 1 : NORMAL_EDGE_CONTRAST);
   const initialCamera = observed.cameraPose;
   const first = gpuCanvas();
   act(() => { first.dispatchEvent(new Event("webglcontextlost", { cancelable: true })); });
@@ -199,7 +199,8 @@ it.each([false, true])("tries historical WebGL before software and rebuilds it (
   expect(observed.cameraPose).toEqual(initialCamera);
   expect(second.dataset.webglProfile).toBe("legacy");
   expect(edges()?.userData.legacyEdges).toBe(true);
-  expect((edges() as Mesh<never, ShaderMaterial>).material.uniforms.lineWidth.value).toBe(thickEdges ? 18 : 1);
+  expect((edges() as Mesh<never, ShaderMaterial>).material.uniforms.lineWidth.value)
+    .toBe(edgeMode === "thick" ? 18 : NORMAL_EDGE_WIDTH_PX);
   expect(vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.filter(([kind]) => kind === "webgl2").at(-1))
     .toEqual(["webgl2", expect.objectContaining({ antialias: false })]);
 
@@ -539,7 +540,7 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   const brick: Brick = { id: "local-edge", type: "brick-2x2", color: "#B40000", x: 3, y: 0, z: 0, rotation: 0 };
   const props = { projectId: "thick-edges", bricks: [brick], imported, selectedId: null,
     selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "view" as const,
-    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), thickEdges: false };
+    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), edgeMode: "off" as const };
   await act(async () => root.render(<BuilderCanvas {...props} />));
   await act(async () => {
     await vi.waitFor(() => {
@@ -574,11 +575,20 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   expect([...importedEdge.geometry.getAttribute("edgeUseInstanceColor").array]).toContain(1);
   expect([...importedEdge.geometry.getAttribute("edgeUseInstanceColor").array]).toContain(0);
   const originalEdgeColor = [...importedEdge.geometry.getAttribute("instanceEdgeColor").array];
+  expect(localEdge.visible).toBe(false);
+  expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
+  expect(edgeMaterial.uniforms.blackLineWidth.value).toBe(0);
+  expect(importedEdge.visible).toBe(false);
+
+  await act(async () => root.render(<BuilderCanvas {...props} edgeMode="thin" />));
+  flushFrame();
+  expect(importedEdge.visible).toBe(true);
   expect(localEdge.visible).toBe(true);
+  expect(edgeMaterial.uniforms.lineWidth.value).toBe(NORMAL_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
   expect(edgeMaterial.uniforms.blackLineWidth.value).toBe(0);
 
-  await act(async () => root.render(<BuilderCanvas {...props} thickEdges />));
+  await act(async () => root.render(<BuilderCanvas {...props} edgeMode="thick" />));
   flushFrame();
   expect(THICK_EDGE_WIDTH_PX).toBe(5.5);
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(THICK_EDGE_WIDTH_PX);
@@ -603,16 +613,17 @@ it("toggles screen-space edge width without rebuilding imported or local model g
   moved[3] += 40;
   instanceIndex(modelRoot)!.preview(imported.instances[0].id, moved);
   expect(transformRows.array[3]).not.toBe(beforeMove);
-  await act(async () => root.render(<BuilderCanvas {...props} thickEdges darkMode />));
+  await act(async () => root.render(<BuilderCanvas {...props} edgeMode="thick" darkMode />));
   flushFrame();
   expect([...importedEdge.geometry.getAttribute("instanceEdgeColor").array]).toEqual(originalEdgeColor);
 
-  await act(async () => root.render(<BuilderCanvas {...props} />));
+  await act(async () => root.render(<BuilderCanvas {...props} edgeMode="off" />));
   flushFrame();
   expect(edgeMaterial.uniforms.lineWidth.value).toBe(NORMAL_EDGE_WIDTH_PX);
   expect(edgeMaterial.uniforms.edgeContrast.value).toBe(NORMAL_EDGE_CONTRAST);
   expect(edgeMaterial.uniforms.blackLineWidth.value).toBe(0);
-  expect(localEdge.visible).toBe(true);
+  expect(localEdge.visible).toBe(false);
+  expect(importedEdge.visible).toBe(false);
 });
 
 it("draws the enabled thick edges on the current local brick preview", async () => {
@@ -620,7 +631,7 @@ it("draws the enabled thick edges on the current local brick preview", async () 
   const props = {
     projectId: "thick-edge-preview", bricks: [], imported: undefined, selectedId: null,
     selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "build" as const,
-    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), thickEdges: true,
+    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn(), edgeMode: "thick" as const,
   };
   await act(async () => root.render(<BuilderCanvas {...props} />));
   flushFrame();
@@ -660,7 +671,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   camera.position.set(10, 10, 10);
   camera.lookAt(0, 0, 0);
   renderer.render(camera, new Vector3(), [local], null, software, 0, false, undefined,
-    constructionArea(new Box3()), false, null, null, true);
+    constructionArea(new Box3()), false, null, null, "thick");
   expect(observedLineWidths).toContain(THICK_EDGE_WIDTH_PX);
   expect(observedStrokes.some(stroke => stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "#000000")).toBe(true);
   expect(observedStrokes.some(stroke =>
@@ -670,7 +681,7 @@ it("draws bounded thicker source edges in the compatibility renderer", async () 
   expect(software.records.size).toBe(1);
 });
 
-it("draws thin black standard edges without changing opaque part faces", () => {
+it("draws thin black edges only when the thin edge mode is selected", () => {
   const local: Brick = { id: "black-edge-local", type: "brick-2x2", color: "#B40000", x: 0, y: 0, z: 0, rotation: 0 };
   const renderer = new FallbackRenderer();
   renderer.setSize(600, 600);
@@ -678,8 +689,16 @@ it("draws thin black standard edges without changing opaque part faces", () => {
   camera.position.set(10, 10, 10);
   camera.lookAt(0, 0, 0);
   renderer.render(camera, new Vector3(), [local], null);
+  const blackEdgesWhenOff = observedStrokes.filter(stroke =>
+    stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "rgb(0,0,0)",
+  ).length;
+  expect(blackEdgesWhenOff).toBe(0);
+  renderer.render(camera, new Vector3(), [local], null, undefined, 0, false, undefined,
+    constructionArea(new Box3()), false, null, null, "thin");
   expect(NORMAL_EDGE_CONTRAST).toBe(0);
-  expect(observedStrokes.some(stroke => stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "rgb(0,0,0)")).toBe(true);
+  expect(observedStrokes.filter(stroke =>
+    stroke.width === NORMAL_EDGE_WIDTH_PX && stroke.color === "rgb(0,0,0)",
+  ).length).toBeGreaterThan(blackEdgesWhenOff);
   expect(observedPaints.some(paint => paint.globalAlpha === 1 && paint.fillStyle !== "rgb(0,0,0)")).toBe(true);
 });
 

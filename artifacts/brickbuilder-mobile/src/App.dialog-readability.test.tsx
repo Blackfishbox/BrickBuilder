@@ -214,20 +214,38 @@ it("shows every mode's gesture help in German", async () => {
   expect(editorCss).toContain(".dark .gesture-guide-dialog");
 });
 
-it("shows the thicker-edge control and persists its toggled preference", async () => {
-  localStorage.setItem("brickbuilder-thick-edges", "false");
+it("cycles the edge control through off, thin, and thick, then persists off", async () => {
+  localStorage.removeItem("brickbuilder-thick-edges");
   const container = await mount("light");
   const toggle = container.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')!;
   expect(toggle).not.toBeNull();
   expect(toggle.hidden).toBe(false);
   expect(toggle.textContent).toContain("Kanten");
+  expect(toggle.dataset.edgeMode).toBe("off");
   expect(toggle.getAttribute("aria-pressed")).toBe("false");
-  expect(canvasProps.current.thickEdges).toBe(false);
+  expect(toggle.getAttribute("aria-label")).toBe("Kanten aus");
+  expect(canvasProps.current.edgeMode).toBe("off");
 
   act(() => toggle.click());
+  expect(toggle.dataset.edgeMode).toBe("thin");
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
-  expect(canvasProps.current.thickEdges).toBe(true);
-  expect(localStorage.getItem("brickbuilder-thick-edges")).toBe("true");
+  expect(toggle.textContent).toContain("Kanten");
+  expect(toggle.getAttribute("aria-label")).toBe("Dünne Kanten");
+  expect(canvasProps.current.edgeMode).toBe("thin");
+  expect(localStorage.getItem("brickbuilder-thick-edges")).toBe("thin");
+
+  act(() => toggle.click());
+  expect(toggle.dataset.edgeMode).toBe("thick");
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  expect(toggle.getAttribute("aria-label")).toBe("Dicke Kanten");
+  expect(canvasProps.current.edgeMode).toBe("thick");
+  expect(localStorage.getItem("brickbuilder-thick-edges")).toBe("thick");
+
+  act(() => toggle.click());
+  expect(toggle.dataset.edgeMode).toBe("off");
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  expect(canvasProps.current.edgeMode).toBe("off");
+  expect(localStorage.getItem("brickbuilder-thick-edges")).toBe("off");
 
   act(() => root!.unmount());
   root = undefined;
@@ -235,7 +253,7 @@ it("shows the thicker-edge control and persists its toggled preference", async (
   host = undefined;
   const reopened = await mount("dark");
   expect(reopened.querySelector<HTMLButtonElement>('[data-testid="button-thick-edges"]')?.hidden).toBe(false);
-  expect(canvasProps.current.thickEdges).toBe(true);
+  expect(canvasProps.current.edgeMode).toBe("off");
 });
 
 it("opens the existing rotation controls when the canvas reports a part double tap", async () => {

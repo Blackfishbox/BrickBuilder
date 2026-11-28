@@ -65,6 +65,7 @@ import { sharePreparedExport } from '@/platform/export-file';
 import { watchForOpenedIOFiles } from '@/platform/io-file-open';
 import PremiumDialog from '@/features/premium/PremiumDialog';
 import { usePremium } from '@/features/premium/usePremium';
+import { nextEdgeMode, readEdgeModePreference, type EdgeMode } from '@/features/engine/edge-mode';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -77,9 +78,9 @@ const BuilderCanvas = lazy(() => import('@/features/engine/BuilderCanvas'));
 const InstructionsPanel = lazy(() => import('@/features/instructions/InstructionsPanel'));
 const THICK_EDGES_STORAGE_KEY = "brickbuilder-thick-edges";
 
-function readThickEdgesPreference(): boolean {
-  try { return window.localStorage.getItem(THICK_EDGES_STORAGE_KEY) === "true"; }
-  catch { return false; }
+function readEdgesPreference(): EdgeMode {
+  try { return readEdgeModePreference(window.localStorage.getItem(THICK_EDGES_STORAGE_KEY)); }
+  catch { return "off"; }
 }
 
 function App() {
@@ -92,7 +93,7 @@ function App() {
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const displayedProjectName = isGeneratedProjectName(editor.projectName) ? t("project.new") : editor.projectName;
   const [theme, setTheme] = useState<ColorTheme>(readColorTheme);
-  const [thickEdges, setThickEdges] = useState(readThickEdgesPreference);
+  const [edgeMode, setEdgeMode] = useState(readEdgesPreference);
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
@@ -555,14 +556,15 @@ function App() {
               <span className="brick-count" data-testid="text-brick-count">{t(editor.brickCount === 1 ? "canvas.partCount.one" : "canvas.partCount", { count: editor.brickCount })}</span>
             </div>
             <button type="button" className="thick-edges-toggle"
-              aria-pressed={thickEdges}
-              aria-label={t("canvas.thickEdges")}
-              title={t("canvas.thickEdges")}
+              aria-pressed={edgeMode !== "off"}
+              aria-label={t(`canvas.edges.${edgeMode}`)}
+              title={t(`canvas.edges.${edgeMode}`)}
+              data-edge-mode={edgeMode}
               data-testid="button-thick-edges"
               onClick={() => {
-                const next = !thickEdges;
-                setThickEdges(next);
-                try { window.localStorage.setItem(THICK_EDGES_STORAGE_KEY, String(next)); } catch { /* Keep the session preference if storage is unavailable. */ }
+                const next = nextEdgeMode(edgeMode);
+                setEdgeMode(next);
+                try { window.localStorage.setItem(THICK_EDGES_STORAGE_KEY, next); } catch { /* Keep the session preference if storage is unavailable. */ }
               }}>
               <span className="thick-edges-sample" aria-hidden="true" />
               <span className="thick-edges-label">{t("canvas.thickEdges")}</span>
@@ -586,7 +588,7 @@ function App() {
                   !finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}
                 darkMode={theme === 'dark'}
-                thickEdges={thickEdges}
+                edgeMode={edgeMode}
                 bricks={editor.bricks}
                 imported={editor.imported}
                 selectedId={editor.selectedId}
