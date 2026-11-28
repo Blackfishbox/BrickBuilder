@@ -622,6 +622,7 @@ export function BuilderCanvas({
     pendingTapActionRef.current = null;
   }, [projectId]);
   useEffect(() => {
+    previousEmptyTapRef.current = null;
     if (pendingTapActionRef.current) {
       window.clearTimeout(pendingTapActionRef.current.timer);
       pendingTapActionRef.current = null;

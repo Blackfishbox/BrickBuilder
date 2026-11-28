@@ -2228,6 +2228,37 @@ describe("frame-coalesced drag transactions", () => {
     const distance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
     expect(distance).toBeCloseTo(initialDistance, 2);
   });
+  it("does not use a build-mode empty tap to zoom after switching to select mode", async () => {
+    const { props } = await mount("build");
+    flushFrame();
+    const initialDistance = observed.cameraPose!.distance;
+    const empty = { x: 8, y: 8 };
+
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    act(() => root.render(<BuilderCanvas {...props} toolMode="select" />));
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    flushFrame();
+
+    expect(observed.cameraPose!.distance).toBeCloseTo(initialDistance, 2);
+    expect(props.onPlace).not.toHaveBeenCalled();
+  });
+  it("treats an empty tap after a mode change as a single build tap", async () => {
+    const { props } = await mount("view");
+    const empty = { x: 8, y: 8 };
+
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    act(() => root.render(<BuilderCanvas {...props} toolMode="build" />));
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+
+    expect(props.onPlace).not.toHaveBeenCalled();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
+    expect(props.onPlace).toHaveBeenCalledOnce();
+    expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true, floorSnap: true });
+  });
   it("keeps Build mode by default after double-tap placement", async () => {
     expectGestureGuideLine("gesture.build.doubleTap.title");
     const { props } = await mount("build");
