@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PerspectiveCamera, Vector3 } from "three";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
-import { CAMERA_GESTURE_GUIDE, GESTURE_GUIDE_SECTIONS } from "./gesture-guide";
+import { CAMERA_GESTURE_GUIDE, GESTURE_GUIDE_SECTIONS, HELP_BUTTON_SECTIONS } from "./gesture-guide";
+import { CONTROL_SYMBOLS } from "./control-symbols";
 import { catalogs, type Locale } from "@/i18n/messages";
 
 const points = [{ x: 100, y: 150 }, { x: 300, y: 150 }] as const;
@@ -11,6 +12,23 @@ function baseline(theta = 0.72, phi = 0.93, distance = 17): GestureStart {
   return { points, camera: { theta, phi, distance, target: new Vector3(1, 2, 3) } };
 }
 const viewport = { width: 400, height: 800, fov: 42 };
+
+describe("camera fitting help", () => {
+  it("documents the fit-model control with its actual icon and label in both locales", () => {
+    const workspace = HELP_BUTTON_SECTIONS.find(section => section.title === "help.section.workspace")!;
+    const fitButton = workspace.buttons.find(button => button.title === "canvas.fitModel");
+
+    expect(fitButton).toEqual({
+      icon: CONTROL_SYMBOLS.fitModel,
+      title: "canvas.fitModel",
+      description: "help.button.fitModel.description",
+    });
+    expect(catalogs.en["canvas.fitModel"]).toBe("Fit model in view");
+    expect(catalogs.en["help.button.fitModel.description"]).toContain("whole model");
+    expect(catalogs.de["canvas.fitModel"]).toBe("Modell einpassen");
+    expect(catalogs.de["help.button.fitModel.description"]).toContain("gesamte Modell");
+  });
+});
 
 describe("camera gesture help contract", () => {
   it("lists the pan, pinch, and twist actions that the camera supports", () => {

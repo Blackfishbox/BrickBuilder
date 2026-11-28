@@ -57,6 +57,7 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
   {
     title: "help.section.workspace",
     buttons: [
+      { icon: CONTROL_SYMBOLS.fitModel, title: "canvas.fitModel", description: "help.button.fitModel.description" },
       { icon: CONTROL_SYMBOLS.edges, title: "canvas.thickEdges", description: "help.button.edges.description" },
       { icon: CONTROL_SYMBOLS.undo, title: "history.undo", description: "help.button.undo.description" },
       { icon: CONTROL_SYMBOLS.redo, title: "history.redo", description: "help.button.redo.description" },
