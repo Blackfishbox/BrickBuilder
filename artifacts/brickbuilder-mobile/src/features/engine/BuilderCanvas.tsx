@@ -1783,6 +1783,7 @@ export function BuilderCanvas({
       const requestedDistance = state.distance * Math.exp(Math.max(-1200, Math.min(1200, delta)) * 0.001);
       const maxDistance = Math.max(1500, camera.far / 2);
       const nextDistance = Math.max(3, Math.min(maxDistance, requestedDistance));
+      if (nextDistance === state.distance) return;
       const nextTarget = anchor
         ? state.target.clone().addScaledVector(anchor.sub(state.target), 1 - nextDistance / state.distance)
         : state.target.clone();

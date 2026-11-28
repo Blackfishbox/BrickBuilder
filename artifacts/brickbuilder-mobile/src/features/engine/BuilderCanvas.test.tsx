@@ -2092,6 +2092,48 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.cameraPose!.distance).toBeGreaterThan(zoomedDistance);
     expectGestureGuideLine("gesture.mouse.wheel.title");
   });
+  it("keeps the camera target stable and finite when repeated wheel input reaches either distance limit", async () => {
+    await mount("view");
+    const camera = observed.camera!;
+    const expectFiniteCamera = () => {
+      camera.updateMatrixWorld(true);
+      expect(observed.cameraPose!.target.every(Number.isFinite)).toBe(true);
+      expect(camera.position.toArray().every(Number.isFinite)).toBe(true);
+      expect(camera.getWorldDirection(new Vector3()).toArray().every(Number.isFinite)).toBe(true);
+      expect(camera.matrixWorld.elements.every(Number.isFinite)).toBe(true);
+    };
+
+    for (let index = 0; index < 20 && observed.cameraPose!.distance > 3; index++) {
+      wheel(-1200);
+      flushFrame();
+    }
+    expect(observed.cameraPose!.distance).toBeCloseTo(3, 8);
+    expectFiniteCamera();
+    const minimumTarget = [...observed.cameraPose!.target];
+    for (let index = 0; index < 5; index++) {
+      wheel(-1200);
+      flushFrame();
+    }
+    expect(observed.cameraPose!.distance).toBeCloseTo(3, 8);
+    expect(observed.cameraPose!.target).toEqual(minimumTarget);
+    expectFiniteCamera();
+
+    for (let index = 0; index < 20; index++) {
+      wheel(1200);
+      flushFrame();
+    }
+    const maxDistance = Math.max(1500, camera.far / 2);
+    expect(observed.cameraPose!.distance).toBeLessThanOrEqual(maxDistance);
+    expectFiniteCamera();
+    const maximumTarget = [...observed.cameraPose!.target];
+    for (let index = 0; index < 5; index++) {
+      wheel(1200);
+      flushFrame();
+    }
+    expect(observed.cameraPose!.distance).toBeLessThanOrEqual(maxDistance);
+    expect(observed.cameraPose!.target).toEqual(maximumTarget);
+    expectFiniteCamera();
+  });
   it("keeps the point under the cursor anchored during wheel zoom at varied angles", async () => {
     const { props } = await mount("view");
     const basePose = observed.cameraPose!;
