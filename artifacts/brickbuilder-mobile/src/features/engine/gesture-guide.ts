@@ -49,6 +49,7 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
     buttons: [
       { icon: CONTROL_SYMBOLS.projectMenu, title: "help.button.project", description: "help.button.project.description" },
       { icon: CONTROL_SYMBOLS.theme, title: "help.button.theme", description: "help.button.theme.description" },
+      { icon: CONTROL_SYMBOLS.language, title: "language", description: "help.button.language.description" },
       { icon: CONTROL_SYMBOLS.gestureHelp, title: "gesture.help", description: "help.button.help.description" },
       { icon: CONTROL_SYMBOLS.save, title: "save.action", description: "help.button.save.description" },
     ],
@@ -94,7 +95,6 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
       },
       { icon: CONTROL_SYMBOLS.storage, title: "project.storage", description: "help.menu.storage.description" },
       { icon: CONTROL_SYMBOLS.privacy, title: "project.privacy", description: "help.menu.privacy.description" },
-      { icon: CONTROL_SYMBOLS.language, title: "language", description: "help.menu.language.description" },
       { title: "project.device", description: "help.menu.projects.description" },
     ],
   },
@@ -112,6 +112,12 @@ export const GESTURE_GUIDE_SECTIONS: readonly GestureGuideSection[] = [
   {
     title: "gesture.section.camera",
     gestures: CAMERA_GESTURE_GUIDE,
+  },
+  {
+    title: "gesture.section.mouse",
+    gestures: [
+      { title: "gesture.mouse.wheel.title", description: "gesture.mouse.wheel.description" },
+    ],
   },
   {
     title: "gesture.section.controls",

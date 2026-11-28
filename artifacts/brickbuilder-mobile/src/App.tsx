@@ -90,7 +90,11 @@ function App() {
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
+  const projectMenuOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const partsDrawerOpenerRef = useRef<HTMLElement | null>(null);
+  const partsDrawerRef = useRef<HTMLElement | null>(null);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
+  const languageMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [confirmNew, setConfirmNew] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
@@ -139,7 +143,10 @@ function App() {
       setLanguageMenuOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setLanguageMenuOpen(false);
+      if (event.key === "Escape") {
+        setLanguageMenuOpen(false);
+        languageMenuTriggerRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer, true);
     window.addEventListener("keydown", closeOnEscape);
@@ -387,12 +394,20 @@ function App() {
     if (!partsOpen && !colorsOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setPartsOpen(false);
+      if (partsOpen) {
+        setPartsOpen(false);
+        partsDrawerOpenerRef.current?.focus();
+      }
       setColorsOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [partsOpen, colorsOpen]);
+
+  useEffect(() => {
+    if (!partsOpen) return;
+    partsDrawerRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+  }, [partsOpen]);
 
   useEffect(() => {
     if (projectMenu) void editor.refreshProjects().catch(() => undefined);
@@ -407,6 +422,16 @@ function App() {
     } catch {
       setSaveMessage(t("save.failed"));
     }
+  };
+
+  const closeProjectMenu = (restoreFocus = false) => {
+    setProjectMenu(false);
+    if (restoreFocus) projectMenuOpenerRef.current?.focus();
+  };
+
+  const openPartsDrawer = (opener: HTMLElement) => {
+    partsDrawerOpenerRef.current = opener;
+    setPartsOpen(true);
   };
 
   const startProject = async () => {
@@ -451,8 +476,16 @@ function App() {
           <button
             type="button"
             className="project-title-button"
-            onClick={() => setProjectMenu((open) => !open)}
+            onClick={(event) => {
+              if (projectMenu) {
+                closeProjectMenu();
+                return;
+              }
+              projectMenuOpenerRef.current = event.currentTarget;
+              setProjectMenu(true);
+            }}
             aria-expanded={projectMenu}
+            aria-controls="project-menu"
             data-testid="button-project-menu"
           >
             <span className="project-dot" />
@@ -460,7 +493,21 @@ function App() {
             <ChevronDown size={15} />
           </button>
           {projectMenu && (
-          <div className="project-popover rise-in">
+          <div
+            id="project-menu"
+            className="project-popover rise-in"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              closeProjectMenu(true);
+            }}
+            onFocusCapture={(event) => {
+              if (event.target instanceof HTMLElement) {
+                event.target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+              }
+            }}
+          >
               <label className="rename-label" htmlFor="project-name">{t("project.name")}</label>
               <input
                 id="project-name"
@@ -532,6 +579,7 @@ function App() {
             <button
               type="button"
               className="theme-toggle language-toggle"
+              ref={languageMenuTriggerRef}
               onClick={() => {
                 setProjectMenu(false);
                 setLanguageMenuOpen(value => !value);
@@ -661,12 +709,12 @@ function App() {
                 onMoveGroup={editor.moveGroup}
               />}
             </Suspense>
-            {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">{t("catalog.error")} <button type="button" onClick={() => setPartsOpen(true)}>{t("catalog.retry")}</button></div>}
+            {catalog.status === "error" && <div role="status" className="absolute left-3 right-3 top-3 z-10 rounded bg-white p-3 text-sm">{t("catalog.error")} <button type="button" onClick={(event) => openPartsDrawer(event.currentTarget)}>{t("catalog.retry")}</button></div>}
             {editor.partError && !partsOpen && <p role="alert" className="canvas-part-error" data-testid="status-part-error">{editor.partError}</p>}
             {activeInventoryRow && (
               <div className="inventory-mode-banner" role="status" data-testid="status-inventory-mode">
                 <span>{t("inventory.banner", { partId: activeInventoryRow.partId, colorId: activeInventoryRow.colorId, ldrawId: editor.selectedInventory!.ldrawId })}</span>
-                <button type="button" onClick={() => { setPartsTab('inventory'); setPartsOpen(true); }} data-testid="button-inventory-mode-open">{t("inventory.open")}</button>
+                <button type="button" onClick={(event) => { setPartsTab('inventory'); openPartsDrawer(event.currentTarget); }} data-testid="button-inventory-mode-open">{t("inventory.open")}</button>
               </div>
             )}
             {editor.brickCount === 0 && (
@@ -723,7 +771,7 @@ function App() {
 
           <div className="rail-section parts-section">
             <div className="section-heading"><span>02</span><h2>{t("editor.part")}</h2></div>
-            <button type="button" className="active-piece" onClick={() => setPartsOpen(true)} data-testid="button-selected-piece">
+            <button type="button" className="active-piece" onClick={(event) => openPartsDrawer(event.currentTarget)} data-testid="button-selected-piece">
               <span aria-hidden="true"><Box size={28} /></span>
               <span className="piece-copy"><strong>{editor.selectedPart ? `LDraw ${editor.selectedPart.ldrawId}` : t("editor.choosePart")}</strong><small>{editor.selectedPart?.name ?? t("editor.openOfflineLibrary")}</small></span>
               <ChevronDown size={16} className="piece-chevron" />
@@ -776,7 +824,17 @@ function App() {
                 : t("save.localNotice"))}</span>
             </div>
             {restoreMessage && <div className="toast-note" role="status" data-testid="status-restore">{restoreMessage}</div>}
-            <button type="button" className="more-controls" onClick={() => setProjectMenu(true)} data-testid="button-workshop-menu">
+            <button
+              type="button"
+              className="more-controls"
+              onClick={(event) => {
+                projectMenuOpenerRef.current = event.currentTarget;
+                setProjectMenu(true);
+              }}
+              aria-expanded={projectMenu}
+              aria-controls="project-menu"
+              data-testid="button-workshop-menu"
+            >
               <Settings2 size={16} /><span>{t("editor.workshop")}</span><CONTROL_SYMBOLS.projectMenu size={15} />
             </button>
           </div>
@@ -799,7 +857,7 @@ function App() {
           <span className="dock-color-dot" style={{ '--swatch-color': selectedColor.value } as CSSProperties}><CONTROL_SYMBOLS.colorMode size={13} /></span>
           <span>{t("editor.colorMode")}</span>
         </button>
-        <button type="button" className="dock-parts" onClick={() => setPartsOpen(true)} data-testid="mobile-button-parts"><CONTROL_SYMBOLS.partsTool size={19} /><span>{t("editor.partsTool")}</span></button>
+        <button type="button" className="dock-parts" onClick={(event) => openPartsDrawer(event.currentTarget)} data-testid="mobile-button-parts"><CONTROL_SYMBOLS.partsTool size={19} /><span>{t("editor.partsTool")}</span></button>
         <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label={t("history.redo")} data-testid="mobile-button-redo"><CONTROL_SYMBOLS.redo size={19} /></button>
       </nav>
 
@@ -822,7 +880,11 @@ function App() {
 
       {partsOpen && (
         <div className="drawer-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) setPartsOpen(false); }}>
-          <section className="parts-drawer rise-in" role="dialog" aria-modal="true" aria-labelledby="parts-title" data-testid="drawer-parts">
+          <section className="parts-drawer rise-in" ref={partsDrawerRef} onFocusCapture={event => {
+            if (event.target instanceof HTMLElement) {
+              event.target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+            }
+          }} role="dialog" aria-modal="true" aria-labelledby="parts-title" data-testid="drawer-parts">
             <div className="drawer-handle" />
             <div className="drawer-heading">
               <div><p className="popover-eyebrow">{t("editor.partsSection")}</p><h2 id="parts-title">{t("editor.partSelectionHeading")}</h2></div>

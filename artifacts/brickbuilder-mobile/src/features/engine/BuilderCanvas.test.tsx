@@ -7,10 +7,10 @@ import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
-import { CAMERA_GESTURE_GUIDE } from "./gesture-guide";
+import { CAMERA_GESTURE_GUIDE, GESTURE_GUIDE_SECTIONS } from "./gesture-guide";
 import * as instructionOutlines from "../instructions/outlines";
 import { NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX, THICK_EDGE_WIDTH_PX } from "./wide-lines";
-import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
+import BuilderCanvas, { FallbackRenderer, fitBoundsToView } from "./BuilderCanvas";
 import { constructionArea, createStudGridGeometry, brickConstructionBounds, MAX_STUD_GRID_LINES } from "./construction-floor";
 import { instanceIndex } from "./instance-index";
 import { compilePart, worldMatrix } from "./ldraw-geometry";
@@ -24,6 +24,7 @@ import { gunzipSync } from "fflate";
 import { parseLDraw } from "../formats/ldraw/parser";
 import type { ImportedModel } from "../formats/types";
 import { createEmptyDocument, type Brick, type ToolMode } from "../editor/model";
+import type { InstructionCamera } from "../instructions/types";
 import { moveImported, tiltImported, placePreparedPart } from "../editor/ldraw-editing";
 import type { PreparedPart } from "../editor/ldraw-editing";
 import { localPartBounds } from "./stacking";
@@ -103,6 +104,11 @@ function pointerOn(target: HTMLElement, type: string, x: number, y: number, id =
     Object.defineProperty(event, "pointerId", { value: id });
     target.dispatchEvent(event);
   });
+}
+function wheel(deltaY: number, x = 420, y = 300): WheelEvent {
+  const event = new WheelEvent("wheel", { deltaY, clientX: x, clientY: y, bubbles: true, cancelable: true });
+  act(() => { host.dispatchEvent(event); });
+  return event;
 }
 function pickPoint(): { x: number; y: number } {
   // Reproduce the initial fit used by the canvas, then project the source triangle center.
@@ -492,6 +498,56 @@ function expectCameraPose(expected: { target: number[]; distance: number }): voi
   expect(observed.cameraPose!.target).toEqual(expected.target);
   expect(observed.cameraPose!.distance).toBeCloseTo(expected.distance, 8);
 }
+
+it("restores the fitted instruction camera after switching steps and returning", async () => {
+  const imported = engineFixture(2, 3);
+  const onViewCameraChange = vi.fn<(camera: InstructionCamera) => void>();
+  const props = {
+    projectId: "fitted-instruction-camera",
+    bricks: [] as Brick[],
+    imported,
+    selectedId: null,
+    selectedType: "brick-2x4" as const,
+    selectedColor: "#B40000",
+    toolMode: "view" as const,
+    onMove: vi.fn(),
+    onSelect: vi.fn(),
+    onPlace: vi.fn(),
+    onViewCameraChange,
+  };
+  const renderStep = (viewStepId: string, viewCamera?: InstructionCamera) => {
+    act(() => root.render(<BuilderCanvas {...props} viewStepId={viewStepId} viewCamera={viewCamera} />));
+    flushFrame();
+  };
+
+  renderStep("first");
+  await act(async () => {
+    await vi.waitFor(() => expect(observed.scene ||
+      observed.scene3d?.children.some(child => instanceIndex(child as Group))).toBeTruthy());
+  });
+  flushFrame();
+
+  act(() => element.querySelector<HTMLButtonElement>('[data-testid="button-fit-model"]')!.click());
+  flushFrame();
+  expect(onViewCameraChange).toHaveBeenCalledTimes(1);
+  const fittedCamera = onViewCameraChange.mock.calls[0][0];
+  expect(fittedCamera.target).toEqual(observed.cameraPose!.target);
+  expect(fittedCamera.distance).toBeCloseTo(observed.cameraPose!.distance, 8);
+
+  const otherStepCamera: InstructionCamera = {
+    theta: 1.2,
+    phi: 0.8,
+    distance: 43,
+    target: [7, 8, 9],
+    referenceDistance: 43,
+    referenceTarget: [7, 8, 9],
+  };
+  renderStep("second", otherStepCamera);
+  expectCameraPose({ target: otherStepCamera.target, distance: otherStepCamera.distance });
+
+  renderStep("first", fittedCamera);
+  expectCameraPose({ target: fittedCamera.target, distance: fittedCamera.distance });
+});
 
 for (const webgl of [true, false]) {
   it(`reuses spatial highlight groups across camera redraws in ${webgl ? "WebGL" : "software"} preview`, async () => {
@@ -1967,6 +2023,9 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.scene).toBeDefined();
     return { model, onMove, props, point: pickPoint() };
   }
+  function expectGestureGuideLine(title: string): void {
+    expect(GESTURE_GUIDE_SECTIONS.flatMap(section => section.gestures).some(line => line.title === title)).toBe(true);
+  }
   it("outlines every selected imported part in the WebGL scene", async () => {
     observed.webglEnabled = true;
     const model = engineFixture(2, 3), selectedIds = model.instances.slice(0, 2).map(instance => instance.id);
@@ -1996,6 +2055,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onMove).not.toHaveBeenCalled();
   });
   it("zooms in by two on a double tap on empty space in view mode", async () => {
+    expectGestureGuideLine("gesture.view.zoom.title");
     await mount("view");
     flushFrame();
     const target = new Vector3(...observed.cameraPose!.target);
@@ -2010,7 +2070,30 @@ describe("frame-coalesced drag transactions", () => {
     const zoomedDistance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
     expect(zoomedDistance).toBeCloseTo(initialDistance / 2, 2);
   });
+  it("zooms toward the pointer on wheel input and prevents page scrolling", async () => {
+    const onViewCameraChange = vi.fn();
+    const { props } = await mount("view");
+    act(() => root.render(<BuilderCanvas {...props} onViewCameraChange={onViewCameraChange} />));
+    flushFrame();
+    const initialTarget = observed.cameraPose!.target;
+    const initialDistance = observed.cameraPose!.distance;
+
+    const zoomIn = wheel(-120);
+    flushFrame();
+
+    expect(zoomIn.defaultPrevented).toBe(true);
+    expect(observed.cameraPose!.distance).toBeLessThan(initialDistance);
+    expect(observed.cameraPose!.target).not.toEqual(initialTarget);
+    expect(onViewCameraChange).toHaveBeenCalledOnce();
+
+    const zoomedDistance = observed.cameraPose!.distance;
+    wheel(120);
+    flushFrame();
+    expect(observed.cameraPose!.distance).toBeGreaterThan(zoomedDistance);
+    expectGestureGuideLine("gesture.mouse.wheel.title");
+  });
   it("zooms in by two on a double tap on empty space in selection mode", async () => {
+    expectGestureGuideLine("gesture.select.zoom.title");
     await mount("select");
     flushFrame();
     const target = new Vector3(...observed.cameraPose!.target);
@@ -2041,7 +2124,26 @@ describe("frame-coalesced drag transactions", () => {
     const distance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
     expect(distance).toBeCloseTo(initialDistance, 2);
   });
+  it("does not zoom when a menu opens between empty-space taps", async () => {
+    const { props } = await mount("select");
+    flushFrame();
+    const target = new Vector3(...observed.cameraPose!.target);
+    const initialDistance = observed.camera!.position.distanceTo(target);
+    const empty = { x: 8, y: 8 };
+
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+
+    act(() => root.render(<BuilderCanvas {...props} emptyDoubleTapZoomEnabled={false} />));
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    flushFrame();
+
+    const distance = observed.camera!.position.distanceTo(new Vector3(...observed.cameraPose!.target));
+    expect(distance).toBeCloseTo(initialDistance, 2);
+  });
   it("keeps Build mode by default after double-tap placement", async () => {
+    expectGestureGuideLine("gesture.build.doubleTap.title");
     const { props } = await mount("build");
     const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-auto-select-after-placement']")!;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -2084,6 +2186,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true, floorSnap: true });
   });
   it("treats a build-mode part double tap as one normal placement", async () => {
+    expectGestureGuideLine("gesture.build.doubleTapPart.title");
     const { props, point } = await mount("build");
     pointer("pointerdown", point.x, point.y);
     pointer("pointerup", point.x, point.y);
@@ -2096,6 +2199,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true });
   });
   it("opens rotation controls on a double tap only in selection mode", async () => {
+    expectGestureGuideLine("gesture.select.rotate.title");
     const { props, point, model } = await mount("select");
     pointer("pointerdown", point.x, point.y);
     pointer("pointerup", point.x, point.y);
@@ -2116,6 +2220,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onSelect).toHaveBeenCalledWith(model.instances[0].id);
   });
   it("does nothing on a view-mode part double tap when tap-selection is disabled", async () => {
+    expectGestureGuideLine("gesture.view.doubleTapPart.title");
     const { props, point } = await mount("view");
     const toggle = element.querySelector<HTMLButtonElement>("[data-testid='button-view-tap-select-toggle']")!;
     act(() => toggle.click());
@@ -2131,6 +2236,7 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.camera!.position.distanceTo(target)).toBeCloseTo(initialDistance);
   });
   it("does not open rotation controls on a delete-mode double tap", async () => {
+    expectGestureGuideLine("gesture.delete.doubleTap.title");
     const { props, point, model } = await mount("delete");
     pointer("pointerdown", point.x, point.y);
     pointer("pointerup", point.x, point.y);
@@ -2151,6 +2257,25 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onViewPartTap).not.toHaveBeenCalled();
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(observed.camera!.position.equals(cameraBefore)).toBe(false);
+  });
+  it.each([
+    ["view", "gesture.view.orbit.title"],
+    ["select", "gesture.select.camera.title"],
+    ["delete", "gesture.delete.camera.title"],
+  ] as const)("implements the documented one-finger camera orbit in %s mode", async (toolMode, guideTitle) => {
+    const guideLines = GESTURE_GUIDE_SECTIONS.flatMap(section => section.gestures);
+    expect(guideLines.some(line => line.title === guideTitle)).toBe(true);
+    const { props } = await mount(toolMode);
+    const cameraBefore = observed.camera!.position.clone();
+    pointer("pointerdown", 8, 8);
+    pointer("pointermove", 38, 28);
+    flushFrame();
+    pointer("pointerup", 38, 28);
+
+    expect(observed.camera!.position.equals(cameraBefore)).toBe(false);
+    expect(props.onMove).not.toHaveBeenCalled();
+    expect(props.onPlace).not.toHaveBeenCalled();
+    expect(props.onOpenRotationControls).not.toHaveBeenCalled();
   });
   it("allows disabling view-mode tap selection with its icon toggle", async () => {
     const { props, point } = await mount("view");
@@ -2467,5 +2592,127 @@ describe("frame-coalesced drag transactions", () => {
     await act(async () => root.render(<BuilderCanvas {...props} imported={changed} selectedId={null} />));
     expect(element.querySelector("[data-testid='connection-status']")).toBeNull();
     expect(active).toHaveBeenCalled();
+  });
+  it("recenters and fits imported and local parts from the visible control", async () => {
+    const { props } = await mount("view");
+    const onViewCameraChange = vi.fn();
+    const brick: Brick = {
+      id: "distant-local-part", type: "brick-2x4", color: "#B40000", x: 60, y: 0, z: -20, rotation: 0,
+    };
+    await act(async () => root.render(<BuilderCanvas {...props} bricks={[brick]} onViewCameraChange={onViewCameraChange} />));
+
+    const button = element.querySelector<HTMLButtonElement>("[data-testid='button-fit-model']")!;
+    expect(button).toBeDefined();
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-label")).toBe("Modell einpassen");
+
+    wheel(120, 540, 80);
+    flushFrame();
+    const beforeFit = observed.cameraPose!;
+    expect(beforeFit.target).not.toEqual([0, 0, 0]);
+    onViewCameraChange.mockClear();
+
+    canvasHeight = 900;
+    act(() => resizeCallbacks[0]([], {} as ResizeObserver));
+    act(() => button.click());
+    flushFrame();
+
+    const importedBounds = observed.scene!.bounds.clone();
+    importedBounds.translate(new Vector3(0, Math.max(0, -importedBounds.min.y), 0));
+    const fullBounds = importedBounds.union(brickConstructionBounds(brick));
+    const expectedTarget = fullBounds.getCenter(new Vector3()).toArray();
+    const radius = fullBounds.getSize(new Vector3()).length() / 2;
+    const halfVertical = observed.camera!.fov * Math.PI / 360;
+    const halfHorizontal = Math.atan(Math.tan(halfVertical) * (600 / canvasHeight));
+    const expectedDistance = Math.max(8, radius / Math.sin(Math.min(halfVertical, halfHorizontal)) * 1.08);
+
+    expect(observed.camera!.aspect).toBeCloseTo(600 / canvasHeight);
+    expect(observed.cameraPose!.target).toEqual(expectedTarget);
+    expect(observed.cameraPose!.distance).toBeCloseTo(expectedDistance);
+    expect(onViewCameraChange).toHaveBeenCalledOnce();
+    expect(onViewCameraChange.mock.lastCall![0].target).toEqual(expectedTarget);
+  });
+  it("fits the full transformed bounds of a tilted local part", async () => {
+    const { props } = await mount("view");
+    const onViewCameraChange = vi.fn();
+    const brick: Brick = {
+      id: "tilted-local-part",
+      type: "brick-2x4",
+      color: "#B40000",
+      x: 60,
+      y: 7,
+      z: -20,
+      rotation: 18,
+      tiltX: 35,
+      tiltZ: -27,
+    };
+    await act(async () => root.render(
+      <BuilderCanvas {...props} bricks={[brick]} imported={undefined} onViewCameraChange={onViewCameraChange} />,
+    ));
+    flushFrame();
+
+    // Independently transform the brick's unrotated construction box so this
+    // test catches both a bounds regression and a fit that omits tilted parts.
+    const expectedBounds = new Box3(
+      new Vector3(-1, 0, -2),
+      new Vector3(1, 1.2, 2),
+    ).applyMatrix4(new Matrix4()
+      .makeTranslation(brick.x, brick.y, brick.z)
+      .multiply(new Matrix4().makeRotationFromEuler(new Euler(
+        brick.tiltX! * Math.PI / 180,
+        brick.rotation * Math.PI / 180,
+        brick.tiltZ! * Math.PI / 180,
+        "XYZ",
+      ))));
+    const button = element.querySelector<HTMLButtonElement>("[data-testid='button-fit-model']")!;
+    expect(button.disabled).toBe(false);
+
+    wheel(120, 540, 80);
+    flushFrame();
+    onViewCameraChange.mockClear();
+    act(() => button.click());
+    flushFrame();
+
+    const expectedTarget = expectedBounds.getCenter(new Vector3());
+    const radius = expectedBounds.getSize(new Vector3()).length() / 2;
+    const halfVertical = observed.camera!.fov * Math.PI / 360;
+    const halfHorizontal = Math.atan(Math.tan(halfVertical) * observed.camera!.aspect);
+    const expectedDistance = Math.max(8, radius / Math.sin(Math.min(halfVertical, halfHorizontal)) * 1.08);
+    expect(observed.cameraPose!.target).toEqual(expectedTarget.toArray());
+    expect(observed.cameraPose!.distance).toBeCloseTo(expectedDistance);
+    expect(onViewCameraChange).toHaveBeenCalledOnce();
+    expect(onViewCameraChange.mock.lastCall![0].target).toEqual(expectedTarget.toArray());
+    expect(onViewCameraChange.mock.lastCall![0].distance).toBeCloseTo(expectedDistance);
+
+    observed.camera!.updateMatrixWorld(true);
+    for (const x of [expectedBounds.min.x, expectedBounds.max.x]) {
+      for (const y of [expectedBounds.min.y, expectedBounds.max.y]) {
+        for (const z of [expectedBounds.min.z, expectedBounds.max.z]) {
+          const projected = new Vector3(x, y, z).project(observed.camera!);
+          expect(Math.abs(projected.x)).toBeLessThan(1);
+          expect(Math.abs(projected.y)).toBeLessThan(1);
+          expect(projected.z).toBeGreaterThan(-1);
+          expect(projected.z).toBeLessThan(1);
+        }
+      }
+    }
+  });
+});
+
+describe("fitBoundsToView", () => {
+  it("centers the bounds and uses the narrower canvas field of view", () => {
+    const camera = new PerspectiveCamera(42, 0.5, 0.1, 4000);
+    const bounds = new Box3(new Vector3(-30, -4, -8), new Vector3(30, 8, 8));
+    const state = { target: new Vector3(), distance: 0, theta: 0.72, phi: 0.93 };
+
+    fitBoundsToView(camera, bounds, state);
+
+    const radius = bounds.getSize(new Vector3()).length() / 2;
+    const halfVertical = camera.fov * Math.PI / 360;
+    const halfHorizontal = Math.atan(Math.tan(halfVertical) * camera.aspect);
+    expect(state.target.toArray()).toEqual(bounds.getCenter(new Vector3()).toArray());
+    expect(state.distance).toBeCloseTo(radius / Math.sin(halfHorizontal) * 1.08);
+    expect(camera.far).toBeGreaterThan(state.distance);
+    expect(camera.position.distanceTo(state.target)).toBeCloseTo(state.distance);
   });
 });

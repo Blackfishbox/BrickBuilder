@@ -523,7 +523,7 @@ function makeCameraPosition(
   camera.lookAt(target);
 }
 
-function fitImportedView(
+export function fitBoundsToView(
   camera: PerspectiveCamera,
   bounds: Box3,
   state: { target: Vector3; distance: number; theta: number; phi: number },
@@ -898,6 +898,41 @@ export function BuilderCanvas({
     moveConnectedAbove,
     multiSelectOnTap,
     onToggleSelection,
+  };
+
+  const fitCurrentModel = () => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+
+    const bounds = new Box3();
+    for (const brick of propsRef.current.bricks) bounds.union(brickConstructionBounds(brick));
+    const currentImported = propsRef.current.imported;
+    if (currentImported && sceneModelRef.current === currentImported &&
+      sceneProjectRef.current === propsRef.current.projectId && importedBoundsRef.current) {
+      bounds.union(importedBoundsRef.current);
+    }
+    if (bounds.isEmpty()) return;
+
+    const rectangle = hostRef.current?.getBoundingClientRect();
+    if (rectangle && rectangle.width > 0 && rectangle.height > 0) {
+      camera.aspect = rectangle.width / rectangle.height;
+      camera.updateProjectionMatrix();
+    }
+    fitBoundsToView(camera, bounds, cameraStateRef.current);
+    const state = cameraStateRef.current;
+    cameraReferenceRef.current = {
+      distance: state.distance, target: state.target.clone(), theta: state.theta, phi: state.phi,
+    };
+    invalidatorRef.current?.();
+
+    propsRef.current.onViewCameraChange?.({
+      theta: state.theta,
+      phi: state.phi,
+      distance: state.distance,
+      target: state.target.toArray(),
+      referenceDistance: state.distance,
+      referenceTarget: state.target.toArray(),
+    });
   };
 
   useEffect(() => {
@@ -1494,7 +1529,7 @@ export function BuilderCanvas({
           camera.updateProjectionMatrix();
         }
         if (!sameModel) {
-          fitImportedView(camera, bounds, cameraStateRef.current);
+          fitBoundsToView(camera, bounds, cameraStateRef.current);
           const state = cameraStateRef.current;
           cameraReferenceRef.current = { distance: state.distance, target: state.target.clone(), theta: state.theta, phi: state.phi };
           if (propsRef.current.viewCamera) restoreStepCamera();
@@ -1725,6 +1760,44 @@ export function BuilderCanvas({
       return intersection
         ? { x: intersection.x, y, z: intersection.z }
         : null;
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (event.target instanceof Element && event.target.closest("button, input, select, textarea")) return;
+      event.preventDefault();
+      if (!event.deltaY) return;
+
+      const rect = host.getBoundingClientRect();
+      const delta = event.deltaY * (
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? Math.max(1, rect.height)
+            : 1
+      );
+      const state = cameraStateRef.current;
+      const camera = cameraRef.current;
+      if (!camera) return;
+
+      const raycaster = makeRay({ x: event.clientX, y: event.clientY });
+      const cameraDirection = camera.getWorldDirection(new Vector3());
+      const zoomPlane = new Plane().setFromNormalAndCoplanarPoint(cameraDirection, state.target);
+      const anchor = raycaster?.ray.intersectPlane(zoomPlane, new Vector3());
+      const requestedDistance = state.distance * Math.exp(Math.max(-1200, Math.min(1200, delta)) * 0.001);
+      const maxDistance = Math.max(1500, camera.far / 2);
+      const nextDistance = Math.max(3, Math.min(maxDistance, requestedDistance));
+      const nextTarget = anchor
+        ? state.target.clone().addScaledVector(anchor.sub(state.target), 1 - nextDistance / state.distance)
+        : state.target.clone();
+      updateCamera(state.theta, state.phi, requestedDistance, nextTarget);
+
+      const current = propsRef.current;
+      const reference = cameraReferenceRef.current;
+      current.onViewCameraChange?.({
+        theta: state.theta,
+        phi: state.phi,
+        distance: state.distance,
+        target: state.target.toArray(),
+        referenceDistance: reference.distance,
+        referenceTarget: reference.target.toArray(),
+      });
     };
     const placementTarget = (point: PointerPoint): Position3 | null => {
       const hit = findBrick(point);
@@ -2383,6 +2456,7 @@ export function BuilderCanvas({
     host.addEventListener("pointerup", onPointerUp, { passive: false });
     host.addEventListener("pointercancel", onPointerCancel, { passive: false });
     host.addEventListener("lostpointercapture", onPointerCancel);
+    host.addEventListener("wheel", onWheel, { passive: false });
     const onBlur = () => {
       rollback(); pointersRef.current.clear(); pointerLastRef.current.clear();
       gestureStartRef.current = null; gesturePairRef.current = null; cameraOnlyRef.current = false;
@@ -2399,6 +2473,7 @@ export function BuilderCanvas({
       host.removeEventListener("pointerup", onPointerUp);
       host.removeEventListener("pointercancel", onPointerCancel);
       host.removeEventListener("lostpointercapture", onPointerCancel);
+      host.removeEventListener("wheel", onWheel);
       window.removeEventListener("blur", onBlur);
       if (pendingTapActionRef.current) window.clearTimeout(pendingTapActionRef.current.timer);
       pendingTapActionRef.current = null;
@@ -2415,6 +2490,20 @@ export function BuilderCanvas({
     ? t("canvas.reducedEdges")
     : null;
   return <div ref={hostRef} className="builder-canvas" data-testid="canvas-3d" style={{ position: "relative" }}>
+    <div className="absolute bottom-2 right-2 z-10">
+      <button type="button" data-testid="button-fit-model"
+        className={`canvas-control-toggle min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${
+          darkMode ? "border-stone-600 bg-stone-800 text-stone-100" : "border-stone-200 bg-white/95 text-stone-800"
+        }`}
+        aria-label={t("canvas.fitModel")}
+        title={t("canvas.fitModel")}
+        disabled={!bricks.length && !imported?.instances.length}
+        onPointerDown={event => event.stopPropagation()}
+        onPointerUp={event => event.stopPropagation()}
+        onClick={fitCurrentModel}>
+        <CONTROL_SYMBOLS.fitModel size={20} aria-hidden="true" />
+      </button>
+    </div>
     <div ref={rotationAnchorMarkerRef} data-testid="rotation-anchor-marker" aria-hidden="true"
       style={{
         position: "absolute", left: 0, top: 0, zIndex: 5, display: "none",

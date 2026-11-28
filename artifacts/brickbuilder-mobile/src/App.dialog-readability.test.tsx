@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import App from "./App";
 import { I18nProvider, LANGUAGE_STORAGE_KEY } from "@/i18n/I18nProvider";
 import { createEmptyDocument } from "@/features/editor/model";
-import { HELP_BUTTON_SECTIONS, HELP_MODE_OVERVIEW } from "@/features/engine/gesture-guide";
+import { GESTURE_GUIDE_SECTIONS, HELP_BUTTON_SECTIONS, HELP_MODE_OVERVIEW } from "@/features/engine/gesture-guide";
 import { parseInventory } from "@/features/inventory/import";
 import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
 import { setRemoteGeometryEnabled } from "@/features/privacy/geometry-consent";
@@ -17,6 +17,8 @@ const darkThemeCss = readFileSync("src/dark-theme.css", "utf8");
 const editorCss = readFileSync("src/components/mobile/editor.css", "utf8");
 const brandCss = readFileSync("src/brand-theme.css", "utf8");
 const themeCss = readFileSync("src/index.css", "utf8");
+const formatDialogCss = readFileSync("src/features/formats/format-dialog.css", "utf8");
+const storageManagerCss = readFileSync("src/features/storage/storage-manager.css", "utf8");
 
 const { editor, getStorageOverview, canvasProps } = vi.hoisted(() => ({
   editor: {} as Record<string, any>,
@@ -43,7 +45,9 @@ vi.mock("@/features/engine/BuilderCanvas", () => ({
       onPointerDown={() => props.onSelect?.(null)} />;
   },
 }));
-vi.mock("@/features/parts/PartsLibrary", () => ({ default: () => <div>Teilekatalog</div> }));
+vi.mock("@/features/parts/PartsLibrary", () => ({
+  default: () => <div><input aria-label="Search parts" /><button type="button" data-testid="mock-part-choice">Choose part</button></div>,
+}));
 vi.mock("@/features/catalog/EvidencedColorPicker", () => ({
   default: (props: { onChange?: (color: { value: string; ldrawCode: string }) => void }) =>
     <button type="button" data-testid="mock-color-picker" onClick={() => props.onChange?.({ value: "#112233", ldrawCode: "1" })}>Farbauswahl</button>,
@@ -259,6 +263,84 @@ it.each([
   expect(savedProjectText["white-space"]).toBe("nowrap");
 });
 
+it("keeps keyboard focus visible through the project menu at 200% text size on a short mobile screen", async () => {
+  const container = await mount("light", false, "en", {
+    viewport: { width: 320, height: 280 },
+    projects: Array.from({ length: 8 }, (_, index) => ({
+      id: `keyboard-project-${index}`,
+      name: `Saved model ${index + 1}`,
+      brickCount: index + 1,
+    })),
+  });
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+
+  const opener = container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!;
+  opener.focus();
+  await act(async () => opener.click());
+  const menu = container.querySelector<HTMLElement>("#project-menu")!;
+  const focusableControls = [...menu.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])")];
+  const lastProject = menu.querySelector<HTMLButtonElement>('[data-testid="button-open-project-keyboard-project-7"]')!;
+  const scrollIntoView = vi.fn();
+  lastProject.scrollIntoView = scrollIntoView;
+
+  expect(focusableControls.length).toBeGreaterThan(10);
+  for (const control of focusableControls) {
+    control.focus();
+    expect(documentRef.activeElement).toBe(control);
+  }
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+  expect(editorCss).toMatch(/\.project-popover\s*\{[^}]*overflow-y:\s*auto/);
+  expect(editorCss).toMatch(/\.project-popover\s*\{[^}]*overscroll-behavior-y:\s*contain/);
+
+  await act(async () => {
+    lastProject.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  expect(container.querySelector("#project-menu")).toBeNull();
+  expect(documentRef.activeElement).toBe(opener);
+});
+
+it("keeps keyboard focus visible in the parts drawer and restores its opener on Escape", async () => {
+  const container = await mount("light", false, "en", { viewport: { width: 320, height: 280 } });
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+
+  const opener = container.querySelector<HTMLButtonElement>('[data-testid="mobile-button-parts"]')!;
+  opener.focus();
+  await act(async () => opener.click());
+  const drawer = container.querySelector<HTMLElement>('[data-testid="drawer-parts"]')!;
+  const closeButton = drawer.querySelector<HTMLButtonElement>('[data-testid="button-close-parts"]')!;
+  const catalogTab = drawer.querySelector<HTMLButtonElement>('[data-testid="tab-ldraw"]')!;
+  const inventoryTab = drawer.querySelector<HTMLButtonElement>('[data-testid="tab-inventory"]')!;
+  const search = drawer.querySelector<HTMLInputElement>('[aria-label="Search parts"]')!;
+  const partChoice = drawer.querySelector<HTMLButtonElement>('[data-testid="mock-part-choice"]')!;
+  const tabStops = [closeButton, catalogTab, search, partChoice];
+  const scrollIntoView = vi.fn();
+  for (const control of tabStops) control.scrollIntoView = scrollIntoView;
+
+  expect(documentRef.activeElement).toBe(catalogTab);
+  expect(catalogTab.tabIndex).toBe(0);
+  expect(inventoryTab.tabIndex).toBe(-1);
+  for (const control of tabStops) {
+    control.focus();
+    expect(documentRef.activeElement).toBe(control);
+  }
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+  expect(editorCss).toMatch(/\.parts-drawer\s*\{[^}]*max-height:\s*min\(86dvh,\s*720px\)/);
+  expect(editorCss).toMatch(/\.parts-drawer\s*\{[^}]*overflow:\s*auto/);
+  expect(editorCss).toMatch(/\.parts-drawer :is\([^}]*\):focus\s*\{[^}]*scroll-margin-block:\s*12px/);
+
+  await act(async () => {
+    partChoice.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  expect(container.querySelector('[data-testid="drawer-parts"]')).toBeNull();
+  expect(documentRef.activeElement).toBe(opener);
+});
+
 it.each(["light", "dark"] as const)("also verifies help examples in %s mode", async theme => {
   const container = await mount(theme, true);
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
@@ -286,50 +368,12 @@ it.each(["de", "en"] as const)("shows a larger project menu without the workshop
   }
   expect(menu.querySelector(".language-row")).toBeNull();
   expect(menu.querySelector('[data-testid="button-language-menu"]')).toBeNull();
+  expect(menu.querySelector('[data-testid="select-language"]')).toBeNull();
   const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
   expect(languageButton.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
   expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*min-height: 48px/);
   expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*font-size: 14px/);
   expect(brandCss).toContain("max-width: calc(100vw - 24px)");
-});
-
-it.each([
-  { screen: "320px-wide screen", width: 320, height: 568 },
-  { screen: "short landscape screen", width: 568, height: 320 },
-])("keeps the project menu scrollable and within the screen at 200% text size on a $screen", async ({ width, height }) => {
-  const lastProjectName = "Zuletzt gespeichertes Modell mit langem Namen";
-  const container = await mount("light", false, "de", {
-    viewport: { width, height },
-    projects: Array.from({ length: 8 }, (_, index) => ({
-      id: `saved-project-${index}`,
-      name: index === 7 ? lastProjectName : `Gespeichertes Modell ${index + 1}`,
-      brickCount: index + 1,
-    })),
-  });
-
-  textScaleStyle = documentRef.createElement("style");
-  textScaleStyle.textContent = "html { -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
-  documentRef.head.appendChild(textScaleStyle);
-  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
-
-  const menu = container.querySelector<HTMLElement>(".project-popover")!;
-  const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
-  const lastProject = menu.querySelector<HTMLButtonElement>('[data-testid="button-open-project-saved-project-7"]')!;
-  const menuSizing = cssRule(editorCss, ".project-popover");
-  const brandSizing = cssRule(brandCss, ".project-popover");
-  const savedProjectText = cssRule(editorCss, ".saved-project span");
-
-  expect(textScaleStyle.textContent).toContain("text-size-adjust: 200%");
-  expect(languageButton.getAttribute("aria-label")).toBe("Sprache");
-  expect(menu.querySelector('[data-testid="button-language-menu"]')).toBeNull();
-  expect(lastProject.textContent).toContain(lastProjectName);
-  expect(menuSizing.width).toBe("min(290px, calc(100vw - 28px))");
-  expect(brandSizing["max-width"]).toBe("calc(100vw - 24px)");
-  expect(brandSizing["max-height"]).toBe("min(76dvh, 680px)");
-  expect(menuSizing["overflow-y"]).toBe("auto");
-  expect(savedProjectText.overflow).toBe("hidden");
-  expect(savedProjectText["text-overflow"]).toBe("ellipsis");
-  expect(savedProjectText["white-space"]).toBe("nowrap");
 });
 
 it.each(["light", "dark"] as const)("uses real arrow and edge symbols in %s help", async theme => {
@@ -344,7 +388,6 @@ it.each(["light", "dark"] as const)("uses real arrow and edge symbols in %s help
   expect(projects.querySelector("svg")).toBeNull();
   expect(projects.textContent).toContain("Auf diesem Gerät");
 });
-
 it("uses logo orange rather than violet for secondary interface accents", () => {
   expect(brandCss).toContain("--brand-highlight: 27 95% 43%");
   expect(brandCss).toContain("--brand-highlight: 32 100% 64%");
@@ -387,6 +430,134 @@ it("opens the English gesture guide from the header after theme and language", a
   expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
 });
 
+it.each([
+  { name: "a narrow phone", viewport: { width: 320, height: 280 } },
+  { name: "a short landscape viewport", viewport: { width: 640, height: 360 } },
+])("keeps every gesture guide section reachable on $name with enlarged text", async ({ viewport }) => {
+  const container = await mount("light", false, "en", { viewport });
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { font-size: 200%; -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  const dialogSizing = cssRule(editorCss, ".gesture-guide-dialog");
+  const scrollAreaSizing = cssRule(editorCss, ".gesture-guide-scroll-area");
+  const titleSizing = cssRule(editorCss, ".gesture-guide-title");
+  const descriptionSizing = cssRule(editorCss, ".gesture-guide-sections li p");
+  const expectedSectionCount = 1 + HELP_BUTTON_SECTIONS.length + GESTURE_GUIDE_SECTIONS.length;
+  const expectedGestureCount = GESTURE_GUIDE_SECTIONS.reduce((count, section) => count + section.gestures.length, 0);
+  const shortLandscapeRule = editorCss.match(
+    /@media \(orientation: landscape\) and \(max-height: 560px\) \{([\s\S]*?)\n\}/,
+  )?.[1] ?? "";
+
+  expect(textScaleStyle.textContent).toContain("text-size-adjust: 200%");
+  expect(dialogSizing["max-height"]).toBe("calc(100dvh - 24px)");
+  expect(dialogSizing.overflow).toBe("hidden");
+  expect(scrollAreaSizing["overflow-y"]).toBe("auto");
+  expect(scrollAreaSizing["overscroll-behavior-y"]).toBe("contain");
+  expect(titleSizing["font-size"]).toBe("1.25rem");
+  expect(descriptionSizing["font-size"]).toBe(".75rem");
+  expect(descriptionSizing["overflow-wrap"]).toBe("anywhere");
+  expect(shortLandscapeRule).toContain(
+    ".gesture-guide-modes,\n  .gesture-guide-buttons { grid-template-columns: minmax(0, 1fr); }",
+  );
+  expect(dialog.querySelectorAll(".gesture-guide-sections section")).toHaveLength(expectedSectionCount);
+  expect(dialog.querySelectorAll(".gesture-guide-sections li")).toHaveLength(
+    HELP_BUTTON_SECTIONS.reduce((count, section) => count + section.buttons.length, 0) + expectedGestureCount,
+  );
+  expect(dialog.textContent).toContain("Double-tap a rotation or tilt slider");
+  expect(dialog.textContent).toContain("Android: the export can continue in the background or with the screen off for up to two hours.");
+});
+
+it("keeps format and storage dismiss controls visible on short screens with enlarged text", async () => {
+  const container = await mount("light", false, "en", { viewport: { width: 320, height: 280 } });
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { font-size: 200%; -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+
+  openProjectMenu(container);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-open-export"]')!.click());
+  const formats = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-formats"]')!;
+  const formatClose = formats.querySelector<HTMLButtonElement>('[data-testid="button-close-formats"]')!;
+  const formatHeader = formats.querySelector<HTMLElement>(".drawer-heading")!;
+  expect(formatHeader.contains(formatClose)).toBe(true);
+  expect(formatDialogCss).toMatch(/\.fmt-drawer \.drawer-heading\s*\{[^}]*position:\s*sticky/);
+  expect(formatDialogCss).toMatch(/\.fmt-drawer \.drawer-heading\s*\{[^}]*top:\s*0/);
+  expect(formats.querySelector('[data-testid="button-export-json"]')).not.toBeNull();
+  await act(async () => formatClose.click());
+
+  openProjectMenu(container);
+  const longProjectName = "VeryLongProjectName".repeat(10);
+  getStorageOverview.mockResolvedValue({
+    browser: { usage: 4096, quota: 8192 },
+    projects: [
+      { id: "current-project", name: "Geöffnetes Modell", bytes: 1024, detail: "1 Stein" },
+      { id: "older-project", name: longProjectName, bytes: 2048, detail: "2 Steine" },
+    ],
+    packages: [{ id: "parts-package", name: "Teilepaket", bytes: 512, detail: "1 Teil · 1 Datei" }],
+    snapshots: [{ id: "snapshot", name: "3001.dat", bytes: 128, detail: "1 Datei" }],
+  });
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-open-storage"]')!.click());
+  await act(async () => { await Promise.resolve(); });
+  const storage = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-storage"]')!;
+  const storageClose = storage.querySelector<HTMLButtonElement>('[data-testid="button-close-storage"]')!;
+  const storageHeader = storage.querySelector<HTMLElement>(".drawer-heading")!;
+  expect(storageHeader.contains(storageClose)).toBe(true);
+  expect(storageManagerCss).toMatch(/\.sm-drawer \.drawer-heading\s*\{[^}]*position:\s*sticky/);
+  expect(storageManagerCss).toMatch(/\.sm-drawer \.drawer-heading\s*\{[^}]*top:\s*0/);
+  expect(storageManagerCss).toMatch(/\.sm-confirm \.confirm-actions\s*\{[^}]*position:\s*sticky/);
+  expect(cssRule(storageManagerCss, ".sm-confirm")["box-sizing"]).toBe("border-box");
+  expect(cssRule(storageManagerCss, ".sm-confirm .confirm-actions")["flex-wrap"]).toBe("wrap");
+  expect(cssRule(storageManagerCss, ".sm-confirm-copy p")["overflow-wrap"]).toBe("anywhere");
+  expect(cssRule(storageManagerCss, ".sm-confirm .confirm-actions button")["white-space"]).toBe("normal");
+  expect(cssRule(storageManagerCss, ".sm-confirm .confirm-actions button")["overflow-wrap"]).toBe("anywhere");
+  await act(async () => storage.querySelector<HTMLButtonElement>('[data-testid="button-delete-project-older-project"]')!.click());
+  const confirmation = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-confirm-storage"]')!;
+  expect(confirmation.querySelector(".sm-confirm-copy")?.textContent).toContain(longProjectName);
+  expect(confirmation.querySelector<HTMLButtonElement>('[data-testid="button-cancel-storage-action"]')?.disabled).toBe(false);
+  expect(confirmation.querySelector<HTMLButtonElement>('[data-testid="button-confirm-storage-action"]')?.disabled).toBe(false);
+  await act(async () => confirmation.querySelector<HTMLButtonElement>('[data-testid="button-cancel-storage-action"]')!.click());
+  await act(async () => storageClose.click());
+
+  openProjectMenu(container);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-open-privacy"]')!.click());
+  const privacy = documentRef.body.querySelector<HTMLElement>('[role="dialog"]')!;
+  const privacyScrollArea = privacy.querySelector<HTMLElement>(".overflow-y-auto.overscroll-contain")!;
+  const privacyClose = [...privacy.querySelectorAll<HTMLButtonElement>("button")]
+    .find(button => button.textContent?.includes("Close"))!;
+  expect(privacy.className).toContain("overflow-hidden");
+  expect(privacyScrollArea.className).toContain("max-h-[calc(85vh-3rem)]");
+  expect(privacyScrollArea.contains(privacyClose)).toBe(false);
+  expect(privacyClose.parentElement).toBe(privacy);
+});
+
+it("keeps the gesture guide close button reachable and keyboard-operable at 200% text size", async () => {
+  const container = await mount("light", false, "en", { viewport: { width: 320, height: 280 } });
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { font-size: 200%; -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+
+  const helpButton = container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!;
+  helpButton.focus();
+  await act(async () => helpButton.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  const scrollArea = dialog.querySelector<HTMLElement>(".gesture-guide-scroll-area")!;
+  const closeButton = dialog.querySelector<HTMLButtonElement>("button")!;
+
+  expect(scrollArea.contains(closeButton)).toBe(false);
+  expect(closeButton.className).toContain("absolute");
+  expect(closeButton.textContent).toContain("Close");
+  closeButton.focus();
+  expect(documentRef.activeElement).toBe(closeButton);
+
+  await act(async () => {
+    closeButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  expect(documentRef.body.querySelector('[data-testid="dialog-gesture-help"]')).toBeNull();
+});
+
 it.each(["de", "en"] as const)("keeps help labels and action descriptions aligned with controls in %s", async language => {
   const container = await mount("light", true, language);
   const projectMenu = container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!;
@@ -407,6 +578,11 @@ it.each(["de", "en"] as const)("keeps help labels and action descriptions aligne
 
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
   const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  const headerSection = HELP_BUTTON_SECTIONS.find(section => section.title === "help.section.header")!;
+  const projectSection = HELP_BUTTON_SECTIONS.find(section => section.title === "help.section.projectMenu")!;
+  expect(container.querySelector(".topbar-end .language-menu")).not.toBeNull();
+  expect(headerSection.buttons.map(item => item.title)).toContain("language");
+  expect(projectSection.buttons.map(item => item.title)).not.toContain("language");
   const readHelpEntry = (title: string) => {
     const entries = [...dialog.querySelectorAll<HTMLElement>(".gesture-guide-buttons li, .gesture-guide-modes article")];
     const entry = entries.find(candidate => candidate.querySelector("strong")?.textContent?.trim() === title);
@@ -421,6 +597,15 @@ it.each(["de", "en"] as const)("keeps help labels and action descriptions aligne
     expect(entries).toHaveLength(items.length);
     return entries[index];
   };
+  const languageGuideEntry = readButtonHelpEntry("language");
+  expect(languageGuideEntry.querySelector("strong")?.textContent?.trim()).toBe(language === "en" ? "Language" : "Sprache");
+  expect(languageGuideEntry.querySelector("p")?.textContent?.toLocaleLowerCase())
+    .toContain(language === "en" ? "top bar" : "oben");
+  const themeGuideEntry = readButtonHelpEntry("help.button.theme");
+  expect(themeGuideEntry.querySelector("strong")?.textContent?.toLocaleLowerCase())
+    .toContain(language === "en" ? "system" : "system");
+  expect(themeGuideEntry.querySelector("p")?.textContent?.toLocaleLowerCase())
+    .toContain(language === "en" ? "device" : "systemmodus");
 
   const modeActions = language === "en"
     ? ["without editing it", "tap or drag on the floor", "Select, move, recolor", "Tap parts to remove them"]
@@ -628,6 +813,23 @@ it.each(["Escape", "outside click"] as const)("closes the language dropdown with
   expect(container.querySelector('[role="menu"]')).toBeNull();
 });
 
+it.each(["de", "en"] as const)("returns focus to the language trigger after Escape in %s", async language => {
+  const container = await mount("light", false, language);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  expect(trigger.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+  await act(async () => trigger.click());
+  const option = container.querySelector<HTMLButtonElement>('[data-testid="language-option-en"]')!;
+  option.focus();
+  expect(document.activeElement).toBe(option);
+
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+
+  expect(container.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
+
 it("hides the canvas status controls for every open mobile selection menu", async () => {
   const container = await mount("light", true);
   const canvas = container.querySelector<HTMLElement>('[data-testid="mock-canvas"]')!;
@@ -650,6 +852,23 @@ it("hides the canvas status controls for every open mobile selection menu", asyn
     expect(canvas.dataset.constructionControls).toBe("true");
     expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(true);
   }
+});
+
+it("disables canvas empty-space zoom when the project menu opens between taps", async () => {
+  const container = await mount("light");
+  const canvas = container.querySelector<HTMLElement>('[data-testid="mock-canvas"]')!;
+  const tap = () => {
+    const event = new Event("pointerdown", { bubbles: true });
+    canvas.dispatchEvent(event);
+  };
+
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(true);
+  act(tap);
+  openProjectMenu(container);
+  expect(container.querySelector(".project-popover")).not.toBeNull();
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
+  act(tap);
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
 });
 
 it("marks open mobile control menus and closes each one on an outside tap", async () => {

@@ -130,7 +130,12 @@
   position: absolute; z-index: 45; top: calc(100% + 9px); left: 0; width: min(290px, calc(100vw - 28px));
   padding: 17px; background: #fbf9f1; border: 1px solid #e3dfd2; border-radius: 15px; box-shadow: 0 15px 44px rgba(34,53,47,.18);
 }
-.project-popover { max-height: min(76dvh, 590px); overflow-y: auto; }
+.project-popover {
+  max-height: min(76dvh, 590px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 8px;
+}
 .language-menu { position: relative; flex: none; }
 .language-dropdown {
   position: absolute;
@@ -187,6 +192,7 @@
 .popover-action:last-child { border: 0; }
 .popover-action svg { flex: none; color: hsl(var(--primary)); }
 .popover-action:hover { background: hsl(var(--accent)); border-radius: 6px; }
+.project-popover :is(.popover-action, .saved-project):focus-visible { background: hsl(var(--accent)); }
 
 .work-area { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 292px; }
 .canvas-stage { display: grid; min-width: 0; min-height: 0; grid-template-rows: 44px minmax(0,1fr); padding: 0 20px; }
@@ -354,6 +360,7 @@
 .color-family-filters.mobile button { min-height: 32px; padding-inline: 10px; }
 .drawer-scrim,.modal-scrim { position: fixed; inset: 0; z-index: 70; display: flex; justify-content: center; align-items: flex-end; background: rgba(28,42,36,.35); backdrop-filter: blur(3px); }
 .parts-drawer { width: min(100%, 520px); max-height: min(86dvh, 720px); overflow: auto; padding: 9px 22px max(20px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #faf8f0; box-shadow: 0 -10px 45px rgba(27,48,39,.18); }
+.parts-drawer :is(button, input, select, textarea, [tabindex]):focus { scroll-margin-block: 12px; }
 .drawer-handle { width: 37px; height: 4px; border-radius: 8px; margin: 0 auto 21px; background: #d1d2c6; }
 .drawer-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .drawer-heading h2 { margin: 0; color: #2d443a; font-size: 23px; letter-spacing: -1px; }
@@ -478,11 +485,15 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   outline-offset: 2px;
 }
 .gesture-guide-dialog {
+  display: flex;
+  flex-direction: column;
   z-index: 100;
-  width: min(620px, calc(100vw - 32px));
+  box-sizing: border-box;
+  width: min(620px, calc(100vw - 24px));
   max-width: none;
-  max-height: min(86dvh, 760px);
-  overflow-y: auto;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
   padding: 22px;
   border: 1px solid #deddd1;
   border-radius: 18px;
@@ -490,11 +501,19 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   color: #28352e;
   box-shadow: 0 24px 80px rgba(20, 30, 24, .28);
 }
-.gesture-guide-header { gap: 8px; padding-right: 25px; }
-.gesture-guide-title { font-size: 20px; font-weight: 800; line-height: 1.25; }
-.gesture-guide-intro { font-size: 13px; line-height: 1.5; }
+.gesture-guide-scroll-area {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.gesture-guide-header { min-width: 0; gap: 8px; padding-right: 25px; overflow-wrap: anywhere; }
+.gesture-guide-title { font-size: 1.25rem; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.gesture-guide-intro { font-size: .8125rem; line-height: 1.5; overflow-wrap: anywhere; }
 .gesture-guide-sections { display: grid; gap: 16px; margin-top: 18px; }
 .gesture-guide-sections section {
+  min-width: 0;
   padding: 14px;
   border: 1px solid #e4e2d8;
   border-radius: 13px;
@@ -503,12 +522,13 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
 .gesture-guide-sections h3 {
   margin: 0 0 8px;
   color: #a34e39;
-  font-size: 13px;
+  font-size: .8125rem;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 .gesture-guide-sections ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.gesture-guide-sections li strong { display: block; font-size: 12px; line-height: 1.35; }
-.gesture-guide-sections li p { margin: 3px 0 0; color: #637068; font-size: 12px; line-height: 1.45; }
+.gesture-guide-sections li strong { display: block; font-size: .75rem; line-height: 1.35; overflow-wrap: anywhere; }
+.gesture-guide-sections li p { margin: 3px 0 0; color: #637068; font-size: .75rem; line-height: 1.45; overflow-wrap: anywhere; }
 .gesture-guide-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .gesture-guide-mode,
 .gesture-guide-buttons li {
@@ -517,6 +537,8 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   align-items: start;
   gap: 9px;
 }
+.gesture-guide-mode > div,
+.gesture-guide-buttons li > div { min-width: 0; }
 .gesture-guide-mode {
   padding: 10px;
   border: 1px solid #e4e2d8;
@@ -525,7 +547,7 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
 }
 .gesture-guide-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .gesture-guide-buttons .gesture-guide-text-only { grid-template-columns: minmax(0, 1fr); }
-.height-arrows { font-size: 19px; font-weight: 700; white-space: nowrap; }
+.height-arrows { font-size: 1.1875rem; font-weight: 700; white-space: nowrap; }
 .gesture-guide-button-visual {
   display: inline-grid;
   width: 38px;
@@ -537,9 +559,9 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   color: #a34e39;
   box-shadow: 0 2px 5px rgba(30, 40, 32, .08);
 }
-.gesture-guide-mode p { margin: 3px 0 0; color: #637068; font-size: 11px; line-height: 1.4; }
+.gesture-guide-mode p { margin: 3px 0 0; color: #637068; font-size: .6875rem; line-height: 1.4; overflow-wrap: anywhere; }
 .gesture-guide-mode strong,
-.gesture-guide-buttons strong { font-size: 12px; }
+.gesture-guide-buttons strong { font-size: .75rem; overflow-wrap: anywhere; }
 .dark .gesture-guide-dialog {
   border-color: #46564b;
   background: #1f2b24;
@@ -566,6 +588,8 @@ button:focus-visible { outline: 3px solid rgba(190,92,65,.38); outline-offset: 2
   .mobile-dock { display: none; }
   .tool-option { min-height: 48px; }
   .tool-rail { overflow-y: auto; }
+  .gesture-guide-modes,
+  .gesture-guide-buttons { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 520px) {

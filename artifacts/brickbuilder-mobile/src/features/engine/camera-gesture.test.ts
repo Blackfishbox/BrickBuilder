@@ -40,6 +40,54 @@ describe("camera gesture help contract", () => {
     ])).toEqual(expectedCopy);
   });
 
+  it.each([
+    ["en", [
+      ["Drag with one finger", "Drag anywhere on the canvas to orbit the camera. A long press does not select a part."],
+      ["Double-tap empty space", "Zoom in by 2×. This works only when no menu is open."],
+      ["Double-tap a part", "It behaves like a quick tap: with part-tap selection on, the part is selected and the app switches to Select; with it off, nothing happens. It never opens rotation controls."],
+      ["Drag empty space", "Orbit the camera without moving a part."],
+      ["Double-tap empty space", "Zoom in by 2× when no menu is open."],
+      ["Double-tap a part", "Open the rotation and tilt controls for that part."],
+      ["Double-tap empty space", "Place one part; the same automatic mode choice applies."],
+      ["Double-tap an existing part", "It is treated as one regular Build tap and placement; it does not open rotation controls."],
+      ["Double-tap a part", "It is treated as one regular delete tap; it does not open rotation controls."],
+      ["Drag empty space", "Orbit the camera without deleting a part."],
+    ]],
+    ["de", [
+      ["Mit einem Finger ziehen", "Ziehe auf der Arbeitsfläche, um die Kamera zu drehen. Langes Drücken wählt keinen Stein aus."],
+      ["Doppeltipp auf freie Fläche", "Zoomt um den Faktor 2 hinein. Funktioniert nur, wenn kein Menü geöffnet ist."],
+      ["Doppeltipp auf einen Stein", "Wie ein kurzer Tipp: Bei aktiver Tipp-Auswahl wird der Stein ausgewählt und zur Auswahl gewechselt; bei deaktivierter Tipp-Auswahl passiert nichts. Das Drehmenü öffnet sich nicht."],
+      ["Freie Fläche ziehen", "Dreht die Kamera, ohne einen Stein zu bewegen."],
+      ["Doppeltipp auf freie Fläche", "Zoomt um den Faktor 2 hinein, wenn kein Menü geöffnet ist."],
+      ["Doppeltipp auf einen Stein", "Öffnet die Dreh- und Neigungssteuerung für diesen Stein."],
+      ["Doppeltipp auf freie Fläche", "Platziert einen Stein; danach gilt dieselbe automatische Moduswahl."],
+      ["Doppeltipp auf einen vorhandenen Stein", "Wird wie ein normaler Tipp im Baumodus behandelt und platziert einen Stein; das Drehmenü öffnet sich nicht."],
+      ["Doppeltipp auf einen Stein", "Wird wie ein normaler Lösch-Tipp behandelt; das Drehmenü öffnet sich nicht."],
+      ["Freie Fläche ziehen", "Dreht die Kamera, ohne einen Stein zu löschen."],
+    ]],
+  ] as const)("keeps %s one-finger orbit and double-tap help aligned with touch handling", (locale: Locale, expectedCopy) => {
+    const guidedTouchActions = [
+      "gesture.view.orbit.title",
+      "gesture.view.zoom.title",
+      "gesture.view.doubleTapPart.title",
+      "gesture.select.camera.title",
+      "gesture.select.zoom.title",
+      "gesture.select.rotate.title",
+      "gesture.build.doubleTap.title",
+      "gesture.build.doubleTapPart.title",
+      "gesture.delete.doubleTap.title",
+      "gesture.delete.camera.title",
+    ] as const;
+    const guideByTitle = new Map(
+      GESTURE_GUIDE_SECTIONS.flatMap(section => section.gestures).map(line => [line.title, line]),
+    );
+    expect(guidedTouchActions.map(title => {
+      const line = guideByTitle.get(title);
+      expect(line, `missing guide entry ${title}`).toBeDefined();
+      return [catalogs[locale][title], catalogs[locale][line!.description]];
+    })).toEqual(expectedCopy);
+  });
+
   it.each(CAMERA_GESTURE_GUIDE)("matches the documented $behavior gesture to camera behavior", ({ behavior }) => {
     const start = baseline();
     const endPoints: Record<typeof behavior, [PointerPoint, PointerPoint]> = {
