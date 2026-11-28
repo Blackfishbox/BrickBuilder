@@ -1070,6 +1070,12 @@ export function BuilderCanvas({
             activeRenderer.setPixelRatio(ratio); lastPixelRatio = ratio; lastWebGLRenderer = activeRenderer;
           }
           scene.traverse(object => {
+            // Large imports use compact LineSegments rather than wide-edge
+            // meshes. Keep these optional edges under the same mode control.
+            if (object instanceof LineSegments && object.name === "ldraw:instanced-edges") {
+              object.visible = propsRef.current.edgeMode !== "off";
+              return;
+            }
             if (!(object instanceof Mesh) || !object.userData.isWideEdgeMesh ||
               !(object.material instanceof ShaderMaterial)) return;
             const mode = propsRef.current.edgeMode;

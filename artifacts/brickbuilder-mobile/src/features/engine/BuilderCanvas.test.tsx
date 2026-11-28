@@ -534,6 +534,38 @@ for (const webgl of [true, false]) {
   });
 }
 
+it("hides compact large-model edges when off, including after rebuilding and switching projects", async () => {
+  observed.webglEnabled = true;
+  vi.spyOn(importedScenes, "createImportedGroupAsync").mockImplementation(async model =>
+    importedScenes.createImportedGroup(model, { compactFaces: true, edges: "thin" }));
+  const imported = engineFixture(1, 3);
+  const props = { projectId: "compact-edges", bricks: [], imported, selectedId: null,
+    selectedType: "brick-2x2" as const, selectedColor: "#B40000", toolMode: "view" as const,
+    onMove: vi.fn(), onSelect: vi.fn(), onPlace: vi.fn() };
+  await act(async () => root.render(<BuilderCanvas {...props} />));
+  flushFrame();
+  const edges = observed.scene3d!.getObjectByName("ldraw:instanced-edges")!;
+  expect(edges.type).toBe("LineSegments");
+  expect(edges.visible).toBe(false);
+  const geometry = (edges as import("three").LineSegments).geometry;
+  for (const edgeMode of ["thin", "thick", "off"] as const) {
+    await act(async () => root.render(<BuilderCanvas {...props} edgeMode={edgeMode} />));
+    flushFrame();
+    expect(edges.visible).toBe(edgeMode !== "off");
+    expect((edges as import("three").LineSegments).geometry).toBe(geometry);
+  }
+  const canvas = element.querySelector<HTMLCanvasElement>("[data-renderer='webgl']")!;
+  await act(async () => {
+    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+  });
+  flushFrame();
+  expect(observed.scene3d!.getObjectByName("ldraw:instanced-edges")!.visible).toBe(false);
+  await act(async () => root.render(<BuilderCanvas {...props} projectId="next-compact-project"
+    imported={engineFixture(1, 2)} />));
+  flushFrame();
+  expect(observed.scene3d!.getObjectByName("ldraw:instanced-edges")!.visible).toBe(false);
+});
+
 it("toggles screen-space edge width without rebuilding imported or local model geometry", async () => {
   observed.webglEnabled = true;
   const imported = engineFixture(1, 1);
