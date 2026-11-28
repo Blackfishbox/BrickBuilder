@@ -268,6 +268,28 @@ it.each(["de", "en"] as const)("supports language menu keys from both options in
 });
 
 it.each([
+  ["Enter", "de"],
+  ["Enter", "en"],
+  [" ", "de"],
+  [" ", "en"],
+] as const)("selects the focused language with %s in %s", async (key, language) => {
+  const container = await mount("light", false, language);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  await act(async () => trigger.click());
+
+  const targetLanguage = language === "en" ? "de" : "en";
+  const targetOption = container.querySelector<HTMLButtonElement>(`[data-testid="language-option-${targetLanguage}"]`)!;
+  targetOption.focus();
+  await act(async () => {
+    targetOption.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  });
+
+  expect(documentRef.documentElement.lang).toBe(targetLanguage);
+  expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe(targetLanguage);
+  expect(container.querySelector('[role="menu"]')).toBeNull();
+});
+
+it.each([
   { screen: "320px-wide screen", width: 320, height: 568 },
   { screen: "short landscape screen", width: 568, height: 320 },
 ])("keeps the project menu scrollable and within the screen at 200% text size on a $screen", async ({ width, height }) => {

@@ -102,9 +102,16 @@ function App() {
   const languageOptionEnRef = useRef<HTMLButtonElement | null>(null);
   const languageOptionDeRef = useRef<HTMLButtonElement | null>(null);
   const handleLanguageMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const options = [languageOptionEnRef.current, languageOptionDeRef.current];
+    if (event.key === "Enter" || event.key === " ") {
+      const activeOption = options.find(option => option === document.activeElement);
+      if (!activeOption) return;
+      event.preventDefault();
+      activeOption.click();
+      return;
+    }
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const options = [languageOptionEnRef.current, languageOptionDeRef.current];
     const activeIndex = options.indexOf(document.activeElement as HTMLButtonElement | null);
     const nextIndex = event.key === "Home"
       ? 0
