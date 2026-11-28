@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 
 export interface PointerPoint { x: number; y: number }
+export type CameraGestureBehavior = "pan" | "pinch" | "twist";
 export interface GestureCamera {
   theta: number;
   phi: number;

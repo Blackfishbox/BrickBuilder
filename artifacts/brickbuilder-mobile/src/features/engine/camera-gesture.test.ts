@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PerspectiveCamera, Vector3 } from "three";
 import { cameraGesture, type GestureStart, type PointerPoint } from "./camera-gesture";
+import { CAMERA_GESTURE_GUIDE, GESTURE_GUIDE_SECTIONS } from "./gesture-guide";
+import { catalogs, type Locale } from "@/i18n/messages";
 
 const points = [{ x: 100, y: 150 }, { x: 300, y: 150 }] as const;
 const shift = (dx: number, dy: number): [PointerPoint, PointerPoint] =>
@@ -9,6 +11,66 @@ function baseline(theta = 0.72, phi = 0.93, distance = 17): GestureStart {
   return { points, camera: { theta, phi, distance, target: new Vector3(1, 2, 3) } };
 }
 const viewport = { width: 400, height: 800, fov: 42 };
+
+describe("camera gesture help contract", () => {
+  it("lists the pan, pinch, and twist actions that the camera supports", () => {
+    expect(CAMERA_GESTURE_GUIDE.map(({ behavior, title, description }) => ({ behavior, title, description }))).toEqual([
+      { behavior: "pan", title: "gesture.camera.pan.title", description: "gesture.camera.pan.description" },
+      { behavior: "pinch", title: "gesture.camera.pinch.title", description: "gesture.camera.pinch.description" },
+      { behavior: "twist", title: "gesture.camera.twist.title", description: "gesture.camera.twist.description" },
+    ]);
+    expect(GESTURE_GUIDE_SECTIONS[0].gestures).toBe(CAMERA_GESTURE_GUIDE);
+  });
+
+  it.each([
+    ["en", [
+      ["Move two fingers together", "Move both fingers in the same direction to pan the camera."],
+      ["Pinch", "Spread two fingers to zoom in; bring them together to zoom out."],
+      ["Twist", "Rotate two fingers around each other to orbit around the model."],
+    ]],
+    ["de", [
+      ["Zwei Finger gemeinsam bewegen", "Bewege beide Finger in dieselbe Richtung, um die Kamera zu verschieben."],
+      ["Pinch-Geste", "Finger auseinanderziehen zoomt hinein; zusammenziehen zoomt heraus."],
+      ["Zwei Finger drehen", "Drehe beide Finger umeinander, um die Kamera um das Modell zu drehen."],
+    ]],
+  ] as const)("keeps %s camera gesture help accurate", (locale: Locale, expectedCopy) => {
+    expect(CAMERA_GESTURE_GUIDE.map(({ title, description }) => [
+      catalogs[locale][title],
+      catalogs[locale][description],
+    ])).toEqual(expectedCopy);
+  });
+
+  it.each(CAMERA_GESTURE_GUIDE)("matches the documented $behavior gesture to camera behavior", ({ behavior }) => {
+    const start = baseline();
+    const endPoints: Record<typeof behavior, [PointerPoint, PointerPoint]> = {
+      pan: shift(24, 18),
+      pinch: [{ x: 70, y: 150 }, { x: 330, y: 150 }],
+      twist: [
+        { x: 200 - 100 * Math.cos(0.5), y: 150 - 100 * Math.sin(0.5) },
+        { x: 200 + 100 * Math.cos(0.5), y: 150 + 100 * Math.sin(0.5) },
+      ],
+    };
+    const next = cameraGesture(start, endPoints[behavior], viewport);
+
+    if (behavior === "pan") {
+      expect(next.target).not.toEqual(start.camera.target);
+      expect(next.distance).toBe(start.camera.distance);
+      expect(next.theta).toBe(start.camera.theta);
+    } else if (behavior === "pinch") {
+      expect(next.distance).toBeLessThan(start.camera.distance);
+      expect(next.target).toEqual(start.camera.target);
+      expect(next.theta).toBe(start.camera.theta);
+      const bringTogether = cameraGesture(start, [{ x: 130, y: 150 }, { x: 270, y: 150 }], viewport);
+      expect(bringTogether.distance).toBeGreaterThan(start.camera.distance);
+      expect(bringTogether.target).toEqual(start.camera.target);
+      expect(bringTogether.theta).toBe(start.camera.theta);
+    } else {
+      expect(next.theta).toBeGreaterThan(start.camera.theta);
+      expect(next.target).toEqual(start.camera.target);
+      expect(next.distance).toBe(start.camera.distance);
+    }
+  });
+});
 
 describe("independent two-finger camera gestures", () => {
   for (const [width, height] of [[400, 800], [800, 400], [600, 600]]) {

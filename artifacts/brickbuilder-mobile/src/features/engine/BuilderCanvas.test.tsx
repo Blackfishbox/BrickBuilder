@@ -7,6 +7,7 @@ import { engineFixture } from "./engine-fixtures";
 import type { SoftwareScene } from "./software-scene";
 import * as softwareRendering from "./software-scene";
 import * as cameraGestures from "./camera-gesture";
+import { CAMERA_GESTURE_GUIDE } from "./gesture-guide";
 import * as instructionOutlines from "../instructions/outlines";
 import { NORMAL_EDGE_CONTRAST, NORMAL_EDGE_WIDTH_PX, THICK_EDGE_WIDTH_PX } from "./wide-lines";
 import BuilderCanvas, { FallbackRenderer } from "./BuilderCanvas";
@@ -2219,6 +2220,53 @@ describe("frame-coalesced drag transactions", () => {
     expect(onViewCameraChange.mock.lastCall![1]).toBeUndefined();
   });
   for (const toolMode of ["view", "build", "select", "delete"] as const) {
+    it(`applies every documented two-finger camera action in ${toolMode} mode`, async () => {
+      await mount(toolMode);
+      const gesture = vi.spyOn(cameraGestures, "cameraGesture");
+      const expectedBehaviors = new Set(CAMERA_GESTURE_GUIDE.map(item => item.behavior));
+
+      for (const behavior of expectedBehaviors) {
+        const start = { x: 200, y: 260 };
+        const second = { x: 260, y: 260 };
+        pointer("pointerdown", start.x, start.y, 31);
+        pointer("pointerdown", second.x, second.y, 32);
+
+        if (behavior === "pan") {
+          pointer("pointermove", start.x + 20, start.y + 15, 31);
+          pointer("pointermove", second.x + 20, second.y + 15, 32);
+        } else if (behavior === "pinch") {
+          pointer("pointermove", start.x - 20, start.y, 31);
+          pointer("pointermove", second.x + 20, second.y, 32);
+        } else {
+          const angle = 0.4, centerX = (start.x + second.x) / 2, centerY = start.y;
+          pointer("pointermove", centerX - 30 * Math.cos(angle), centerY - 30 * Math.sin(angle), 31);
+          pointer("pointermove", centerX + 30 * Math.cos(angle), centerY + 30 * Math.sin(angle), 32);
+        }
+        flushFrame();
+
+        const { camera } = gesture.mock.calls.at(-1)![0];
+        const result = gesture.mock.results.at(-1)!.value;
+        if (behavior === "pan") {
+          expect(result.target).not.toEqual(camera.target);
+          expect(result.distance).toBe(camera.distance);
+          expect(result.theta).toBe(camera.theta);
+        } else if (behavior === "pinch") {
+          expect(result.distance).toBeLessThan(camera.distance);
+          expect(result.target).toEqual(camera.target);
+          expect(result.theta).toBe(camera.theta);
+        } else {
+          expect(result.theta).not.toBe(camera.theta);
+          expect(result.distance).toBeCloseTo(camera.distance);
+          expect(result.target.distanceTo(camera.target)).toBeLessThan(1e-10);
+        }
+
+        pointer("pointerup", start.x, start.y, 31);
+        pointer("pointerup", second.x, second.y, 32);
+      }
+
+      expect([...expectedBehaviors]).toEqual(["pan", "pinch", "twist"]);
+    });
+
     it(`takes over touches on parts in ${toolMode} without editor transactions`, async () => {
       const { props, point, model } = await mount(toolMode);
       const original = observed.scene!.positions.slice();

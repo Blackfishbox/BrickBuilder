@@ -8,7 +8,7 @@
 }
 .dark .tool-rail { background: rgba(22, 34, 30, .94); border-color: hsl(var(--border)); }
 .dark :is(.project-title-button, .saved-project, .boot-screen, .canvas-loading,
-  .rename-label, .popover-action, .language-popover, .language-popover label, .context-label, .brick-count, .icon-button,
+  .rename-label, .popover-action, .context-label, .brick-count, .icon-button,
   .section-heading h2, .tool-option, .active-piece, .color-name, .selection-detail strong,
   .selection-action, .selection-empty, .save-status, .toast-note, .more-controls,
   .dock-color, .dock-tool, .dock-history, .drawer-heading h2, .search-field,
@@ -17,7 +17,7 @@
   color: hsl(var(--foreground));
 }
 .dark :is(.project-popover, .parts-drawer, .color-drawer, .confirm-card,
-  .mobile-selection-actions, .active-piece, .selection-action, .icon-button, .language-popover select,
+  .mobile-selection-actions, .active-piece, .selection-action, .icon-button, .language-dropdown,
   .drawer-piece, .mobile-color-option, .fmt-details, .fmt-export, .plib-pkg,
   .plib-doc, .plib-catalog-row, .inv-row, .inv-import, .sm-gauge, .sm-row,
   .ins-parts-box, .ins-callout, .ins-part-count, .ins-stepper, .ins-strip button,
@@ -53,7 +53,7 @@
   border-color: hsl(var(--border));
   color: hsl(var(--accent-foreground));
 }
-.dark :is(.project-title-button, .saved-project, .popover-action, .project-name-input, .language-popover select,
+.dark :is(.project-title-button, .saved-project, .popover-action, .project-name-input, .language-dropdown,
   .icon-button, .tool-option.active, .active-piece, .selection-action, .mobile-dock,
   .mobile-selection-actions, .color-drawer, .parts-drawer, .drawer-piece,
   .mobile-color-option, .confirm-card, .fmt-mode-tabs button, .fmt-drop,

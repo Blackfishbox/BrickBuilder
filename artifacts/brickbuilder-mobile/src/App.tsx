@@ -528,7 +528,7 @@ function App() {
             {themePreference === "system" ? <Monitor size={17} /> :
               themePreference === "dark" ? <Moon size={17} /> : <CONTROL_SYMBOLS.theme size={17} />}
           </button>
-          <div className="language-menu" data-open={languageMenuOpen || undefined}>
+          <div className="language-menu">
             <button
               type="button"
               className="theme-toggle language-toggle"
@@ -539,23 +539,32 @@ function App() {
               aria-label={t("language")}
               title={t("language")}
               aria-expanded={languageMenuOpen}
-              aria-controls="language-popover"
-              aria-haspopup="dialog"
+              aria-controls="language-dropdown"
+              aria-haspopup="menu"
               data-testid="button-language-menu"
-            >
+          >
               <CONTROL_SYMBOLS.language size={18} />
             </button>
             {languageMenuOpen && (
-              <div className="language-popover rise-in" id="language-popover" role="dialog" aria-label={t("language")}>
-                <label htmlFor="language-select">{t("language")}</label>
-                <select id="language-select" data-testid="select-language" aria-label={t("language")} value={locale}
-                  onChange={event => {
-                    setLocale(event.target.value as "en" | "de");
-                    setLanguageMenuOpen(false);
-                  }}>
-                  <option value="en">{t("english")}</option>
-                  <option value="de">{t("german")}</option>
-                </select>
+              <div className="language-dropdown rise-in" id="language-dropdown" role="menu" aria-label={t("language")}>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={locale === "en"}
+                  data-testid="language-option-en"
+                  onClick={() => { setLocale("en"); setLanguageMenuOpen(false); }}
+                >
+                  {t("english")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={locale === "de"}
+                  data-testid="language-option-de"
+                  onClick={() => { setLocale("de"); setLanguageMenuOpen(false); }}
+                >
+                  {t("german")}
+                </button>
               </div>
             )}
           </div>

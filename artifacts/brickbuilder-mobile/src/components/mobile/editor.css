@@ -132,36 +132,42 @@
 }
 .project-popover { max-height: min(76dvh, 590px); overflow-y: auto; }
 .language-menu { position: relative; flex: none; }
-.language-popover {
+.language-dropdown {
   position: absolute;
   z-index: 60;
   top: calc(100% + 8px);
   right: 0;
   display: grid;
-  gap: 9px;
+  gap: 3px;
   box-sizing: border-box;
-  width: 196px;
-  max-width: calc(100vw - 20px);
-  padding: 12px;
+  width: 152px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
   border: 1px solid hsl(var(--border));
-  border-radius: 12px;
+  border-radius: 11px;
   background: hsl(var(--card));
   color: hsl(var(--card-foreground));
-  box-shadow: 0 12px 32px rgba(20, 30, 24, .2);
+  box-shadow: 0 10px 28px rgba(20, 30, 24, .18);
 }
-.language-popover label { color: hsl(var(--foreground)); font-size: 13px; font-weight: 700; }
-.language-popover select {
+.language-dropdown button {
+  display: flex;
+  align-items: center;
   width: 100%;
   min-height: 44px;
-  padding: 0 10px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  background: hsl(var(--muted));
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
   color: hsl(var(--foreground));
   font: inherit;
   font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
 }
-.language-popover select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.language-dropdown button:hover,
+.language-dropdown button[aria-checked="true"] { background: hsl(var(--muted)); }
+.language-dropdown button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 .saved-projects { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; margin-top: 10px; border-top: 1px solid #e5e1d5; }
 .saved-projects > p { margin: 0 0 3px; color: #9a6656; font: 500 9px var(--app-font-mono); letter-spacing: .1em; text-transform: uppercase; }
 .saved-project { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 6px 7px; border: 0; border-radius: 7px; background: transparent; color: hsl(var(--foreground)); cursor: pointer; text-align: left; font-size: 13px; }

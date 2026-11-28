@@ -1,6 +1,7 @@
 import type { MessageId } from "@/i18n/messages";
 import type { ToolMode } from "@/features/editor/model";
 import { CONTROL_SYMBOLS, type ControlSymbol } from "./control-symbols";
+import type { CameraGestureBehavior } from "./camera-gesture";
 
 export const DOUBLE_TAP_INTERVAL_MS = 500;
 export const BUILD_SINGLE_TAP_DELAY_MS = DOUBLE_TAP_INTERVAL_MS + 80;
@@ -11,6 +12,10 @@ export const EMPTY_DOUBLE_TAP_ZOOM_MODES: ReadonlySet<ToolMode> = new Set(["view
 export interface GestureGuideLine {
   title: MessageId;
   description: MessageId;
+}
+
+export interface CameraGestureGuideLine extends GestureGuideLine {
+  behavior: CameraGestureBehavior;
 }
 
 export interface GestureGuideSection {
@@ -95,15 +100,18 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
   },
 ];
 
+/** Keep these documented camera actions aligned with cameraGesture and BuilderCanvas. */
+export const CAMERA_GESTURE_GUIDE: readonly CameraGestureGuideLine[] = [
+  { behavior: "pan", title: "gesture.camera.pan.title", description: "gesture.camera.pan.description" },
+  { behavior: "pinch", title: "gesture.camera.pinch.title", description: "gesture.camera.pinch.description" },
+  { behavior: "twist", title: "gesture.camera.twist.title", description: "gesture.camera.twist.description" },
+];
+
 /** Keep this user-facing guide aligned with the pointer handlers in BuilderCanvas. */
 export const GESTURE_GUIDE_SECTIONS: readonly GestureGuideSection[] = [
   {
     title: "gesture.section.camera",
-    gestures: [
-      { title: "gesture.camera.pan.title", description: "gesture.camera.pan.description" },
-      { title: "gesture.camera.pinch.title", description: "gesture.camera.pinch.description" },
-      { title: "gesture.camera.twist.title", description: "gesture.camera.twist.description" },
-    ],
+    gestures: CAMERA_GESTURE_GUIDE,
   },
   {
     title: "gesture.section.controls",

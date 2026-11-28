@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import App from "./App";
 import { I18nProvider, LANGUAGE_STORAGE_KEY } from "@/i18n/I18nProvider";
 import { createEmptyDocument } from "@/features/editor/model";
+import { HELP_BUTTON_SECTIONS, HELP_MODE_OVERVIEW } from "@/features/engine/gesture-guide";
 import { parseInventory } from "@/features/inventory/import";
 import { COLOR_THEME_STORAGE_KEY } from "@/platform/color-theme";
 import { setRemoteGeometryEnabled } from "@/features/privacy/geometry-consent";
@@ -185,21 +186,26 @@ function cssRule(css: string, selector: string) {
   }, {});
 }
 
-it.each(["de", "en"] as const)("shows the language selector beside the theme button in %s", async language => {
+it.each(["de", "en"] as const)("shows an icon-only language menu beside the theme button in %s", async language => {
   const container = await mount("light", false, language);
   const theme = container.querySelector<HTMLButtonElement>('[data-testid="button-toggle-theme"]')!;
   const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  const languageControl = container.querySelector<HTMLElement>(".language-menu")!;
+  const headerControls = [...container.querySelector<HTMLElement>(".topbar-end")!.children];
   expect(languageButton.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
-  expect(languageButton.getAttribute("aria-controls")).toBe("language-popover");
-  const headerButtons = [...container.querySelectorAll<HTMLButtonElement>(".topbar-end > button, .topbar-end .language-menu > button")];
-  expect(headerButtons.indexOf(languageButton)).toBe(headerButtons.indexOf(theme) + 1);
-  expect(container.querySelector('[data-testid="select-language"]')).toBeNull();
-  await act(async () => languageButton.click());
-  const popup = documentRef.body.querySelector<HTMLElement>('[data-testid="select-language"]')?.closest('[role="dialog"]')!;
-  expect(popup.id).toBe("language-popover");
-  const select = popup.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
-  expect(select.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+  expect(languageButton.getAttribute("aria-haspopup")).toBe("menu");
+  expect(languageButton.textContent?.trim()).toBe("");
+  expect(languageButton.querySelector("svg")).not.toBeNull();
+  expect(headerControls.indexOf(languageControl)).toBe(headerControls.indexOf(theme) + 1);
+  expect(container.querySelector('[role="menu"]')).toBeNull();
 
+  await act(async () => languageButton.click());
+  const dropdown = container.querySelector<HTMLElement>('[role="menu"]')!;
+  expect(dropdown.closest('[role="dialog"]')).toBeNull();
+  expect(dropdown.querySelector('[data-testid="language-option-en"]')?.textContent).toBe(language === "de" ? "Englisch" : "English");
+  expect(dropdown.querySelector('[data-testid="language-option-de"]')?.textContent).toBe(language === "de" ? "Deutsch" : "German");
+  expect(dropdown.querySelector(`[data-testid="language-option-${language}"]`)?.getAttribute("aria-checked")).toBe("true");
+  await act(async () => languageButton.click());
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
   const menu = container.querySelector<HTMLElement>(".project-popover")!;
   expect(menu.querySelector(".popover-eyebrow")).toBeNull();
@@ -210,7 +216,7 @@ it.each(["de", "en"] as const)("shows the language selector beside the theme but
   expect(menu.querySelector('[data-testid="select-language"]')).toBeNull();
   expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*min-height: 48px/);
   expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*font-size: 14px/);
-  expect(editorCss).toContain(".language-popover");
+  expect(editorCss).toContain(".language-dropdown");
   expect(brandCss).toContain("max-width: calc(100vw - 24px)");
 });
 
@@ -234,14 +240,88 @@ it.each([
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
 
   const menu = container.querySelector<HTMLElement>(".project-popover")!;
-  const language = container.querySelector<HTMLSelectElement>('[data-testid="select-language"]');
+  const language = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]');
   const lastProject = menu.querySelector<HTMLButtonElement>('[data-testid="button-open-project-saved-project-7"]')!;
   const menuSizing = cssRule(editorCss, ".project-popover");
   const brandSizing = cssRule(brandCss, ".project-popover");
   const savedProjectText = cssRule(editorCss, ".saved-project span");
 
   expect(textScaleStyle.textContent).toContain("text-size-adjust: 200%");
-  expect(language).toBeNull();
+  expect(language).not.toBeNull();
+  expect(menu.querySelector('[data-testid="select-language"]')).toBeNull();
+  expect(lastProject.textContent).toContain(lastProjectName);
+  expect(menuSizing.width).toBe("min(290px, calc(100vw - 28px))");
+  expect(brandSizing["max-width"]).toBe("calc(100vw - 24px)");
+  expect(brandSizing["max-height"]).toBe("min(76dvh, 680px)");
+  expect(menuSizing["overflow-y"]).toBe("auto");
+  expect(savedProjectText.overflow).toBe("hidden");
+  expect(savedProjectText["text-overflow"]).toBe("ellipsis");
+  expect(savedProjectText["white-space"]).toBe("nowrap");
+});
+
+it.each(["light", "dark"] as const)("also verifies help examples in %s mode", async theme => {
+  const container = await mount(theme, true);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  const edgeExample = dialog.querySelector(".thick-edges-sample")!;
+  expect(edgeExample.outerHTML).toBe(container.querySelector('[data-testid="button-thick-edges"] .thick-edges-sample')!.outerHTML);
+  const heightButtons = container.querySelectorAll<HTMLElement>(".mobile-selection-actions > button");
+  expect(dialog.querySelector(".height-arrows")?.textContent).toBe(
+    `${heightButtons[0]?.textContent} ${heightButtons[1]?.textContent}`,
+  );
+  expect(dialog.querySelector(".lucide-box, .lucide-panel-top, .lucide-folder-open")).toBeNull();
+  const projects = dialog.querySelector(".gesture-guide-text-only")!;
+  expect(projects.querySelector("svg")).toBeNull();
+  expect(projects.textContent).toContain("Auf diesem Gerät");
+});
+
+it.each(["de", "en"] as const)("shows a larger project menu without the workshop heading in %s", async language => {
+  const container = await mount("light", false, language);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
+  const menu = container.querySelector<HTMLElement>(".project-popover")!;
+  expect(menu.querySelector(".popover-eyebrow")).toBeNull();
+  for (const icon of menu.querySelectorAll(".popover-action svg")) {
+    expect(icon.getAttribute("width")).toBe("20");
+    expect(icon.getAttribute("aria-hidden")).toBe("true");
+  }
+  expect(menu.querySelector(".language-row")).toBeNull();
+  expect(menu.querySelector('[data-testid="button-language-menu"]')).toBeNull();
+  const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  expect(languageButton.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+  expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*min-height: 48px/);
+  expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*font-size: 14px/);
+  expect(brandCss).toContain("max-width: calc(100vw - 24px)");
+});
+
+it.each([
+  { screen: "320px-wide screen", width: 320, height: 568 },
+  { screen: "short landscape screen", width: 568, height: 320 },
+])("keeps the project menu scrollable and within the screen at 200% text size on a $screen", async ({ width, height }) => {
+  const lastProjectName = "Zuletzt gespeichertes Modell mit langem Namen";
+  const container = await mount("light", false, "de", {
+    viewport: { width, height },
+    projects: Array.from({ length: 8 }, (_, index) => ({
+      id: `saved-project-${index}`,
+      name: index === 7 ? lastProjectName : `Gespeichertes Modell ${index + 1}`,
+      brickCount: index + 1,
+    })),
+  });
+
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
+
+  const menu = container.querySelector<HTMLElement>(".project-popover")!;
+  const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  const lastProject = menu.querySelector<HTMLButtonElement>('[data-testid="button-open-project-saved-project-7"]')!;
+  const menuSizing = cssRule(editorCss, ".project-popover");
+  const brandSizing = cssRule(brandCss, ".project-popover");
+  const savedProjectText = cssRule(editorCss, ".saved-project span");
+
+  expect(textScaleStyle.textContent).toContain("text-size-adjust: 200%");
+  expect(languageButton.getAttribute("aria-label")).toBe("Sprache");
+  expect(menu.querySelector('[data-testid="button-language-menu"]')).toBeNull();
   expect(lastProject.textContent).toContain(lastProjectName);
   expect(menuSizing.width).toBe("min(290px, calc(100vw - 28px))");
   expect(brandSizing["max-width"]).toBe("calc(100vw - 24px)");
@@ -253,15 +333,12 @@ it.each([
 });
 
 it.each(["light", "dark"] as const)("uses real arrow and edge symbols in %s help", async theme => {
-  const container = await mount(theme, true);
+  const container = await mount(theme);
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
   const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
   const edgeExample = dialog.querySelector(".thick-edges-sample")!;
   expect(edgeExample.outerHTML).toBe(container.querySelector('[data-testid="button-thick-edges"] .thick-edges-sample')!.outerHTML);
-  const heightButtons = container.querySelectorAll<HTMLElement>(".mobile-selection-actions > button");
-  expect(dialog.querySelector(".height-arrows")?.textContent).toBe(
-    `${heightButtons[0]?.textContent} ${heightButtons[1]?.textContent}`,
-  );
+  expect(dialog.querySelector(".height-arrows")?.textContent).toBe("↑ ↓");
   expect(dialog.querySelector(".lucide-box, .lucide-panel-top, .lucide-folder-open")).toBeNull();
   const projects = dialog.querySelector(".gesture-guide-text-only")!;
   expect(projects.querySelector("svg")).toBeNull();
@@ -289,14 +366,13 @@ it("switches to selection mode and selects a tapped part from the view canvas", 
 
 it("opens the English gesture guide from the header after theme and language", async () => {
   const container = await mount("light", false, "en");
-  const headerButtons = [...container.querySelectorAll<HTMLButtonElement>(".topbar-end button")];
+  const headerControls = [...container.querySelector<HTMLElement>(".topbar-end")!.children];
   const helpButton = container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!;
+  const languageControl = container.querySelector<HTMLElement>(".language-menu")!;
   expect(helpButton.getAttribute("aria-label")).toBe("Gesture help");
-  expect(headerButtons.indexOf(helpButton)).toBe(headerButtons.indexOf(
-    container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!,
-  ) + 1);
-  expect(headerButtons.indexOf(container.querySelector<HTMLButtonElement>('[data-testid="button-save"]')!))
-    .toBe(headerButtons.indexOf(helpButton) + 1);
+  expect(headerControls.indexOf(helpButton)).toBe(headerControls.indexOf(languageControl) + 1);
+  expect(headerControls.indexOf(container.querySelector<HTMLButtonElement>('[data-testid="button-save"]')!))
+    .toBe(headerControls.indexOf(helpButton) + 1);
 
   await act(async () => helpButton.click());
   const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
@@ -309,6 +385,128 @@ it("opens the English gesture guide from the header after theme and language", a
   expect(dialog.textContent).toContain("Android: the export can continue in the background or with the screen off for up to two hours.");
   expect(dialog.querySelectorAll(".gesture-guide-button-visual").length).toBeGreaterThan(20);
   expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
+});
+
+it.each(["de", "en"] as const)("keeps help labels and action descriptions aligned with controls in %s", async language => {
+  const container = await mount("light", true, language);
+  const projectMenu = container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!;
+  await act(async () => projectMenu.click());
+  const menuControls = [
+    ["project.newAction", "button-new-project", "Create a new empty project", "Erstellt ein neues leeres Projekt"],
+    ["project.import", "button-open-import", "Import a model or parts list", "Importiert ein Modell oder eine Teileliste"],
+    ["project.export", "button-open-export", "Export the model or its parts list", "Exportiert das Modell oder dessen Teileliste"],
+    ["project.instructions", "button-open-instructions", "View or edit building steps", "Bauanleitungsschritte ansehen oder bearbeiten"],
+    ["project.storage", "button-open-storage", "Review or remove locally stored projects", "Lokal gespeicherte Projekte"],
+    ["project.privacy", "button-open-privacy", "Manage privacy options", "Datenschutzoptionen verwalten"],
+  ] as const;
+  const menuLabels = menuControls.map(([title, testId, ...phrases]) => {
+    const label = container.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)!.textContent!.trim();
+    return { title, label, actionPhrase: language === "en" ? phrases[0] : phrases[1] };
+  });
+  await act(async () => projectMenu.click());
+
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
+  const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
+  const readHelpEntry = (title: string) => {
+    const entries = [...dialog.querySelectorAll<HTMLElement>(".gesture-guide-buttons li, .gesture-guide-modes article")];
+    const entry = entries.find(candidate => candidate.querySelector("strong")?.textContent?.trim() === title);
+    expect(entry, `Expected a help entry named "${title}"`).toBeDefined();
+    return entry!;
+  };
+  const readButtonHelpEntry = (titleKey: string) => {
+    const items = HELP_BUTTON_SECTIONS.flatMap(section => section.buttons);
+    const index = items.findIndex(item => item.title === titleKey);
+    expect(index, `Expected a help item keyed "${titleKey}"`).toBeGreaterThanOrEqual(0);
+    const entries = [...dialog.querySelectorAll<HTMLElement>(".gesture-guide-buttons li")];
+    expect(entries).toHaveLength(items.length);
+    return entries[index];
+  };
+
+  const modeActions = language === "en"
+    ? ["without editing it", "tap or drag on the floor", "Select, move, recolor", "Tap parts to remove them"]
+    : ["ohne es zu bearbeiten", "mit Tipp oder Ziehen auf dem Boden", "Teile auswählen, bewegen", "Teile durch Antippen löschen"];
+  const modes = [
+    ["view", "View", "editor.viewMode"],
+    ["build", "Build", "editor.buildMode"],
+    ["select", "Select", "editor.selectMode"],
+    ["delete", "Delete", "editor.deleteMode"],
+  ] as const;
+  for (const [index, [mode, englishLabel, titleKey]] of modes.entries()) {
+    const control = container.querySelector<HTMLButtonElement>(`[data-testid="button-tool-${mode}"]`)!;
+    const label = control.querySelector("span")!.textContent!.trim();
+    if (language === "en") expect(label).toBe(englishLabel);
+    const helpEntry = readHelpEntry(label);
+    expect(helpEntry.querySelector("p")?.textContent?.toLocaleLowerCase())
+      .toContain(modeActions[index].toLocaleLowerCase());
+    expect(HELP_MODE_OVERVIEW.some(item => item.title === titleKey)).toBe(true);
+  }
+
+  const directControls = [
+    ["button-gesture-help", "gesture.help", language === "en" ? "Open this guide" : "Öffnet diese Übersicht"],
+    ["button-save", "save.action", language === "en" ? "Save the current project locally" : "Speichert das aktuelle Projekt lokal"],
+    ["button-undo", "history.undo", language === "en" ? "Undo the most recent model change" : "Macht die letzte Modelländerung rückgängig"],
+    ["button-redo", "history.redo", language === "en" ? "Redo a change that was undone" : "Stellt eine rückgängig gemachte Änderung wieder her"],
+    ["button-thick-edges", "canvas.thickEdges", language === "en" ? "Cycle through no edges" : "Wechselt zwischen keinen Kanten"],
+    ["mobile-button-colors", "editor.colorMode", language === "en" ? "Open the color picker" : "Öffnet die Farbauswahl"],
+    ["mobile-button-parts", "editor.partsTool", language === "en" ? "Open the part chooser" : "Öffnet die Teileauswahl"],
+  ] as const;
+  for (const [testId, titleKey, actionPhrase] of directControls) {
+    const control = container.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!;
+    const label = testId === "button-thick-edges"
+      ? control.querySelector(".thick-edges-label")?.textContent?.trim()
+      : testId === "mobile-button-colors"
+        ? control.querySelector("span:last-child")?.textContent?.trim()
+      : control.getAttribute("aria-label") ?? control.querySelector("span")?.textContent?.trim() ?? control.textContent!.trim();
+    const guideItem = HELP_BUTTON_SECTIONS.flatMap(section => section.buttons).find(item => item.title === titleKey)!;
+    expect(guideItem).toBeDefined();
+    const entry = readButtonHelpEntry(titleKey);
+    expect(entry.querySelector("strong")?.textContent?.trim()).toBe(label);
+    expect(entry.querySelector("p")?.textContent?.toLocaleLowerCase()).toContain(actionPhrase.toLocaleLowerCase());
+  }
+
+  const selectedControls = [
+    ["fine.title", "button-fine-adjustment", "title", language === "en" ? "Open fine positioning" : "Öffnet die Feinjustierung"],
+    ["group.title", "button-group-selection", "title", language === "en" ? "Open multi-selection" : "Öffnet die Mehrfachauswahl"],
+    ["tilt.title", "button-tilt-controls", "title", language === "en" ? "Open rotation and tilt controls" : "Öffnet die Dreh- und Neigungssteuerung"],
+    ["editor.remove", "button-delete-selected", "text", language === "en" ? "Delete the selected part or parts" : "Löscht das ausgewählte Teil"],
+  ] as const;
+  for (const [titleKey, testId, labelSource, actionPhrase] of selectedControls) {
+    const control = container.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!;
+    const label = labelSource === "title" ? control.getAttribute("title") : control.textContent?.trim();
+    const entry = readButtonHelpEntry(titleKey);
+    expect(entry.querySelector("strong")?.textContent?.trim()).toBe(label);
+    expect(entry.querySelector("p")?.textContent?.toLocaleLowerCase()).toContain(actionPhrase.toLocaleLowerCase());
+  }
+
+  const heightButtons = [...container.querySelectorAll<HTMLButtonElement>(".mobile-selection-actions > button")].slice(0, 2);
+  expect(heightButtons.map(button => button.getAttribute("aria-label"))).toEqual(language === "en"
+    ? ["Move part up by one plate", "Move part down by one plate"]
+    : ["Stein eine Plattenhöhe höher", "Stein eine Plattenhöhe tiefer"]);
+  const heightHelp = readButtonHelpEntry("help.button.height");
+  expect(heightHelp.querySelector("strong")?.textContent).toBe(language === "en" ? "Raise / lower" : "Höher / tiefer");
+  expect(heightHelp.querySelector("p")?.textContent?.toLocaleLowerCase())
+    .toContain(language === "en" ? "up or down by one plate step" : "in platten-schritten nach oben oder unten");
+
+  for (const { title, label, actionPhrase } of menuLabels) {
+    const guideItem = HELP_BUTTON_SECTIONS.flatMap(section => section.buttons).find(item => item.title === title)!;
+    expect(guideItem).toBeDefined();
+    const helpLabel = title === "project.privacy"
+      ? language === "en" ? "Privacy" : "Datenschutz"
+      : label;
+    expect(label.toLocaleLowerCase()).toContain(helpLabel.toLocaleLowerCase());
+    const entry = readButtonHelpEntry(title);
+    expect(entry.querySelector("strong")?.textContent?.trim()).toBe(helpLabel);
+    expect(entry.querySelector("p")?.textContent?.toLocaleLowerCase()).toContain(actionPhrase.toLocaleLowerCase());
+  }
+
+  const textOnlyItems = HELP_BUTTON_SECTIONS.flatMap(section => section.buttons).filter(item => !item.icon);
+  expect(textOnlyItems).toHaveLength(1);
+  for (const item of textOnlyItems) {
+    const entry = readButtonHelpEntry(item.title);
+    expect(entry.querySelector("strong")?.textContent).toBe(language === "en" ? "On this device" : "Auf diesem Gerät");
+    expect(entry.querySelector(".gesture-guide-button-visual, svg")).toBeNull();
+    expect(item.icon).toBeUndefined();
+  }
 });
 
 it("shows every mode's gesture help in German", async () => {
@@ -409,23 +607,17 @@ it("starts in English and switches the visible app labels to German", async () =
   const container = await mount("light", false, "en");
   expect(container.textContent).toContain("View");
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!.click());
-  const language = container.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
-  expect(language.value).toBe("en");
-  await act(async () => {
-    language.value = "de";
-    language.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  expect(container.querySelector('[data-testid="select-language"]')).toBeNull();
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="language-option-de"]')!.click());
   expect(documentRef.documentElement.lang).toBe("de");
   expect(container.textContent).toContain("Ansicht");
   expect(container.textContent).toContain("Bauen");
   expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("de");
 });
 
-it.each(["Escape", "outside click"] as const)("closes the language popup with %s", async dismissal => {
+it.each(["Escape", "outside click"] as const)("closes the language dropdown with %s", async dismissal => {
   const container = await mount("light");
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!.click());
-  expect(documentRef.body.querySelector('[data-testid="select-language"]')).not.toBeNull();
+  expect(container.querySelector('[role="menu"]')).not.toBeNull();
   await act(async () => {
     if (dismissal === "Escape") {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -433,7 +625,7 @@ it.each(["Escape", "outside click"] as const)("closes the language popup with %s
       documentRef.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     }
   });
-  expect(documentRef.body.querySelector('[data-testid="select-language"]')).toBeNull();
+  expect(container.querySelector('[role="menu"]')).toBeNull();
 });
 
 it("hides the canvas status controls for every open mobile selection menu", async () => {
