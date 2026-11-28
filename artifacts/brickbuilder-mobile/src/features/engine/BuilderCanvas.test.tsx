@@ -2092,6 +2092,50 @@ describe("frame-coalesced drag transactions", () => {
     expect(observed.cameraPose!.distance).toBeGreaterThan(zoomedDistance);
     expectGestureGuideLine("gesture.mouse.wheel.title");
   });
+  it("keeps the point under the cursor anchored during wheel zoom at varied angles", async () => {
+    const { props } = await mount("view");
+    const basePose = observed.cameraPose!;
+    const anglesAndCursors = [
+      { theta: 0.28, phi: 0.42, cursor: { x: 118, y: 126 } },
+      { theta: 1.84, phi: 1.12, cursor: { x: 476, y: 174 } },
+      { theta: 4.12, phi: 0.76, cursor: { x: 214, y: 492 } },
+    ];
+
+    for (const [index, { theta, phi, cursor }] of anglesAndCursors.entries()) {
+      const viewCamera: InstructionCamera = {
+        theta,
+        phi,
+        distance: basePose.distance,
+        target: basePose.target as [number, number, number],
+        referenceDistance: basePose.distance,
+        referenceTarget: basePose.target as [number, number, number],
+      };
+      await act(async () => root.render(
+        <BuilderCanvas {...props} viewStepId={`wheel-anchor-${index}`} viewCamera={viewCamera} />,
+      ));
+      flushFrame();
+
+      const camera = observed.camera!;
+      camera.updateMatrixWorld(true);
+      const ray = new Raycaster();
+      const ndc = new Vector2((cursor.x - 300) / 300, (300 - cursor.y) / 300);
+      ray.setFromCamera(ndc, camera);
+      const target = new Vector3(...viewCamera.target);
+      const zoomPlane = new Plane().setFromNormalAndCoplanarPoint(
+        camera.getWorldDirection(new Vector3()),
+        target,
+      );
+      const anchoredPoint = ray.ray.intersectPlane(zoomPlane, new Vector3())!;
+      expect(anchoredPoint).toBeDefined();
+
+      wheel(-120, cursor.x, cursor.y);
+      flushFrame();
+
+      const projected = anchoredPoint.clone().project(camera);
+      expect((projected.x + 1) * 300).toBeCloseTo(cursor.x, 5);
+      expect((1 - projected.y) * 300).toBeCloseTo(cursor.y, 5);
+    }
+  });
   it("zooms in by two on a double tap on empty space in selection mode", async () => {
     expectGestureGuideLine("gesture.select.zoom.title");
     await mount("select");
