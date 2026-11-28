@@ -7,13 +7,13 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpFromLine,
-  Move3d,
   type LucideIcon,
 } from "lucide-react";
 import "./fine-position.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { MessageId } from "@/i18n/messages";
 import DraggablePanel from "./DraggablePanel";
+import { CONTROL_SYMBOLS } from "@/features/engine/control-symbols";
 
 const directions: { label: MessageId; axis: keyof Position3; sign: number; Icon: LucideIcon }[] = [
   { label: "fine.left", axis: "x", sign: -1, Icon: ArrowLeft },
@@ -42,7 +42,7 @@ export default function FinePositionControls({ onNudge, onOpenChange, portalOnMo
     <button type="button" className={`fine-position-toggle${isOpen ? " is-open" : ""}`} aria-expanded={isOpen}
       aria-controls={panelId} aria-label={t("fine.open")} title={t("fine.title")}
       data-testid="button-fine-adjustment" onClick={toggle}>
-      <Move3d size={18} aria-hidden="true" />
+      <CONTROL_SYMBOLS.finePosition size={18} aria-hidden="true" />
     </button>
     <DraggablePanel className="fine-position-panel" panelId={panelId} title={t("fine.axes")}
       headingClassName="fine-position-heading" handleTestId="button-move-fine-panel"

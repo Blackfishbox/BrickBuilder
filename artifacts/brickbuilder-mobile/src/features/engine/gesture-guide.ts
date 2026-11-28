@@ -1,36 +1,6 @@
 import type { MessageId } from "@/i18n/messages";
 import type { ToolMode } from "@/features/editor/model";
-import type { ComponentType } from "react";
-import { EdgeSample, HeightArrows } from "./control-symbols";
-import {
-  Cloud,
-  CircleHelp,
-  Eye,
-  FileDown,
-  FilePlus2,
-  FileUp,
-  Group,
-  HardDrive,
-  Hammer,
-  Languages,
-  Layers,
-  Link2,
-  Menu,
-  MousePointer2,
-  MousePointerClick,
-  Move3d,
-  PackageOpen,
-  Palette,
-  Plus,
-  Rotate3d,
-  Save,
-  Scale,
-  Sun,
-  Trash2,
-  TriangleAlert,
-  Undo2,
-  Redo2,
-} from "lucide-react";
+import { CONTROL_SYMBOLS, type ControlSymbol } from "./control-symbols";
 
 export const DOUBLE_TAP_INTERVAL_MS = 500;
 export const BUILD_SINGLE_TAP_DELAY_MS = DOUBLE_TAP_INTERVAL_MS + 80;
@@ -49,7 +19,7 @@ export interface GestureGuideSection {
 }
 
 export interface HelpButtonItem {
-  icon?: ComponentType<{ size?: number }>;
+  icon?: ControlSymbol;
   title: MessageId;
   description: MessageId;
   additionalDescription?: MessageId;
@@ -61,10 +31,10 @@ export interface HelpButtonSection {
 }
 
 export const HELP_MODE_OVERVIEW: readonly HelpButtonItem[] = [
-  { icon: Eye, title: "editor.viewMode", description: "help.mode.view" },
-  { icon: Hammer, title: "editor.buildMode", description: "help.mode.build" },
-  { icon: MousePointer2, title: "editor.selectMode", description: "help.mode.select" },
-  { icon: Trash2, title: "editor.deleteMode", description: "help.mode.delete" },
+  { icon: CONTROL_SYMBOLS.viewMode, title: "editor.viewMode", description: "help.mode.view" },
+  { icon: CONTROL_SYMBOLS.buildMode, title: "editor.buildMode", description: "help.mode.build" },
+  { icon: CONTROL_SYMBOLS.selectMode, title: "editor.selectMode", description: "help.mode.select" },
+  { icon: CONTROL_SYMBOLS.deleteMode, title: "editor.deleteMode", description: "help.mode.delete" },
 ];
 
 /** Keep the button overview aligned with the controls rendered by App and BuilderCanvas. */
@@ -72,54 +42,54 @@ export const HELP_BUTTON_SECTIONS: readonly HelpButtonSection[] = [
   {
     title: "help.section.header",
     buttons: [
-      { icon: Menu, title: "help.button.project", description: "help.button.project.description" },
-      { icon: Sun, title: "help.button.theme", description: "help.button.theme.description" },
-      { icon: CircleHelp, title: "gesture.help", description: "help.button.help.description" },
-      { icon: Save, title: "save.action", description: "help.button.save.description" },
+      { icon: CONTROL_SYMBOLS.projectMenu, title: "help.button.project", description: "help.button.project.description" },
+      { icon: CONTROL_SYMBOLS.theme, title: "help.button.theme", description: "help.button.theme.description" },
+      { icon: CONTROL_SYMBOLS.gestureHelp, title: "gesture.help", description: "help.button.help.description" },
+      { icon: CONTROL_SYMBOLS.save, title: "save.action", description: "help.button.save.description" },
     ],
   },
   {
     title: "help.section.workspace",
     buttons: [
-      { icon: EdgeSample, title: "canvas.thickEdges", description: "help.button.edges.description" },
-      { icon: Undo2, title: "history.undo", description: "help.button.undo.description" },
-      { icon: Redo2, title: "history.redo", description: "help.button.redo.description" },
-      { icon: Palette, title: "editor.colorMode", description: "help.button.color.description" },
-      { icon: Plus, title: "editor.partsTool", description: "help.button.parts.description" },
-      { icon: Link2, title: "canvas.showConnections", description: "help.button.connections.description" },
-      { icon: TriangleAlert, title: "canvas.showCollisionWarning", description: "help.button.collision.description" },
-      { icon: Cloud, title: "canvas.showFloatingWarning", description: "help.button.floating.description" },
+      { icon: CONTROL_SYMBOLS.edges, title: "canvas.thickEdges", description: "help.button.edges.description" },
+      { icon: CONTROL_SYMBOLS.undo, title: "history.undo", description: "help.button.undo.description" },
+      { icon: CONTROL_SYMBOLS.redo, title: "history.redo", description: "help.button.redo.description" },
+      { icon: CONTROL_SYMBOLS.colorMode, title: "editor.colorMode", description: "help.button.color.description" },
+      { icon: CONTROL_SYMBOLS.partsTool, title: "editor.partsTool", description: "help.button.parts.description" },
+      { icon: CONTROL_SYMBOLS.connections, title: "canvas.showConnections", description: "help.button.connections.description" },
+      { icon: CONTROL_SYMBOLS.collisions, title: "canvas.showCollisionWarning", description: "help.button.collision.description" },
+      { icon: CONTROL_SYMBOLS.floatingParts, title: "canvas.showFloatingWarning", description: "help.button.floating.description" },
     ],
   },
   {
     title: "help.section.selectedPart",
     buttons: [
-      { icon: HeightArrows, title: "help.button.height", description: "help.button.height.description" },
-      { icon: Move3d, title: "fine.title", description: "help.button.fine.description" },
-      { icon: Group, title: "group.title", description: "help.button.group.description" },
-      { icon: Rotate3d, title: "tilt.title", description: "help.button.rotation.description" },
-      { icon: Trash2, title: "editor.remove", description: "help.button.delete.description" },
-      { icon: MousePointer2, title: "help.button.buildSwitch", description: "help.button.buildSwitch.description" },
-      { icon: Layers, title: "help.button.connectedParts", description: "help.button.connectedParts.description" },
-      { icon: MousePointerClick, title: "help.button.directMultiSelect", description: "help.button.directMultiSelect.description" },
-      { icon: MousePointer2, title: "help.button.tapSelect", description: "help.button.tapSelect.description" },
+      { icon: CONTROL_SYMBOLS.height, title: "help.button.height", description: "help.button.height.description" },
+      { icon: CONTROL_SYMBOLS.finePosition, title: "fine.title", description: "help.button.fine.description" },
+      { icon: CONTROL_SYMBOLS.group, title: "group.title", description: "help.button.group.description" },
+      { icon: CONTROL_SYMBOLS.tilt, title: "tilt.title", description: "help.button.rotation.description" },
+      { icon: CONTROL_SYMBOLS.removePart, title: "editor.remove", description: "help.button.delete.description" },
+      { icon: CONTROL_SYMBOLS.buildSwitch, title: "help.button.buildSwitch", description: "help.button.buildSwitch.description" },
+      { icon: CONTROL_SYMBOLS.connectedParts, title: "help.button.connectedParts", description: "help.button.connectedParts.description" },
+      { icon: CONTROL_SYMBOLS.directMultiSelect, title: "help.button.directMultiSelect", description: "help.button.directMultiSelect.description" },
+      { icon: CONTROL_SYMBOLS.tapSelect, title: "help.button.tapSelect", description: "help.button.tapSelect.description" },
     ],
   },
   {
     title: "help.section.projectMenu",
     buttons: [
-      { icon: FilePlus2, title: "project.newAction", description: "help.menu.new.description" },
-      { icon: FileUp, title: "project.import", description: "help.menu.import.description" },
-      { icon: FileDown, title: "project.export", description: "help.menu.export.description" },
+      { icon: CONTROL_SYMBOLS.newProject, title: "project.newAction", description: "help.menu.new.description" },
+      { icon: CONTROL_SYMBOLS.importProject, title: "project.import", description: "help.menu.import.description" },
+      { icon: CONTROL_SYMBOLS.exportProject, title: "project.export", description: "help.menu.export.description" },
       {
-        icon: PackageOpen,
+        icon: CONTROL_SYMBOLS.instructions,
         title: "project.instructions",
         description: "help.menu.instructions.description",
         additionalDescription: "instruction.background.note",
       },
-      { icon: HardDrive, title: "project.storage", description: "help.menu.storage.description" },
-      { icon: Scale, title: "project.privacy", description: "help.menu.privacy.description" },
-      { icon: Languages, title: "language", description: "help.menu.language.description" },
+      { icon: CONTROL_SYMBOLS.storage, title: "project.storage", description: "help.menu.storage.description" },
+      { icon: CONTROL_SYMBOLS.privacy, title: "project.privacy", description: "help.menu.privacy.description" },
+      { icon: CONTROL_SYMBOLS.language, title: "language", description: "help.menu.language.description" },
       { title: "project.device", description: "help.menu.projects.description" },
     ],
   },

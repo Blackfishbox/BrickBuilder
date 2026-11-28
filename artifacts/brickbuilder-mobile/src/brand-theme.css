@@ -20,11 +20,13 @@
   border-color: hsl(var(--border));
   color: hsl(var(--foreground));
 }
+.language-popover { background: hsl(var(--card)); border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+.language-popover select { background: hsl(var(--muted)); border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
 .project-title-button, .section-heading h2, .rename-label,
 .brick-count, .dock-tool, .dock-color, .more-controls {
   color: hsl(var(--foreground));
 }
-.project-name-input, .language-row select {
+.project-name-input {
   background: hsl(var(--muted));
   border-color: hsl(var(--border));
   color: hsl(var(--foreground));
@@ -75,6 +77,7 @@
 .dark .editor-shell { background: radial-gradient(ellipse at 48% 46%, hsl(var(--brand-glow) / .08), transparent 58%), hsl(var(--background)); }
 .dark .topbar, .dark .mobile-dock, .dark .tool-rail { background: hsl(var(--card) / .94); }
 .dark .gesture-guide-dialog { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+.dark .language-popover { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
 .dark .gesture-guide-sections section, .dark .gesture-guide-mode { background: hsl(var(--background)); border-color: hsl(var(--border)); }
 .dark .gesture-guide-sections h3 { color: hsl(var(--brand-highlight)); }
 .dark .gesture-guide-button-visual { background: hsl(var(--card)); border-color: hsl(var(--border)); color: hsl(var(--primary)); }

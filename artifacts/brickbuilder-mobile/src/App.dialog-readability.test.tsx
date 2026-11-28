@@ -58,6 +58,7 @@ vi.mock("@/storage/database", () => ({ loadProject: vi.fn() }));
 
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
+let textScaleStyle: HTMLStyleElement | undefined;
 let oldWidth: number;
 let oldHeight: number;
 
@@ -67,6 +68,8 @@ afterEach(() => {
   root = undefined;
   host?.remove();
   host = undefined;
+  textScaleStyle?.remove();
+  textScaleStyle = undefined;
   localStorage.clear();
   document.documentElement.classList.remove("dark");
   vi.unstubAllGlobals();
@@ -77,13 +80,21 @@ afterEach(() => {
   Object.defineProperty(window, "innerHeight", { configurable: true, value: oldHeight });
 });
 
-async function mount(theme: "light" | "dark", withSelection = false, language: "en" | "de" = "de") {
+async function mount(
+  theme: "light" | "dark",
+  withSelection = false,
+  language: "en" | "de" = "de",
+  options: {
+    viewport?: { width: number; height: number };
+    projects?: { id: string; name: string; brickCount: number }[];
+  } = {},
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubEnv("VITE_NATIVE_ANDROID", "true");
   oldWidth = window.innerWidth;
   oldHeight = window.innerHeight;
-  Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
-  Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: options.viewport?.width ?? 390 });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: options.viewport?.height ?? 844 });
   localStorage.setItem(COLOR_THEME_STORAGE_KEY, theme);
   localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
 
@@ -109,7 +120,7 @@ async function mount(theme: "light" | "dark", withSelection = false, language: "
     selectedColorCode: "4",
     toolMode: withSelection ? "select" : "view",
     projectName: "Mobile-Dialoge",
-    projects: [],
+    projects: options.projects ?? [],
     brickCount: 0,
     canUndo: false,
     canRedo: false,
@@ -162,30 +173,95 @@ async function mount(theme: "light" | "dark", withSelection = false, language: "
 
 const documentRef = globalThis.document;
 
-it.each(["de", "en"] as const)("shows a larger project menu without the workshop heading in %s", async language => {
+function cssRule(css: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches = [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${escapedSelector}\\s*\\{([^}]*)\\}`, "g"))];
+  expect(matches.length, `Expected a CSS rule for ${selector}`).toBeGreaterThan(0);
+  return matches.reduce<Record<string, string>>((declarations, match) => {
+    for (const [, property, value] of match[1].matchAll(/([a-z-]+)\s*:\s*([^;]+);?/g)) {
+      declarations[property] = value.trim();
+    }
+    return declarations;
+  }, {});
+}
+
+it.each(["de", "en"] as const)("shows the language selector beside the theme button in %s", async language => {
   const container = await mount("light", false, language);
+  const theme = container.querySelector<HTMLButtonElement>('[data-testid="button-toggle-theme"]')!;
+  const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+  expect(languageButton.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+  expect(languageButton.getAttribute("aria-controls")).toBe("language-popover");
+  const headerButtons = [...container.querySelectorAll<HTMLButtonElement>(".topbar-end > button, .topbar-end .language-menu > button")];
+  expect(headerButtons.indexOf(languageButton)).toBe(headerButtons.indexOf(theme) + 1);
+  expect(container.querySelector('[data-testid="select-language"]')).toBeNull();
+  await act(async () => languageButton.click());
+  const popup = documentRef.body.querySelector<HTMLElement>('[data-testid="select-language"]')?.closest('[role="dialog"]')!;
+  expect(popup.id).toBe("language-popover");
+  const select = popup.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
+  expect(select.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
   const menu = container.querySelector<HTMLElement>(".project-popover")!;
   expect(menu.querySelector(".popover-eyebrow")).toBeNull();
-  for (const icon of menu.querySelectorAll(".popover-action svg, .language-row svg")) {
+  for (const icon of menu.querySelectorAll(".popover-action svg")) {
     expect(icon.getAttribute("width")).toBe("20");
     expect(icon.getAttribute("aria-hidden")).toBe("true");
   }
-  expect(menu.querySelector(".language-row .lucide-languages")).not.toBeNull();
-  const select = menu.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
-  expect(select.getAttribute("aria-label")).toBe(language === "de" ? "Sprache" : "Language");
+  expect(menu.querySelector('[data-testid="select-language"]')).toBeNull();
   expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*min-height: 48px/);
   expect(editorCss).toMatch(/\.popover-action\s*\{[^}]*font-size: 14px/);
+  expect(editorCss).toContain(".language-popover");
   expect(brandCss).toContain("max-width: calc(100vw - 24px)");
 });
 
+it.each([
+  { screen: "320px-wide screen", width: 320, height: 568 },
+  { screen: "short landscape screen", width: 568, height: 320 },
+])("keeps the project menu scrollable and within the screen at 200% text size on a $screen", async ({ width, height }) => {
+  const lastProjectName = "Zuletzt gespeichertes Modell mit langem Namen";
+  const container = await mount("light", false, "de", {
+    viewport: { width, height },
+    projects: Array.from({ length: 8 }, (_, index) => ({
+      id: `saved-project-${index}`,
+      name: index === 7 ? lastProjectName : `Gespeichertes Modell ${index + 1}`,
+      brickCount: index + 1,
+    })),
+  });
+
+  textScaleStyle = documentRef.createElement("style");
+  textScaleStyle.textContent = "html { -webkit-text-size-adjust: 200%; text-size-adjust: 200%; }";
+  documentRef.head.appendChild(textScaleStyle);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-project-menu"]')!.click());
+
+  const menu = container.querySelector<HTMLElement>(".project-popover")!;
+  const language = container.querySelector<HTMLSelectElement>('[data-testid="select-language"]');
+  const lastProject = menu.querySelector<HTMLButtonElement>('[data-testid="button-open-project-saved-project-7"]')!;
+  const menuSizing = cssRule(editorCss, ".project-popover");
+  const brandSizing = cssRule(brandCss, ".project-popover");
+  const savedProjectText = cssRule(editorCss, ".saved-project span");
+
+  expect(textScaleStyle.textContent).toContain("text-size-adjust: 200%");
+  expect(language).toBeNull();
+  expect(lastProject.textContent).toContain(lastProjectName);
+  expect(menuSizing.width).toBe("min(290px, calc(100vw - 28px))");
+  expect(brandSizing["max-width"]).toBe("calc(100vw - 24px)");
+  expect(brandSizing["max-height"]).toBe("min(76dvh, 680px)");
+  expect(menuSizing["overflow-y"]).toBe("auto");
+  expect(savedProjectText.overflow).toBe("hidden");
+  expect(savedProjectText["text-overflow"]).toBe("ellipsis");
+  expect(savedProjectText["white-space"]).toBe("nowrap");
+});
+
 it.each(["light", "dark"] as const)("uses real arrow and edge symbols in %s help", async theme => {
-  const container = await mount(theme);
+  const container = await mount(theme, true);
   await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!.click());
   const dialog = documentRef.body.querySelector<HTMLElement>('[data-testid="dialog-gesture-help"]')!;
   const edgeExample = dialog.querySelector(".thick-edges-sample")!;
   expect(edgeExample.outerHTML).toBe(container.querySelector('[data-testid="button-thick-edges"] .thick-edges-sample')!.outerHTML);
-  expect(dialog.querySelector(".height-arrows")?.textContent).toBe("↑ ↓");
+  const heightButtons = container.querySelectorAll<HTMLElement>(".mobile-selection-actions > button");
+  expect(dialog.querySelector(".height-arrows")?.textContent).toBe(
+    `${heightButtons[0]?.textContent} ${heightButtons[1]?.textContent}`,
+  );
   expect(dialog.querySelector(".lucide-box, .lucide-panel-top, .lucide-folder-open")).toBeNull();
   const projects = dialog.querySelector(".gesture-guide-text-only")!;
   expect(projects.querySelector("svg")).toBeNull();
@@ -211,13 +287,13 @@ it("switches to selection mode and selects a tapped part from the view canvas", 
   expect(editor.select).toHaveBeenCalledWith("imported-part-17");
 });
 
-it("opens the English gesture guide from the header between theme and save", async () => {
+it("opens the English gesture guide from the header after theme and language", async () => {
   const container = await mount("light", false, "en");
   const headerButtons = [...container.querySelectorAll<HTMLButtonElement>(".topbar-end button")];
   const helpButton = container.querySelector<HTMLButtonElement>('[data-testid="button-gesture-help"]')!;
   expect(helpButton.getAttribute("aria-label")).toBe("Gesture help");
   expect(headerButtons.indexOf(helpButton)).toBe(headerButtons.indexOf(
-    container.querySelector<HTMLButtonElement>('[data-testid="button-toggle-theme"]')!,
+    container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!,
   ) + 1);
   expect(headerButtons.indexOf(container.querySelector<HTMLButtonElement>('[data-testid="button-save"]')!))
     .toBe(headerButtons.indexOf(helpButton) + 1);
@@ -332,17 +408,32 @@ it("opens the rotation panel with the selected imported part's current values", 
 it("starts in English and switches the visible app labels to German", async () => {
   const container = await mount("light", false, "en");
   expect(container.textContent).toContain("View");
-  openProjectMenu(container);
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!.click());
   const language = container.querySelector<HTMLSelectElement>('[data-testid="select-language"]')!;
   expect(language.value).toBe("en");
   await act(async () => {
     language.value = "de";
     language.dispatchEvent(new Event("change", { bubbles: true }));
   });
+  expect(container.querySelector('[data-testid="select-language"]')).toBeNull();
   expect(documentRef.documentElement.lang).toBe("de");
   expect(container.textContent).toContain("Ansicht");
   expect(container.textContent).toContain("Bauen");
   expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("de");
+});
+
+it.each(["Escape", "outside click"] as const)("closes the language popup with %s", async dismissal => {
+  const container = await mount("light");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!.click());
+  expect(documentRef.body.querySelector('[data-testid="select-language"]')).not.toBeNull();
+  await act(async () => {
+    if (dismissal === "Escape") {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    } else {
+      documentRef.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    }
+  });
+  expect(documentRef.body.querySelector('[data-testid="select-language"]')).toBeNull();
 });
 
 it("hides the canvas status controls for every open mobile selection menu", async () => {

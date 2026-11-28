@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 import { renderView, ViewExportError, type ViewExporter } from "./view-export";
-import { Link2, TriangleAlert, Cloud, MousePointer2, Layers, MousePointerClick } from "lucide-react";
 import { collisionWarningsInWorker, type CollisionProgress } from "./collision-warning";
 import {
   BoxGeometry,
@@ -85,6 +84,7 @@ import {
   EMPTY_DOUBLE_TAP_ZOOM_FACTOR,
   EMPTY_DOUBLE_TAP_ZOOM_MODES,
 } from "./gesture-guide";
+import { CONTROL_SYMBOLS } from "./control-symbols";
 
 interface BuilderCanvasProps {
   viewExporterRef?: MutableRefObject<ViewExporter | null>;
@@ -2452,21 +2452,21 @@ export function BuilderCanvas({
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         title={t(showConnections ? "canvas.connectionsOn" : "canvas.connectionsOff")}
         onClick={() => { setShowConnections(!showConnections); setToggleToast(t(showConnections ? "canvas.connectionsOff" : "canvas.connectionsOn")); }}>
-        <Link2 size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.connections size={20} aria-hidden="true" />
       </button>
       <button type="button" className="canvas-control-toggle pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showCollisions} aria-label={t("canvas.showCollisionWarning")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         title={t(showCollisions ? "canvas.collisionOn" : "canvas.collisionOff")}
         onClick={() => { setShowCollisions(!showCollisions); setToggleToast(t(showCollisions ? "canvas.collisionOff" : "canvas.collisionOn")); }}>
-        <TriangleAlert size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.collisions size={20} aria-hidden="true" />
       </button>
       <button type="button" className="canvas-control-toggle pointer-events-auto rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
         aria-pressed={showFloating} aria-label={t("canvas.showFloatingWarning")}
         onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
         title={t(showFloating ? "canvas.floatingOn" : "canvas.floatingOff")}
         onClick={() => { setShowFloating(!showFloating); setToggleToast(t(showFloating ? "canvas.floatingOff" : "canvas.floatingOn")); }}>
-        <Cloud size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.floatingParts size={20} aria-hidden="true" />
       </button>
       {toolMode === "build" && <button type="button" data-testid="button-auto-select-after-placement"
         className={`canvas-control-toggle view-tap-select-toggle pointer-events-auto min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm ${autoSelectAfterPlacement
@@ -2480,7 +2480,7 @@ export function BuilderCanvas({
           setAutoSelectAfterPlacement(!autoSelectAfterPlacement);
           setToggleToast(t(autoSelectAfterPlacement ? "canvas.autoSelectAfterPlacementOff" : "canvas.autoSelectAfterPlacementOn"));
         }}>
-        <MousePointer2 size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.buildSwitch size={20} aria-hidden="true" />
       </button>}
       {toolMode === "select" && <button type="button" data-testid="button-move-connected-above"
         className="canvas-control-toggle pointer-events-auto min-h-[46px] min-w-[46px] rounded-xl border px-3 py-3 shadow-sm"
@@ -2492,7 +2492,7 @@ export function BuilderCanvas({
           setMoveConnectedAbove(!moveConnectedAbove);
           setToggleToast(t(moveConnectedAbove ? "canvas.moveConnectedAboveOff" : "canvas.moveConnectedAboveOn"));
         }}>
-        <Layers size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.connectedParts size={20} aria-hidden="true" />
       </button>}
       {toolMode === "select" && <button type="button" data-testid="button-multiselect-on-tap"
         className="canvas-control-toggle pointer-events-auto min-h-[46px] min-w-[46px] rounded-xl border bg-white/95 px-3 py-3 text-xs font-semibold shadow-sm"
@@ -2504,7 +2504,7 @@ export function BuilderCanvas({
           setMultiSelectOnTap(!multiSelectOnTap);
           setToggleToast(t(multiSelectOnTap ? "canvas.multiSelectOnTapOff" : "canvas.multiSelectOnTapOn"));
         }}>
-        <MousePointerClick size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.directMultiSelect size={20} aria-hidden="true" />
       </button>}
       {showConnections && connectionStatus && <span role="status" data-testid="connection-status" className="rounded-lg bg-white/95 px-2 py-2 text-xs shadow-sm">{connectionStatus}</span>}
     </div>}
@@ -2521,7 +2521,7 @@ export function BuilderCanvas({
           setAutoSelectOnTap(!autoSelectOnTap);
           setToggleToast(t(autoSelectOnTap ? "canvas.tapToggleOff" : "canvas.tapToggleOn"));
         }}>
-        <MousePointer2 size={20} aria-hidden="true" />
+        <CONTROL_SYMBOLS.tapSelect size={20} aria-hidden="true" />
       </button>
     </div>}
     {(sceneStatus || renderWarning || compatibilityHint || edgeDetailHint) && <div

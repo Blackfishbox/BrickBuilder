@@ -1,9 +1,9 @@
 import { useId, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Rotate3d } from "lucide-react";
 import "./tilt-controls.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { RotationAnchor } from "@/features/connections/rotation-anchors";
 import DraggablePanel from "./DraggablePanel";
+import { CONTROL_SYMBOLS } from "@/features/engine/control-symbols";
 
 type SliderAxis = "y" | "x" | "z";
 const ROTATION_DETENTS = [90, 180] as const;
@@ -153,7 +153,7 @@ export default function TiltControls({
       <button type="button" className={`tilt-controls-toggle${isOpen ? " is-open" : ""}`} aria-label={t("tilt.open")} title={t("tilt.title")}
         aria-expanded={isOpen} aria-controls={`tilt-panel-${controlId}`} data-testid="button-tilt-controls"
         onClick={() => setMenuOpen(!isOpen)}>
-        <Rotate3d size={17} aria-hidden="true" />
+        <CONTROL_SYMBOLS.tilt size={17} aria-hidden="true" />
       </button>
       <DraggablePanel className="tilt-panel" panelId={`tilt-panel-${controlId}`}
         title={t("tilt.title")} headingClassName="tilt-panel-heading"

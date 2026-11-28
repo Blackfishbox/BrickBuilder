@@ -15,34 +15,14 @@ import {
 import {
   Box,
   Check,
-  CircleHelp,
   ChevronDown,
   Command,
-  Eye,
-  FilePlus2,
-  FileDown,
-  FileUp,
-  Group,
-  HardDrive,
-  Hammer,
   LoaderCircle,
-  Languages,
-  Menu,
   Monitor,
-  PackageOpen,
-  Palette,
-  Plus,
-  Scale,
-  Save,
   Settings2,
   Star,
-  Trash2,
-  Undo2,
-  Redo2,
   Moon,
-  Sun,
   X,
-  MousePointer2,
 } from 'lucide-react';
 import '@/components/mobile/editor.css';
 import PartsLibrary from '@/features/parts/PartsLibrary';
@@ -76,7 +56,7 @@ import { watchForOpenedIOFiles } from '@/platform/io-file-open';
 import PremiumDialog from '@/features/premium/PremiumDialog';
 import { usePremium } from '@/features/premium/usePremium';
 import { nextEdgeMode, readEdgeModePreference, type EdgeMode } from '@/features/engine/edge-mode';
-import { EdgeSample } from '@/features/engine/control-symbols';
+import { CONTROL_SYMBOLS } from '@/features/engine/control-symbols';
 
 const BRICKS = Object.entries(BRICK_DEFINITIONS).map(([type, definition]) => ({
   type: type as BrickType,
@@ -110,6 +90,7 @@ function App() {
   const [partsOpen, setPartsOpen] = useState(false);
   const [colorsOpen, setColorsOpen] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
@@ -151,6 +132,22 @@ function App() {
   useEffect(() => { setRotationTargetQuery(""); }, [editor.selectedId]);
   useEffect(() => watchSystemColorTheme(setSystemTheme), []);
   useEffect(() => { applyColorTheme(themePreference, document, undefined, systemTheme); }, [themePreference, systemTheme]);
+  useEffect(() => {
+    if (!languageMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || event.target.closest(".language-menu")) return;
+      setLanguageMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLanguageMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [languageMenuOpen]);
   useEffect(() => {
     let active = true;
     let listener: { remove(): Promise<void> } | null = null;
@@ -297,7 +294,7 @@ function App() {
         aria-controls={`rotation-selection-panel-${mobile ? "mobile" : "desktop"}`}
         aria-label={t("group.open")} title={t("group.title")} data-testid="button-group-selection"
         onClick={() => setGroupSelectionOpen(value => !value)}>
-        <Group size={17} aria-hidden="true" />
+        <CONTROL_SYMBOLS.group size={17} aria-hidden="true" />
       </button>
       <DraggablePanel className="rotation-selection-panel"
         panelId={`rotation-selection-panel-${mobile ? "mobile" : "desktop"}`}
@@ -474,22 +471,22 @@ function App() {
                 data-testid="input-project-name"
               />
               <button type="button" className="popover-action" onClick={() => setConfirmNew(true)} data-testid="button-new-project">
-                <FilePlus2 size={20} aria-hidden="true" /> {t("project.newAction")}
+                <CONTROL_SYMBOLS.newProject size={20} aria-hidden="true" /> {t("project.newAction")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setFormatsMode('import'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-import">
-                <FileUp size={20} aria-hidden="true" /> {t("project.import")}
+                <CONTROL_SYMBOLS.importProject size={20} aria-hidden="true" /> {t("project.import")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setFormatsMode('export'); setFormatsOpen(true); setProjectMenu(false); }} data-testid="button-open-export">
-                <FileDown size={20} aria-hidden="true" /> {t("project.export")}
+                <CONTROL_SYMBOLS.exportProject size={20} aria-hidden="true" /> {t("project.export")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setInstructionsOpen(true); setProjectMenu(false); }} data-testid="button-open-instructions">
-                <PackageOpen size={20} aria-hidden="true" /> {t("project.instructions")}
+                <CONTROL_SYMBOLS.instructions size={20} aria-hidden="true" /> {t("project.instructions")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setStorageOpen(true); setProjectMenu(false); }} data-testid="button-open-storage">
-                <HardDrive size={20} aria-hidden="true" /> {t("project.storage")}
+                <CONTROL_SYMBOLS.storage size={20} aria-hidden="true" /> {t("project.storage")}
               </button>
               <button type="button" className="popover-action" onClick={() => { setPrivacyOpen(true); setProjectMenu(false); }} data-testid="button-open-privacy">
-                <Scale size={20} aria-hidden="true" /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
+                <CONTROL_SYMBOLS.privacy size={20} aria-hidden="true" /> {t(isAndroidBuild() ? "project.privacySettings" : "project.privacy")}
               </button>
               {isAndroidBuild() && !premium.active && (premium.status === "ready" || premium.status === "error") && (
                 <button type="button" className="popover-action" onClick={() => { setPremiumOpen(true); setProjectMenu(false); }}
@@ -497,14 +494,6 @@ function App() {
                   <Star size={20} aria-hidden="true" /> {t(premium.status === "error" ? "premium.retry" : "premium.buy")}
                 </button>
               )}
-              <label className="language-row">
-                <span><Languages size={20} aria-hidden="true" />{t("language")}</span>
-                <select data-testid="select-language" aria-label={t("language")} value={locale}
-                  onChange={event => setLocale(event.target.value as "en" | "de")}>
-                  <option value="en">{t("english")}</option>
-                  <option value="de">{t("german")}</option>
-                </select>
-              </label>
             <div className="saved-projects" aria-label={t("editor.savedProjects")}>
                 <p>{t("project.device")}</p>
                 {editor.projects.length ? editor.projects.map((project) => (
@@ -537,8 +526,39 @@ function App() {
             data-testid="button-toggle-theme"
           >
             {themePreference === "system" ? <Monitor size={17} /> :
-              themePreference === "dark" ? <Moon size={17} /> : <Sun size={17} />}
+              themePreference === "dark" ? <Moon size={17} /> : <CONTROL_SYMBOLS.theme size={17} />}
           </button>
+          <div className="language-menu" data-open={languageMenuOpen || undefined}>
+            <button
+              type="button"
+              className="theme-toggle language-toggle"
+              onClick={() => {
+                setProjectMenu(false);
+                setLanguageMenuOpen(value => !value);
+              }}
+              aria-label={t("language")}
+              title={t("language")}
+              aria-expanded={languageMenuOpen}
+              aria-controls="language-popover"
+              aria-haspopup="dialog"
+              data-testid="button-language-menu"
+            >
+              <CONTROL_SYMBOLS.language size={18} />
+            </button>
+            {languageMenuOpen && (
+              <div className="language-popover rise-in" id="language-popover" role="dialog" aria-label={t("language")}>
+                <label htmlFor="language-select">{t("language")}</label>
+                <select id="language-select" data-testid="select-language" aria-label={t("language")} value={locale}
+                  onChange={event => {
+                    setLocale(event.target.value as "en" | "de");
+                    setLanguageMenuOpen(false);
+                  }}>
+                  <option value="en">{t("english")}</option>
+                  <option value="de">{t("german")}</option>
+                </select>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             className="theme-toggle gesture-help-toggle"
@@ -548,7 +568,7 @@ function App() {
             aria-haspopup="dialog"
             data-testid="button-gesture-help"
           >
-            <CircleHelp size={18} />
+            <CONTROL_SYMBOLS.gestureHelp size={18} />
           </button>
           <button
             type="button"
@@ -557,7 +577,7 @@ function App() {
             disabled={editor.isSaving}
             data-testid="button-save"
           >
-            {editor.isSaving ? <LoaderCircle className="spin" size={16} /> : saveMessage === t("save.saved") ? <Check size={16} /> : <Save size={16} />}
+            {editor.isSaving ? <LoaderCircle className="spin" size={16} /> : saveMessage === t("save.saved") ? <Check size={16} /> : <CONTROL_SYMBOLS.save size={16} />}
             <span>{editor.isSaving ? t("save.saving") : t("save.action")}</span>
           </button>
         </div>
@@ -582,15 +602,15 @@ function App() {
                 setEdgeMode(next);
                 try { window.localStorage.setItem(THICK_EDGES_STORAGE_KEY, next); } catch { /* Keep the session preference if storage is unavailable. */ }
               }}>
-              <EdgeSample />
+              <CONTROL_SYMBOLS.edges />
               <span className="thick-edges-label">{t("canvas.thickEdges")}</span>
             </button>
             <div className="history-controls">
               <button type="button" className="icon-button compact" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="button-undo">
-                <Undo2 size={17} />
+                <CONTROL_SYMBOLS.undo size={17} />
               </button>
               <button type="button" className="icon-button compact" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label={t("history.redo")} data-testid="button-redo">
-                <Redo2 size={17} />
+                <CONTROL_SYMBOLS.redo size={17} />
               </button>
             </div>
           </div>
@@ -650,8 +670,8 @@ function App() {
           {editor.selectedId && editor.toolMode !== 'view' && (
             <div className="mobile-selection-actions" data-testid="mobile-selection-actions">
               <span className="mobile-selection-label"><Box size={14} />{selectedPartNumber ?? t("editor.stone")}</span>
-              <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")} title={t("editor.placeHigher")}>↑</button>
-              <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")} title={t("editor.placeLower")}>↓</button>
+              <button type="button" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")} title={t("editor.placeHigher")}><CONTROL_SYMBOLS.heightUp /></button>
+              <button type="button" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")} title={t("editor.placeLower")}><CONTROL_SYMBOLS.heightDown /></button>
               <FinePositionControls key={`fine-${editor.selectedId}-${editor.toolMode}`} onNudge={editor.nudgeSelected}
                 onOpenChange={setFinePositionOpen} open={finePositionOpen} portalOnMobile />
               {rotationSelection(true)}
@@ -663,7 +683,7 @@ function App() {
                 open={tiltControlsOpen} onOpenChange={setTiltControlsOpen}
                  portalOnMobile
                 anchors={availableRotationAnchors} rotationPivot={rotationPivot} onPivotChange={setRotationPivot} />
-              <button type="button" onClick={editor.deleteSelected} aria-label={t("editor.deleteSelected")} data-testid="mobile-button-delete-selected"><Trash2 size={17} /></button>
+              <button type="button" onClick={editor.deleteSelected} aria-label={t("editor.deleteSelected")} data-testid="mobile-button-delete-selected"><CONTROL_SYMBOLS.removePart size={17} /></button>
             </div>
           )}
         </div>
@@ -673,10 +693,10 @@ function App() {
             <div className="section-heading"><span>01</span><h2>{t("editor.tool")}</h2></div>
             <div className="tool-segment">
               {([
-                { mode: 'view' as const, icon: Eye, label: t("editor.viewMode") },
-                { mode: 'build' as const, icon: Hammer, label: t("editor.buildMode") },
-                { mode: 'select' as const, icon: MousePointer2, label: t("editor.selectMode") },
-                { mode: 'delete' as const, icon: Trash2, label: t("editor.deleteMode") },
+                { mode: 'view' as const, icon: CONTROL_SYMBOLS.viewMode, label: t("editor.viewMode") },
+                { mode: 'build' as const, icon: CONTROL_SYMBOLS.buildMode, label: t("editor.buildMode") },
+                { mode: 'select' as const, icon: CONTROL_SYMBOLS.selectMode, label: t("editor.selectMode") },
+                { mode: 'delete' as const, icon: CONTROL_SYMBOLS.deleteMode, label: t("editor.deleteMode") },
               ]).map(({ mode, icon: Icon, label }) => (
                 <button
                   key={mode}
@@ -714,10 +734,10 @@ function App() {
                   <span><strong>{editor.selectedInstance ? editor.selectedInstance.part.ldrawId : `${selectedBrick.dimensions} ${t("editor.stone")}`}</strong><small>{t("editor.editable")}</small></span>
                 </div>
                 <div className="selection-actions">
-                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")}>↑ {t("editor.higher")}</button>
-                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")}>↓ {t("editor.lower")}</button>
+                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(0.4)} aria-label={t("editor.higherOnePlate")}><CONTROL_SYMBOLS.heightUp /> {t("editor.higher")}</button>
+                  <button type="button" className="selection-action" onClick={() => editor.changeHeight(-0.4)} aria-label={t("editor.lowerOnePlate")}><CONTROL_SYMBOLS.heightDown /> {t("editor.lower")}</button>
                   <button type="button" className="selection-action danger-action" onClick={editor.deleteSelected} data-testid="button-delete-selected">
-                    <Trash2 size={16} /><span>{t("editor.remove")}</span>
+                    <CONTROL_SYMBOLS.removePart size={16} /><span>{t("editor.remove")}</span>
                   </button>
                 </div>
                 {rotationSelection()}
@@ -748,18 +768,18 @@ function App() {
             </div>
             {restoreMessage && <div className="toast-note" role="status" data-testid="status-restore">{restoreMessage}</div>}
             <button type="button" className="more-controls" onClick={() => setProjectMenu(true)} data-testid="button-workshop-menu">
-              <Settings2 size={16} /><span>{t("editor.workshop")}</span><Menu size={15} />
+              <Settings2 size={16} /><span>{t("editor.workshop")}</span><CONTROL_SYMBOLS.projectMenu size={15} />
             </button>
           </div>
         </aside>
       </section>
 
       <nav className="mobile-dock" aria-label={t("editor.workspace")}>
-        <button type="button" className="dock-history" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="mobile-button-undo"><Undo2 size={19} /></button>
-        <button type="button" className={`dock-tool ${editor.toolMode === 'view' ? 'active' : ''}`} onClick={() => setMode('view')} aria-pressed={editor.toolMode === 'view'} data-testid="mobile-button-view"><Eye size={18} /><span>{t("editor.viewMode")}</span></button>
-        <button type="button" className={`dock-tool ${editor.toolMode === 'build' ? 'active' : ''}`} onClick={() => setMode('build')} aria-pressed={editor.toolMode === 'build'} data-testid="mobile-button-build"><Hammer size={18} /><span>{t("editor.buildMode")}</span></button>
-        <button type="button" className={`dock-tool ${editor.toolMode === 'select' ? 'active' : ''}`} onClick={() => setMode('select')} aria-pressed={editor.toolMode === 'select'} data-testid="mobile-button-select"><MousePointer2 size={18} /><span>{t("editor.selectMode")}</span></button>
-        <button type="button" className={`dock-tool dock-delete ${editor.toolMode === 'delete' ? 'active' : ''}`} onClick={() => setMode('delete')} aria-pressed={editor.toolMode === 'delete'} data-testid="mobile-button-delete"><Trash2 size={17} /><span>{t("editor.deleteMode")}</span></button>
+        <button type="button" className="dock-history" onClick={editor.undo} disabled={!editor.canUndo || editor.toolMode === 'view'} aria-label={t("history.undo")} data-testid="mobile-button-undo"><CONTROL_SYMBOLS.undo size={19} /></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'view' ? 'active' : ''}`} onClick={() => setMode('view')} aria-pressed={editor.toolMode === 'view'} data-testid="mobile-button-view"><CONTROL_SYMBOLS.viewMode size={18} /><span>{t("editor.viewMode")}</span></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'build' ? 'active' : ''}`} onClick={() => setMode('build')} aria-pressed={editor.toolMode === 'build'} data-testid="mobile-button-build"><CONTROL_SYMBOLS.buildMode size={18} /><span>{t("editor.buildMode")}</span></button>
+        <button type="button" className={`dock-tool ${editor.toolMode === 'select' ? 'active' : ''}`} onClick={() => setMode('select')} aria-pressed={editor.toolMode === 'select'} data-testid="mobile-button-select"><CONTROL_SYMBOLS.selectMode size={18} /><span>{t("editor.selectMode")}</span></button>
+        <button type="button" className={`dock-tool dock-delete ${editor.toolMode === 'delete' ? 'active' : ''}`} onClick={() => setMode('delete')} aria-pressed={editor.toolMode === 'delete'} data-testid="mobile-button-delete"><CONTROL_SYMBOLS.deleteMode size={17} /><span>{t("editor.deleteMode")}</span></button>
         <button
           type="button"
           className="dock-color"
@@ -767,11 +787,11 @@ function App() {
           aria-label={t("editor.partColor")}
           data-testid="mobile-button-colors"
         >
-          <span className="dock-color-dot" style={{ '--swatch-color': selectedColor.value } as CSSProperties}><Palette size={13} /></span>
+          <span className="dock-color-dot" style={{ '--swatch-color': selectedColor.value } as CSSProperties}><CONTROL_SYMBOLS.colorMode size={13} /></span>
           <span>{t("editor.colorMode")}</span>
         </button>
-        <button type="button" className="dock-parts" onClick={() => setPartsOpen(true)} data-testid="mobile-button-parts"><Plus size={19} /><span>{t("editor.partsTool")}</span></button>
-        <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label={t("history.redo")} data-testid="mobile-button-redo"><Redo2 size={19} /></button>
+        <button type="button" className="dock-parts" onClick={() => setPartsOpen(true)} data-testid="mobile-button-parts"><CONTROL_SYMBOLS.partsTool size={19} /><span>{t("editor.partsTool")}</span></button>
+        <button type="button" className="dock-history" onClick={editor.redo} disabled={!editor.canRedo || editor.toolMode === 'view'} aria-label={t("history.redo")} data-testid="mobile-button-redo"><CONTROL_SYMBOLS.redo size={19} /></button>
       </nav>
 
       {colorsOpen && (
@@ -853,7 +873,7 @@ function App() {
       {confirmNew && (
         <div className="modal-scrim">
           <section className="confirm-card rise-in" role="dialog" aria-modal="true" aria-labelledby="new-project-title" data-testid="dialog-new-project">
-            <div className="confirm-icon"><FilePlus2 size={21} /></div>
+            <div className="confirm-icon"><CONTROL_SYMBOLS.newProject size={21} /></div>
             <h2 id="new-project-title">{t("editor.chooseNew")}</h2>
             <p>{t("editor.keepEditing")}</p>
             <div className="confirm-actions">
