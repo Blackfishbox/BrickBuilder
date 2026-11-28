@@ -697,7 +697,7 @@ function App() {
               {!instructionsOpen && <BuilderCanvas
                 viewExporterRef={viewExporterRef}
                 showConstructionControls={!finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
-                emptyDoubleTapZoomEnabled={!gestureHelpOpen && !projectMenu && !partsOpen && !colorsOpen &&
+                emptyDoubleTapZoomEnabled={!gestureHelpOpen && !projectMenu && !languageMenuOpen && !partsOpen && !colorsOpen &&
                   !formatsOpen && !instructionsOpen && !storageOpen && !privacyOpen && !premiumOpen && !confirmNew &&
                   !finePositionOpen && !groupSelectionOpen && !tiltControlsOpen}
                 projectId={editor.document.id}

@@ -853,6 +853,14 @@ export function BuilderCanvas({
   const previousEmptyTapRef = useRef<{ x: number; y: number; at: number; projectId?: string } | null>(null);
   const lastRotationOpenRef = useRef<{ id: string; at: number } | null>(null);
   const pendingTapActionRef = useRef<{ timer: number; projectId?: string; action: () => void } | null>(null);
+  useEffect(() => {
+    if (emptyDoubleTapZoomEnabled) return;
+    const pending = pendingTapActionRef.current;
+    if (pending) window.clearTimeout(pending.timer);
+    pendingTapActionRef.current = null;
+    previousEmptyTapRef.current = null;
+    previousPartTapRef.current = null;
+  }, [emptyDoubleTapZoomEnabled]);
   const cameraStateRef = useRef({
     theta: DEFAULT_INSTRUCTION_THETA,
     phi: DEFAULT_INSTRUCTION_PHI,

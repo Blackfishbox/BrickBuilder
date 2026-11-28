@@ -2271,6 +2271,19 @@ describe("frame-coalesced drag transactions", () => {
     expect(props.onPlace).toHaveBeenCalledOnce();
     expect(props.onPlace.mock.calls[0][2]).toEqual({ stayInBuildMode: true, floorSnap: true });
   });
+  it("cancels a delayed empty-space placement when a menu opens", async () => {
+    const { props } = await mount("build");
+    const empty = { x: 8, y: 8 };
+    pointer("pointerdown", empty.x, empty.y);
+    pointer("pointerup", empty.x, empty.y);
+    expect(props.onPlace).not.toHaveBeenCalled();
+
+    act(() => root.render(<BuilderCanvas {...props} emptyDoubleTapZoomEnabled={false} />));
+    act(() => root.render(<BuilderCanvas {...props} emptyDoubleTapZoomEnabled />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 620)); });
+
+    expect(props.onPlace).not.toHaveBeenCalled();
+  });
   it("treats a build-mode part double tap as one normal placement", async () => {
     expectGestureGuideLine("gesture.build.doubleTapPart.title");
     const { props, point } = await mount("build");

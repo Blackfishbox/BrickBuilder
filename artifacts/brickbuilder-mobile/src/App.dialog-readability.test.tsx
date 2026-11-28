@@ -922,6 +922,19 @@ it("disables canvas empty-space zoom when the project menu opens between taps", 
   expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
 });
 
+it("disables canvas actions while the language menu is open", async () => {
+  const container = await mount("light");
+  const languageButton = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(true);
+  await act(async () => languageButton.click());
+  expect(container.querySelector("#language-dropdown")).not.toBeNull();
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(false);
+
+  await act(async () => languageButton.click());
+  expect(canvasProps.current.emptyDoubleTapZoomEnabled).toBe(true);
+});
+
 it("marks open mobile control menus and closes each one on an outside tap", async () => {
   const container = await mount("light", true);
   const menus = [
