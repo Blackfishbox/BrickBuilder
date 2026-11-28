@@ -20,11 +20,12 @@ describe("system and saved color theme", () => {
   });
 
   it("defaults to system, resolves the operating-system preference, and restores saved overrides", () => {
-    localStorage.setItem(LEGACY_COLOR_THEME_STORAGE_KEY, "light");
     expect(readColorTheme()).toBe("system");
     expect(readSystemColorTheme({ matchMedia: () => ({ matches: true } as MediaQueryList) })).toBe("dark");
     expect(resolveColorTheme("system", "dark")).toBe("dark");
     expect(resolveColorTheme("system", "light")).toBe("light");
+    localStorage.setItem(LEGACY_COLOR_THEME_STORAGE_KEY, "light");
+    expect(readColorTheme()).toBe("light");
     applyColorTheme("dark");
     expect(localStorage.getItem(COLOR_THEME_STORAGE_KEY)).toBe("dark");
     expect(readColorTheme()).toBe("dark");

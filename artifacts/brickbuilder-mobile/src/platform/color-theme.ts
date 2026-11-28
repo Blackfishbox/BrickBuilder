@@ -1,9 +1,7 @@
 export type ColorTheme = "light" | "dark";
 export type ColorThemePreference = ColorTheme | "system";
 
-// Older releases always wrote light/dark on startup, so that key cannot tell
-// an explicit choice from the previous default. A fresh key lets every
-// existing installation adopt the system default while keeping new choices.
+// Keep the existing key so people who selected a light/dark override retain it.
 export const COLOR_THEME_STORAGE_KEY = "brickbuilder-color-theme-preference";
 export const LEGACY_COLOR_THEME_STORAGE_KEY = "brickbuilder-color-theme";
 
@@ -49,7 +47,7 @@ export function watchSystemColorTheme(
 export function readColorTheme(storage?: Pick<Storage, "getItem">): ColorThemePreference {
   try {
     const source = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    const saved = source?.getItem(COLOR_THEME_STORAGE_KEY);
+    const saved = source?.getItem(COLOR_THEME_STORAGE_KEY) ?? source?.getItem(LEGACY_COLOR_THEME_STORAGE_KEY);
     return saved === "light" || saved === "dark" ? saved : "system";
   } catch {
     return "system";
