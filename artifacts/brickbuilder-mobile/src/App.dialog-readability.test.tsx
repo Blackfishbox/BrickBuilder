@@ -224,6 +224,17 @@ it.each(["de", "en"] as const)("shows an icon-only language menu beside the them
   expect(brandCss).toContain("max-width: calc(100vw - 24px)");
 });
 
+it.each(["de", "en"] as const)("focuses the selected language option when the menu opens in %s", async language => {
+  const container = await mount("light", false, language);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-testid="button-language-menu"]')!;
+
+  await act(async () => trigger.click());
+
+  const selectedOption = container.querySelector<HTMLButtonElement>(`[data-testid="language-option-${language}"]`);
+  expect(selectedOption).not.toBeNull();
+  expect(document.activeElement).toBe(selectedOption);
+});
+
 it.each([
   { screen: "320px-wide screen", width: 320, height: 568 },
   { screen: "short landscape screen", width: 568, height: 320 },

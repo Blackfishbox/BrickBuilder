@@ -97,6 +97,8 @@ function App() {
   const partsDrawerRef = useRef<HTMLElement | null>(null);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const languageMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const languageOptionEnRef = useRef<HTMLButtonElement | null>(null);
+  const languageOptionDeRef = useRef<HTMLButtonElement | null>(null);
   const [confirmNew, setConfirmNew] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
@@ -140,6 +142,7 @@ function App() {
   useEffect(() => { applyColorTheme(themePreference, document, undefined, systemTheme); }, [themePreference, systemTheme]);
   useEffect(() => {
     if (!languageMenuOpen) return;
+    (locale === "en" ? languageOptionEnRef : languageOptionDeRef).current?.focus();
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (!(event.target instanceof Element) || event.target.closest(".language-menu")) return;
       setLanguageMenuOpen(false);
@@ -614,6 +617,7 @@ function App() {
                 <button
                   type="button"
                   role="menuitemradio"
+                  ref={languageOptionEnRef}
                   aria-checked={locale === "en"}
                   data-testid="language-option-en"
                   onClick={() => { setLocale("en"); setLanguageMenuOpen(false); }}
@@ -623,6 +627,7 @@ function App() {
                 <button
                   type="button"
                   role="menuitemradio"
+                  ref={languageOptionDeRef}
                   aria-checked={locale === "de"}
                   data-testid="language-option-de"
                   onClick={() => { setLocale("de"); setLanguageMenuOpen(false); }}
